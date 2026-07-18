@@ -1,9 +1,8 @@
 name: Add Astera master guide
 
 on:
-  push:
-    paths:
-      - .github/workflows/add-astera-master-guide.yml
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
@@ -11,9 +10,12 @@ permissions:
 
 jobs:
   restore-guide:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'restore-astera-master-guide'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Download exact master guide from Google Drive
         shell: bash
@@ -36,4 +38,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add astera_v8_master_guide.txt
           git commit -m 'docs: add Astera v8 master guide at repository root'
-          git push
+          git push origin HEAD:main
