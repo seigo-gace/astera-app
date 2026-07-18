@@ -1,0 +1,39 @@
+name: Add Astera master guide
+
+on:
+  push:
+    paths:
+      - .github/workflows/add-astera-master-guide.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore-guide:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact master guide from Google Drive
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE_ID='1gjUqGsWEbslNDyXSyJQiZ8ZlhMe-NpY-'
+          curl -fL --retry 3 --retry-all-errors \
+            "https://drive.usercontent.google.com/download?id=${FILE_ID}&export=download&confirm=t" \
+            -o astera_v8_master_guide.txt
+          test "$(wc -c < astera_v8_master_guide.txt)" -eq 62916
+          test "$(wc -l < astera_v8_master_guide.txt)" -eq 1042
+          grep -Fq 'Astera v8 製品・サービス総合説明資料' astera_v8_master_guide.txt
+          grep -Fq '### 40．最終定義' astera_v8_master_guide.txt
+
+      - name: Commit guide at repository root
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add astera_v8_master_guide.txt
+          git commit -m 'docs: add Astera v8 master guide at repository root'
+          git push
