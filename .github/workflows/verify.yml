@@ -1,0 +1,26 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Customer AI browser scripts
+        run: |
+          node --check public/customer-ai-transport.js
+          node --check public/customer-ai-bubble.js
+      - name: Typecheck and build
+        run: npm run build
