@@ -39,6 +39,7 @@
   const send = root.querySelector('.aca-send');
   const log = root.querySelector('.aca-log');
   let busy = false;
+  let suppressLauncherClick = false;
 
   function open() {
     root.classList.add('aca-open');
@@ -71,7 +72,13 @@
     return '回答を準備しましたが、表示できる本文がありません。';
   }
 
-  launcher.addEventListener('click', () => root.classList.contains('aca-open') ? close() : open());
+  launcher.addEventListener('click', () => {
+    if (suppressLauncherClick) {
+      suppressLauncherClick = false;
+      return;
+    }
+    root.classList.contains('aca-open') ? close() : open();
+  });
   minimize.addEventListener('click', close);
 
   input.addEventListener('input', () => {
@@ -119,7 +126,13 @@
   let drag = null;
   launcher.addEventListener('pointerdown', (event) => {
     if (root.classList.contains('aca-open')) return;
-    drag = { x: event.clientX, y: event.clientY, right: parseFloat(getComputedStyle(root).right), bottom: parseFloat(getComputedStyle(root).bottom), moved: false };
+    drag = {
+      x: event.clientX,
+      y: event.clientY,
+      right: parseFloat(getComputedStyle(root).right),
+      bottom: parseFloat(getComputedStyle(root).bottom),
+      moved: false
+    };
     launcher.setPointerCapture(event.pointerId);
   });
   launcher.addEventListener('pointermove', (event) => {
@@ -130,8 +143,12 @@
     root.style.right = `${Math.max(10, Math.min(innerWidth - 72, drag.right - dx))}px`;
     root.style.bottom = `${Math.max(10, Math.min(innerHeight - 72, drag.bottom - dy))}px`;
   });
-  launcher.addEventListener('pointerup', (event) => {
-    if (drag?.moved) event.preventDefault();
+  launcher.addEventListener('pointerup', () => {
+    suppressLauncherClick = Boolean(drag?.moved);
+    drag = null;
+  });
+  launcher.addEventListener('pointercancel', () => {
+    suppressLauncherClick = Boolean(drag?.moved);
     drag = null;
   });
 
