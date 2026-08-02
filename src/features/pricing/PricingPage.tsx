@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -18,6 +18,7 @@ type LoadState =
   | { status: 'error'; message: string };
 
 const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+const CATALOG_ENDPOINT = `${API_BASE}/api/catalog/public`;
 
 const copy = {
   ja: {
@@ -120,7 +121,7 @@ function normalizeCatalog(payload: unknown, language: 'ja' | 'en'): { plans: Pub
   const data = isRecord(root.data) ? root.data : {};
   const version = firstText(root, ['catalog_version', 'version']) || firstText(data, ['catalog_version', 'version']) || 'unknown';
 
-  const plans = findPlanArray(payload).flatMap((item, index) => {
+  const plans = findPlanArray(payload).flatMap((item) => {
     if (!isRecord(item)) return [];
     const id = firstText(item, ['plan_id', 'id', 'key', 'slug']);
     const name = firstText(item, ['display_name', 'name', 'title']);
@@ -134,7 +135,7 @@ function normalizeCatalog(payload: unknown, language: 'ja' | 'en'): { plans: Pub
       price: formatPrice(item, language),
       credits: credits || (language === 'ja' ? 'Catalog参照' : 'See catalog'),
       features: normalizeFeatures(item),
-      recommended: firstBoolean(item, ['recommended', 'is_recommended']) || index === 1,
+      recommended: firstBoolean(item, ['recommended', 'is_recommended']),
     }];
   });
 
@@ -145,15 +146,17 @@ export default function PricingPage() {
   const language: 'ja' | 'en' = document.documentElement.lang.toLowerCase().startsWith('en') ? 'en' : 'ja';
   const text = copy[language];
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const endpoint = useMemo(() => `${API_BASE}/api/catalog/public`, []);
+  const requestRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    requestRef.current?.abort();
     const controller = new AbortController();
+    requestRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 12_000);
     setState({ status: 'loading' });
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetch(CATALOG_ENDPOINT, {
         method: 'GET',
         credentials: 'include',
         headers: { Accept: 'application/json' },
@@ -162,20 +165,21 @@ export default function PricingPage() {
       if (!response.ok) throw new Error(`CATALOG_HTTP_${response.status}`);
       const payload: unknown = await response.json();
       const normalized = normalizeCatalog(payload, language);
-      setState({ status: 'ready', ...normalized });
+      if (!controller.signal.aborted) setState({ status: 'ready', ...normalized });
     } catch (error) {
+      if (controller.signal.aborted) return;
       const message = error instanceof Error ? error.message : 'CATALOG_UNKNOWN_ERROR';
       setState({ status: 'error', message });
     } finally {
       window.clearTimeout(timeout);
+      if (requestRef.current === controller) requestRef.current = null;
     }
-
-    return () => controller.abort();
-  }, [endpoint, language]);
+  }, [language]);
 
   useEffect(() => {
     document.title = language === 'ja' ? '料金と利用枠 | Astera App' : 'Plans and credits | Astera App';
     void load();
+    return () => requestRef.current?.abort();
   }, [language, load]);
 
   const choosePlan = (planId: string) => {
@@ -184,9 +188,9 @@ export default function PricingPage() {
   };
 
   return (
-    <main className="pricing-page">
+    <main className="pricing-page" aria-busy={state.status === 'loading'}>
       <style>{`
-        .pricing-page{min-height:100svh;background:radial-gradient(circle at 50% 0,rgba(176,112,54,.12),transparent 35%),#050505;color:#f5f5f2;padding:28px clamp(18px,4vw,64px) 64px;font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif}.pricing-page *{box-sizing:border-box}.pricing-top{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:18px}.pricing-brand{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none}.pricing-brand img{width:42px;height:42px}.pricing-brand strong{letter-spacing:.18em}.pricing-back{color:#d8d4ca;text-decoration:none;border:1px solid rgba(255,255,255,.16);padding:10px 14px;border-radius:999px}.pricing-hero{max-width:920px;margin:72px auto 42px;text-align:center}.pricing-eyebrow{font-size:11px;letter-spacing:.22em;color:#d6ad70}.pricing-hero h1{font-size:clamp(44px,8vw,82px);letter-spacing:-.065em;line-height:.95;margin:16px 0}.pricing-hero p{max-width:720px;margin:0 auto;color:#bcb8b0;line-height:1.9}.pricing-status{max-width:720px;margin:32px auto;padding:24px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.035);text-align:center}.pricing-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.pricing-card{position:relative;display:flex;flex-direction:column;min-height:410px;padding:24px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.018));box-shadow:0 20px 70px rgba(0,0,0,.28)}.pricing-card.is-recommended{border-color:rgba(214,173,112,.62);box-shadow:0 24px 85px rgba(118,70,27,.22)}.pricing-badge{position:absolute;right:16px;top:16px;font-size:10px;letter-spacing:.12em;color:#f2d39d}.pricing-card h2{font-size:28px;margin:14px 0 4px}.pricing-description{min-height:52px;color:#aaa69e;line-height:1.7}.pricing-price{font-size:25px;font-weight:700;margin:22px 0 8px}.pricing-credits{color:#d9c6a5;font-size:13px}.pricing-feature-title{margin:24px 0 10px;font-size:12px;color:#c7c2b8}.pricing-features{margin:0 0 26px;padding:0;list-style:none;display:grid;gap:9px;color:#d2cec6;font-size:13px;line-height:1.6}.pricing-features li:before{content:"✓";color:#d6ad70;margin-right:9px}.pricing-select{margin-top:auto;min-height:46px;border:1px solid rgba(214,173,112,.62);background:linear-gradient(135deg,rgba(154,91,39,.42),rgba(214,173,112,.12));color:#fff;cursor:pointer;font:inherit}.pricing-select:hover{background:linear-gradient(135deg,rgba(176,105,45,.58),rgba(214,173,112,.2))}.pricing-meta{max-width:1180px;margin:28px auto 0;display:flex;justify-content:space-between;gap:18px;color:#8e8a82;font-size:11px;line-height:1.6}.pricing-retry{margin-top:16px;border:1px solid rgba(214,173,112,.55);background:transparent;color:#f5f5f2;padding:10px 16px;cursor:pointer}@media(max-width:680px){.pricing-page{padding:18px 14px 42px}.pricing-brand span{display:none}.pricing-hero{margin:48px auto 30px}.pricing-meta{display:grid}.pricing-card{min-height:0}}@media(prefers-color-scheme:light){html[data-theme="light"] .pricing-page{background:#f4f3ef;color:#121212}.pricing-page .pricing-card{border-color:rgba(0,0,0,.14);background:rgba(255,255,255,.78)}html[data-theme="light"] .pricing-page .pricing-description,html[data-theme="light"] .pricing-page .pricing-hero p,html[data-theme="light"] .pricing-page .pricing-features{color:#5e5a54}}
+        .pricing-page{min-height:100svh;background:radial-gradient(circle at 50% 0,rgba(176,112,54,.12),transparent 35%),#050505;color:#f5f5f2;padding:28px clamp(18px,4vw,64px) 64px;font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif}.pricing-page *{box-sizing:border-box}.pricing-top{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:18px}.pricing-brand{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none}.pricing-brand img{width:42px;height:42px}.pricing-brand strong{letter-spacing:.18em}.pricing-back{color:#d8d4ca;text-decoration:none;border:1px solid rgba(255,255,255,.16);padding:10px 14px;border-radius:999px}.pricing-hero{max-width:920px;margin:72px auto 42px;text-align:center}.pricing-eyebrow{font-size:11px;letter-spacing:.22em;color:#d6ad70}.pricing-hero h1{font-size:clamp(44px,8vw,82px);letter-spacing:-.065em;line-height:.95;margin:16px 0}.pricing-hero p{max-width:720px;margin:0 auto;color:#bcb8b0;line-height:1.9}.pricing-status{max-width:720px;margin:32px auto;padding:24px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.035);text-align:center}.pricing-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}.pricing-card{position:relative;display:flex;flex-direction:column;min-height:410px;padding:24px;border:1px solid rgba(255,255,255,.13);background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.018));box-shadow:0 20px 70px rgba(0,0,0,.28)}.pricing-card.is-recommended{border-color:rgba(214,173,112,.62);box-shadow:0 24px 85px rgba(118,70,27,.22)}.pricing-badge{position:absolute;right:16px;top:16px;font-size:10px;letter-spacing:.12em;color:#f2d39d}.pricing-card h2{font-size:28px;margin:14px 0 4px}.pricing-description{min-height:52px;color:#aaa69e;line-height:1.7}.pricing-price{font-size:25px;font-weight:700;margin:22px 0 8px}.pricing-credits{color:#d9c6a5;font-size:13px}.pricing-feature-title{margin:24px 0 10px;font-size:12px;color:#c7c2b8}.pricing-features{margin:0 0 26px;padding:0;list-style:none;display:grid;gap:9px;color:#d2cec6;font-size:13px;line-height:1.6}.pricing-features li:before{content:"✓";color:#d6ad70;margin-right:9px}.pricing-select{margin-top:auto;min-height:46px;border:1px solid rgba(214,173,112,.62);background:linear-gradient(135deg,rgba(154,91,39,.42),rgba(214,173,112,.12));color:#fff;cursor:pointer;font:inherit}.pricing-select:hover{background:linear-gradient(135deg,rgba(176,105,45,.58),rgba(214,173,112,.2))}.pricing-meta{max-width:1180px;margin:28px auto 0;display:flex;justify-content:space-between;gap:18px;color:#8e8a82;font-size:11px;line-height:1.6}.pricing-retry{margin-top:16px;border:1px solid rgba(214,173,112,.55);background:transparent;color:#f5f5f2;padding:10px 16px;cursor:pointer}@media(max-width:680px){.pricing-page{padding:18px 14px 42px}.pricing-brand span{display:none}.pricing-hero{margin:48px auto 30px}.pricing-meta{display:grid}.pricing-card{min-height:0}}html[data-theme="light"] .pricing-page{background:#f4f3ef;color:#121212}html[data-theme="light"] .pricing-page .pricing-card{border-color:rgba(0,0,0,.14);background:rgba(255,255,255,.78)}html[data-theme="light"] .pricing-page .pricing-description,html[data-theme="light"] .pricing-page .pricing-hero p,html[data-theme="light"] .pricing-page .pricing-features{color:#5e5a54}
       `}</style>
 
       <header className="pricing-top">
