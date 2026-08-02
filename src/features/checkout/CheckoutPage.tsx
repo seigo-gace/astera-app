@@ -126,7 +126,7 @@ export default function CheckoutPage() {
   const createCheckoutIntent = async () => {
     if (state.status !== 'ready' || !accepted) return;
     const snapshot = state;
-    setState({ status: 'submitting', ...snapshot });
+    setState({ ...snapshot, status: 'submitting' });
 
     try {
       const response = await fetch(CHECKOUT_INTENT_ENDPOINT, {
