@@ -18,8 +18,9 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Validate Customer AI browser scripts
+      - name: Validate browser scripts
         run: |
+          node --check public/app-interactions.js
           node --check public/customer-ai-transport.js
           node --check public/customer-ai-bubble.js
       - name: Typecheck and build
