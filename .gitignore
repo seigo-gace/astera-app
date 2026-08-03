@@ -5,3 +5,16 @@ dist/
 !.env.example
 .DS_Store
 *.log
+
+# Android generated build state
+android/.gradle/
+android/local.properties
+android/**/build/
+
+# iOS generated build state
+ios/App/build/
+ios/build/
+ios/App/DerivedData/
+ios/App/Pods/
+**/xcuserdata/
+*.xcuserstate
