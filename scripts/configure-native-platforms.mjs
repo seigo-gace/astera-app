@@ -92,6 +92,7 @@ function configureIos() {
   if (!existsSync(infoPath) || !existsSync(projectPath)) return false;
 
   let info = read(infoPath);
+  info = info.replace(/\n\s*<!-- ASTERA_UNIVERSAL_ORIENTATIONS_START -->[\s\S]*?<!-- ASTERA_UNIVERSAL_ORIENTATIONS_END -->/g, '');
   info = removePlistArrayKey(info, 'UISupportedInterfaceOrientations');
   info = removePlistArrayKey(info, 'UISupportedInterfaceOrientations~ipad');
   info = removePlistBooleanKey(info, 'UIRequiresFullScreen');
