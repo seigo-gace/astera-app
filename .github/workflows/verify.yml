@@ -11,17 +11,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install exact direct dependencies
+        run: npm install --no-fund
       - name: Validate browser scripts
         run: |
           node --check public/app-interactions.js
           node --check public/customer-ai-transport.js
           node --check public/customer-ai-bubble.js
+      - name: Audit mobile source boundaries
+        run: npm run mobile:audit
       - name: Typecheck and build
         run: npm run build
