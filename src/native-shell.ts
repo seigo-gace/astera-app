@@ -217,7 +217,8 @@ async function installAppLifecycleBridge(): Promise<void> {
   });
 
   await CapacitorApp.addListener('appUrlOpen', ({ url }) => {
-    routeNativeUrl(url);
+    if (!routeNativeUrl(url)) return;
+    void Browser.close().catch(() => undefined);
   });
 
   const launchUrl = await CapacitorApp.getLaunchUrl();
