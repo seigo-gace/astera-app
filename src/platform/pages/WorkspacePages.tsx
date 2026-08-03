@@ -1,8 +1,39 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { asArray, asRecord, recordText, textValue } from '../api-client';
+import { apiUrl, asArray, asRecord, recordText, textValue } from '../api-client';
+import { openExternalUrl } from '../external-navigation';
 import type { RouteMatch } from '../route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
 import { Field, FormResult, KeyValueGrid, Panel, RecordList, ResourceShell, submitForm, useResource, type SubmitState } from './page-kit';
+
+function ResultActions({ id, title }: { id: string; title: string }) {
+  const [state, setState] = useState<SubmitState>({ type: 'idle' });
+
+  const download = async () => {
+    setState({ type: 'working' });
+    try {
+      const response = await fetch(apiUrl(`/api/results/${encodeURIComponent(id)}/download`), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'text/markdown,application/octet-stream' },
+      });
+      if (!response.ok) throw new Error(`RESULT_DOWNLOAD_HTTP_${response.status}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `${title.replace(/[\\/:*?"<>|]/g, '_') || 'Astera-result'}.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+      setState({ type: 'success', message: '保存・共有画面へ渡しました。' });
+    } catch (error) {
+      setState({ type: 'error', message: error instanceof Error ? error.message : 'Downloadに失敗しました。', code: 'RESULT_DOWNLOAD_FAILED' });
+    }
+  };
+
+  return <><div className="platform-action-row"><button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void download()}>Download</button><a className="platform-button" href={`/app/shares?result=${encodeURIComponent(id)}`}>共有設定</a></div><FormResult state={state} /></>;
+}
 
 function ResultDetailPage({ route }: { route: RouteMatch }) {
   const id = route.params.id;
@@ -12,10 +43,11 @@ function ResultDetailPage({ route }: { route: RouteMatch }) {
         const root = asRecord(payload);
         const result = asRecord(root.result ?? root.data ?? root);
         const sections = asArray(result.sections ?? root.sections);
+        const title = recordText(result, ['title', 'name'], 'Astera Result');
         return <>
-          <Panel title={recordText(result, ['title', 'name'], 'Astera Result')}><KeyValueGrid value={result} /></Panel>
+          <Panel title={title}><KeyValueGrid value={result} /></Panel>
           <Panel title="判断材料 8項目"><RecordList items={sections} titleKeys={['title', 'key']} subtitleKeys={['body', 'content']} empty="Result項目が不足しています。" /></Panel>
-          <div className="platform-action-row"><a className="platform-button" href={`/api/results/${encodeURIComponent(id)}/download`}>Download</a><a className="platform-button" href={`/app/shares?result=${encodeURIComponent(id)}`}>共有設定</a></div>
+          <ResultActions id={id} title={title} />
         </>;
       }}
     </ResourceShell>
@@ -117,7 +149,7 @@ function PreferencePage({ route, kind }: { route: RouteMatch; kind: 'options' | 
       {resource.status === 'error' && <ErrorState error={resource.error} onRetry={reload} />}
       <form className="platform-settings-form" onSubmit={save}>
         {Object.entries(values).map(([key, value]) => typeof value === 'boolean' ? (
-          <label className="platform-toggle-row" key={key}><span><strong>{labels[key] ?? key}</strong></span><input type="checkbox" checked={value} disabled={key === 'in_app_enabled'} onChange={(event: { target: HTMLInputElement }) => setValues((current) => ({ ...current, [key]: event.target.checked }))} /></label>
+          <label className="platform-toggle-row" key={key}><span><strong>{labels[key] ?? key}</strong></span><input type="checkbox" checked={value} disabled={key === 'in_app_enabled'} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.checked }))} /></label>
         ) : <Field key={key} label={labels[key] ?? key} name={key} value={String(value)} onChange={(next) => setValues((current) => ({ ...current, [key]: next }))} />)}
         <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>保存</button><FormResult state={state} />
       </form>
@@ -140,9 +172,18 @@ function StorageDestinationsPage({ route }: { route: RouteMatch }) {
   const [resource, reload] = useResource('/api/storage/destinations');
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const authorize = async (provider: string) => {
-    const payload = await submitForm('/api/storage/destinations/authorize', { provider, return_to: window.location.pathname }, setState, { success: '認証画面を開きます。', idempotent: true });
+    const payload = await submitForm('/api/storage/destinations/authorize', { provider, return_to: window.location.pathname, native_callback: 'jp.asterav8.app://open/app/settings/storage-destinations' }, setState, { success: '認証画面を開きます。', idempotent: true });
     const url = recordText(asRecord(payload), ['authorization_url', 'url', 'redirect_url']);
-    if (url && /^https:\/\//.test(url)) window.location.assign(url);
+    if (!url) {
+      setState({ type: 'error', message: 'Authorization URLがありません。', code: 'STORAGE_AUTH_URL_MISSING' });
+      return;
+    }
+    try {
+      await openExternalUrl(url);
+      setState({ type: 'idle' });
+    } catch (error) {
+      setState({ type: 'error', message: error instanceof Error ? error.message : '認証画面を開けませんでした。', code: 'STORAGE_AUTH_OPEN_FAILED' });
+    }
   };
   return <ResponsivePageShell route={route} description="Google Drive等の外部StorageをAccount単位で接続します。"><Panel title="接続先追加"><div className="platform-action-row"><button className="platform-button" type="button" onClick={() => void authorize('google-drive')}>Google Driveを接続</button><button className="platform-button" type="button" onClick={() => void authorize('google-sheets')}>Google Sheetsを接続</button></div><FormResult state={state} /></Panel><Panel title="接続済みStorage">{resource.status === 'loading' ? <BusyState /> : resource.status === 'error' ? <ErrorState error={resource.error} onRetry={reload} /> : <RecordList items={asArray(resource.data, ['destinations', 'items'])} titleKeys={['display_name', 'provider', 'name', 'id']} subtitleKeys={['status', 'updated_at']} />}</Panel></ResponsivePageShell>;
 }
