@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { openExternalUrl } from '../../platform/external-navigation';
+import { nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -138,7 +138,11 @@ export default function CheckoutPage() {
           'Content-Type': 'application/json',
           'Idempotency-Key': crypto.randomUUID(),
         },
-        body: JSON.stringify({ plan_id: planId, return_to: returnTo }),
+        body: JSON.stringify({
+          plan_id: planId,
+          return_to: returnTo,
+          native_callback: nativeCallback('/account/billing/status'),
+        }),
       });
       if (response.status === 401 || response.status === 403) {
         setState({ status: 'login-required' });
