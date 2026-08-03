@@ -21,6 +21,7 @@ body {
   min-height: 100vh;
   min-height: var(--app-viewport-height, 100vh);
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .app-shell,
