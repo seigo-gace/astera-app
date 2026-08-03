@@ -8,6 +8,10 @@ const index = read('index.html');
 const main = read('src/main.tsx');
 const runtime = read('src/device-compatibility.ts');
 const compatibilityCss = read('src/device-compatibility.css');
+const bootstrap = read('public/compatibility-bootstrap.js');
+const vite = read('vite.config.ts');
+const playwright = read('playwright.config.ts');
+const deviceTests = read('tests/device-matrix.spec.ts');
 const nativeConfig = read('scripts/configure-native-platforms.mjs');
 const failures = [];
 const checks = [];
@@ -20,6 +24,8 @@ function check(name, condition, detail) {
 check('viewport fit cover', index.includes('viewport-fit=cover'), 'notch and safe area support is required');
 check('interactive keyboard viewport', index.includes('interactive-widget=resizes-content'), 'Android keyboard must resize content');
 check('zoom remains available', !/user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?:\.0)?(?:[,"'])/i.test(index), 'do not disable accessibility zoom');
+check('preflight before module', index.indexOf('/compatibility-bootstrap.js') >= 0 && index.indexOf('/compatibility-bootstrap.js') < index.indexOf('/src/main.tsx'), 'runtime preflight must execute before modules');
+check('unsupported runtime guarded', main.includes('__ASTERA_RUNTIME_UNSUPPORTED__') && main.includes('if (!runtimeUnsupported)'), 'React must not cover the compatibility notice');
 
 check('compatibility CSS imported last', /AppRouter[^]*device-compatibility\.css/.test(main), 'compatibility CSS must load after route styles');
 check('compatibility runtime initialized', main.includes('initializeDeviceCompatibility();'), 'device runtime must initialize before render');
@@ -39,6 +45,24 @@ check('iOS input zoom guard', /\.composer textarea[^]*font-size:\s*16px\s*!impor
 check('touch manipulation', compatibilityCss.includes('touch-action: manipulation'), 'tap handling rule missing');
 check('small phone layout', compatibilityCss.includes('@media (max-width: 360px)'), 'small phone fallback missing');
 check('short landscape layout', compatibilityCss.includes('(orientation: landscape) and (max-height: 500px)'), 'short landscape fallback missing');
+
+check('feature based unsupported notice', bootstrap.includes('missingFeatures()') && bootstrap.includes('Asteraを安全に起動できません'), 'outdated WebView must show a usable notice');
+check('secure UUID fallback', bootstrap.includes('getRandomValues') && bootstrap.includes("window.crypto, 'randomUUID'"), 'randomUUID fallback missing');
+check('bootstrap avoids modern padStart', !bootstrap.includes('.padStart('), 'preflight must not rely on padStart');
+check('bootstrap avoids user agent gates', !bootstrap.includes('navigator.userAgent'), 'preflight must use features instead of device strings');
+check('Safari 15 build target', vite.includes("'safari15'"), 'Safari 15 compilation target missing');
+check('Android WebView build target', vite.includes("'chrome80'"), 'Android WebView baseline target missing');
+check('ES2019 build target', vite.includes("'es2019'"), 'JavaScript syntax baseline is too new');
+
+check('WebKit small iPhone matrix', playwright.includes('webkit-iphone-small'), 'small iPhone WebKit project missing');
+check('WebKit iPad split matrix', playwright.includes('webkit-ipad-split'), 'iPad split view WebKit project missing');
+check('WebKit iPad full matrix', playwright.includes('webkit-ipad-full'), 'iPad full view WebKit project missing');
+check('Chromium Android small matrix', playwright.includes('chromium-android-small'), 'small Android project missing');
+check('Chromium tablet matrix', playwright.includes('chromium-tablet'), 'Android tablet project missing');
+check('Chromium foldable matrix', playwright.includes('chromium-foldable'), 'foldable project missing');
+check('all route device test', deviceTests.includes('all canonical routes render without horizontal overflow or blocked controls'), 'all routes must run in every browser project');
+check('tap interception test', deviceTests.includes('document.elementFromPoint'), 'click interception check missing');
+check('iOS focus zoom test', deviceTests.includes('touch inputs do not trigger iOS focus zoom'), 'touch input zoom test missing');
 
 check('iPhone and iPad universal', nativeConfig.includes('TARGETED_DEVICE_FAMILY = "1,2";'), 'iOS target must include iPhone and iPad');
 check('iPhone orientations', nativeConfig.includes('UISupportedInterfaceOrientations'), 'iPhone orientation list missing');
