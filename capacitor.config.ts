@@ -11,9 +11,6 @@ const config: CapacitorConfig = {
     cleartext: false,
   },
   plugins: {
-    CapacitorHttp: {
-      enabled: true,
-    },
     Keyboard: {
       resize: 'body',
       resizeOnFullScreen: true,
