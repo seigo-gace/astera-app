@@ -40,9 +40,9 @@ env:
 
 jobs:
   web-audit:
-    name: Web and mobile source audit
+    name: Web tablet mobile source audit
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -61,6 +61,12 @@ jobs:
           node --check public/app-interactions.js
           node --check public/customer-ai-transport.js
           node --check public/customer-ai-bubble.js
+
+      - name: Audit canonical route coverage
+        run: npm run route:audit
+
+      - name: Audit responsive platform behavior
+        run: npm run responsive:audit
 
       - name: Audit mobile source boundaries
         run: npm run mobile:audit
@@ -106,7 +112,7 @@ jobs:
       - name: Install exact direct dependencies
         run: npm install --no-fund
 
-      - name: Generate, configure, and audit Android project
+      - name: Generate configure and audit Android project
         run: npm run mobile:bootstrap -- android
 
       - name: Build Android debug APK
@@ -157,7 +163,7 @@ jobs:
       - name: Install exact direct dependencies
         run: npm install --no-fund
 
-      - name: Generate, configure, and audit iOS project
+      - name: Generate configure and audit iOS project
         run: npm run mobile:bootstrap -- ios
 
       - name: Build iOS simulator app
