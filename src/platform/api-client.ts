@@ -19,17 +19,14 @@ const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.r
 function csrfToken(): string | null {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content?.trim();
   if (meta) return meta;
-  const cookie = document.cookie
-    .split(';')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith('csrf_token='));
+  const cookie = document.cookie.split(';').map((entry) => entry.trim()).find((entry) => entry.startsWith('csrf_token='));
   return cookie ? decodeURIComponent(cookie.slice('csrf_token='.length)) : null;
 }
 
-function endpointUrl(path: string): string {
+export function apiUrl(path: string): string {
   if (/^https:\/\//i.test(path)) return path;
-  const normalized = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE}${normalized}`;
+  if (!API_BASE) throw new ApiError('Astera API Baseが設定されていません。', 0, 'ASTERA_API_BASE_NOT_CONFIGURED');
+  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function responseCode(payload: unknown): string {
@@ -56,52 +53,34 @@ export type ApiRequestOptions = {
 };
 
 export async function apiRequest<T = unknown>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  if (!API_BASE && !/^https:\/\//i.test(path)) {
-    throw new ApiError('Astera API Baseが設定されていません。', 0, 'ASTERA_API_BASE_NOT_CONFIGURED');
-  }
-
   const method = options.method ?? 'GET';
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), options.timeoutMs ?? 15_000);
   const abortListener = () => controller.abort();
   options.signal?.addEventListener('abort', abortListener, { once: true });
-
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    ...options.headers,
-  };
-
+  const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   const csrf = csrfToken();
   if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
   if (options.idempotent && method !== 'GET') headers['Idempotency-Key'] = crypto.randomUUID();
 
   try {
-    const response = await fetch(endpointUrl(path), {
+    const response = await fetch(apiUrl(path), {
       method,
       credentials: 'include',
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
     });
-
     const contentType = response.headers.get('content-type') ?? '';
-    const payload: unknown = contentType.includes('application/json')
-      ? await response.json().catch(() => null)
-      : await response.text().catch(() => '');
-
+    const payload: unknown = contentType.includes('application/json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
     if (!response.ok) {
-      const code = responseCode(payload) || `HTTP_${response.status}`;
-      const message = responseMessage(payload) || `Astera API request failed (${response.status})`;
-      throw new ApiError(message, response.status, code, payload);
+      throw new ApiError(responseMessage(payload) || `Astera API request failed (${response.status})`, response.status, responseCode(payload) || `HTTP_${response.status}`, payload);
     }
-
     return payload as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (controller.signal.aborted) {
-      throw new ApiError('通信がTimeoutまたは取消されました。', 0, 'REQUEST_ABORTED');
-    }
+    if (controller.signal.aborted) throw new ApiError('通信がTimeoutまたは取消されました。', 0, 'REQUEST_ABORTED');
     throw new ApiError(error instanceof Error ? error.message : '通信に失敗しました。', 0, 'NETWORK_ERROR');
   } finally {
     window.clearTimeout(timeout);
@@ -116,15 +95,9 @@ export function asRecord(value: unknown): JsonObject {
 export function asArray(value: unknown, keys: string[] = []): unknown[] {
   if (Array.isArray(value)) return value;
   const root = asRecord(value);
-  for (const key of keys) {
-    const candidate = root[key];
-    if (Array.isArray(candidate)) return candidate;
-  }
+  for (const key of keys) if (Array.isArray(root[key])) return root[key] as unknown[];
   const data = asRecord(root.data);
-  for (const key of keys) {
-    const candidate = data[key];
-    if (Array.isArray(candidate)) return candidate;
-  }
+  for (const key of keys) if (Array.isArray(data[key])) return data[key] as unknown[];
   return [];
 }
 
