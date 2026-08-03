@@ -1,13 +1,15 @@
 import { App as CapacitorApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
-import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard';
 import { Share } from '@capacitor/share';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
 const ASTERA_APP_HOST = 'app.asterav8.jp';
+const ASTERA_CUSTOM_SCHEME = 'jp.asterav8.app:';
+const MAX_NATIVE_EXPORT_BYTES = 25 * 1024 * 1024;
 
 function safeFileName(value: string): string {
   const normalized = value
@@ -20,15 +22,33 @@ function safeFileName(value: string): string {
   return normalized || 'Astera-response.md';
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
 async function shareBlobDownload(anchor: HTMLAnchorElement): Promise<void> {
   const response = await fetch(anchor.href);
-  const content = await response.text();
+  if (!response.ok) throw new Error(`ASTERA_NATIVE_EXPORT_HTTP_${response.status}`);
+
+  const content = await response.arrayBuffer();
+  if (content.byteLength > MAX_NATIVE_EXPORT_BYTES) {
+    throw new Error('ASTERA_NATIVE_EXPORT_TOO_LARGE');
+  }
+
   const fileName = safeFileName(anchor.download || 'Astera-response.md');
   const result = await Filesystem.writeFile({
     path: fileName,
-    data: content,
+    data: arrayBufferToBase64(content),
     directory: Directory.Cache,
-    encoding: Encoding.UTF8,
+    recursive: true,
   });
 
   await Share.share({
@@ -40,24 +60,69 @@ async function shareBlobDownload(anchor: HTMLAnchorElement): Promise<void> {
 }
 
 function installNativeDownloadBridge(): void {
-  const originalClick = HTMLAnchorElement.prototype.click;
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (event.defaultPrevented || event.button !== 0) return;
 
-  HTMLAnchorElement.prototype.click = function asteraNativeAnchorClick(): void {
-    if (this.download && this.href.startsWith('blob:')) {
-      void shareBlobDownload(this).catch((error: unknown) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const anchor = target.closest<HTMLAnchorElement>('a[download][href]');
+      if (!anchor || !anchor.href.startsWith('blob:')) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void shareBlobDownload(anchor).catch((error: unknown) => {
         console.error('ASTERA_NATIVE_EXPORT_FAILED', error);
       });
-      return;
-    }
+    },
+    true,
+  );
+}
 
-    originalClick.call(this);
-  };
+function internalPathFromUrl(url: URL): string | null {
+  if (url.protocol === 'https:' && url.hostname === ASTERA_APP_HOST) {
+    return `${url.pathname}${url.search}${url.hash}` || '/';
+  }
+
+  if (url.protocol !== ASTERA_CUSTOM_SCHEME) return null;
+
+  const hostSegment = url.hostname && url.hostname !== 'open' ? `/${url.hostname}` : '';
+  const candidate = `${hostSegment}${url.pathname}${url.search}${url.hash}` || '/';
+  if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) return null;
+  return candidate;
+}
+
+function routeNativeUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    const internalPath = internalPathFromUrl(url);
+    if (!internalPath) return false;
+
+    window.location.assign(internalPath);
+    return true;
+  } catch (error) {
+    console.error('ASTERA_NATIVE_DEEP_LINK_FAILED', error);
+    return false;
+  }
 }
 
 function installExternalLinkBridge(): void {
   document.addEventListener(
     'click',
     (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
       const target = event.target;
       if (!(target instanceof Element)) return;
 
@@ -67,8 +132,21 @@ function installExternalLinkBridge(): void {
       const rawHref = anchor.getAttribute('href');
       if (!rawHref || (!rawHref.startsWith('https://') && !rawHref.startsWith('http://'))) return;
 
+      const destination = new URL(anchor.href);
+      const internalPath = internalPathFromUrl(destination);
+      if (internalPath) {
+        event.preventDefault();
+        window.location.assign(internalPath);
+        return;
+      }
+
       event.preventDefault();
-      void Browser.open({ url: anchor.href }).catch((error: unknown) => {
+      if (destination.protocol !== 'https:') {
+        console.error('ASTERA_NATIVE_INSECURE_LINK_REJECTED', destination.toString());
+        return;
+      }
+
+      void Browser.open({ url: destination.toString() }).catch((error: unknown) => {
         console.error('ASTERA_NATIVE_BROWSER_FAILED', error);
       });
     },
@@ -139,21 +217,17 @@ async function installAppLifecycleBridge(): Promise<void> {
   });
 
   await CapacitorApp.addListener('appUrlOpen', ({ url }) => {
-    try {
-      const parsed = new URL(url);
-      const isAsteraUniversalLink = parsed.hostname === ASTERA_APP_HOST;
-      const isAsteraCustomScheme = parsed.protocol === 'jp.asterav8.app:';
-      if (!isAsteraUniversalLink && !isAsteraCustomScheme) return;
-
-      window.location.assign(`${parsed.pathname}${parsed.search}${parsed.hash}` || '/');
-    } catch (error) {
-      console.error('ASTERA_NATIVE_DEEP_LINK_FAILED', error);
-    }
+    routeNativeUrl(url);
   });
+
+  const launchUrl = await CapacitorApp.getLaunchUrl();
+  if (launchUrl?.url) routeNativeUrl(launchUrl.url);
 }
 
 export async function initializeNativeShell(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
+  if (document.documentElement.dataset.asteraNativeShell === 'ready') return;
+  document.documentElement.dataset.asteraNativeShell = 'ready';
 
   const platform = Capacitor.getPlatform();
   document.documentElement.classList.add('native-platform', `platform-${platform}`);
