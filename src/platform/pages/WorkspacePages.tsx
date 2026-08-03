@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { apiUrl, asArray, asRecord, recordText, textValue } from '../api-client';
-import { openExternalUrl } from '../external-navigation';
+import { nativeCallback, openExternalUrl } from '../external-navigation';
 import type { RouteMatch } from '../route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
 import { Field, FormResult, KeyValueGrid, Panel, RecordList, ResourceShell, submitForm, useResource, type SubmitState } from './page-kit';
@@ -172,7 +172,11 @@ function StorageDestinationsPage({ route }: { route: RouteMatch }) {
   const [resource, reload] = useResource('/api/storage/destinations');
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const authorize = async (provider: string) => {
-    const payload = await submitForm('/api/storage/destinations/authorize', { provider, return_to: window.location.pathname, native_callback: 'jp.asterav8.app://open/app/settings/storage-destinations' }, setState, { success: '認証画面を開きます。', idempotent: true });
+    const payload = await submitForm('/api/storage/destinations/authorize', {
+      provider,
+      return_to: window.location.pathname,
+      native_callback: nativeCallback('/app/settings/storage-destinations'),
+    }, setState, { success: '認証画面を開きます。', idempotent: true });
     const url = recordText(asRecord(payload), ['authorization_url', 'url', 'redirect_url']);
     if (!url) {
       setState({ type: 'error', message: 'Authorization URLがありません。', code: 'STORAGE_AUTH_URL_MISSING' });
