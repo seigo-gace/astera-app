@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiUrl, asRecord, queryValue, recordText, textValue } from '../api-client';
-import { isNativeRuntime, openExternalUrl } from '../external-navigation';
+import { nativeCallback, openExternalUrl } from '../external-navigation';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from './page-kit';
@@ -51,9 +51,8 @@ function LoginPage({ route }: { route: RouteMatch }) {
     setState({ type: 'working' });
     try {
       const params = new URLSearchParams({ return_to: returnTo });
-      if (isNativeRuntime()) {
-        params.set('native_callback', 'jp.asterav8.app://open/login');
-      }
+      const callback = nativeCallback('/login');
+      if (callback) params.set('native_callback', callback);
       await openExternalUrl(apiUrl(`/api/auth/oauth/${provider}?${params.toString()}`));
       setState({ type: 'idle' });
     } catch (error) {
