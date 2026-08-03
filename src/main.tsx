@@ -10,11 +10,16 @@ import { initializeNativeShell } from './native-shell';
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found');
 
-initializeDeviceCompatibility();
-void initializeNativeShell();
+const runtimeUnsupported = (window as Window & { __ASTERA_RUNTIME_UNSUPPORTED__?: boolean })
+  .__ASTERA_RUNTIME_UNSUPPORTED__ === true;
 
-createRoot(root).render(
-  <StrictMode>
-    <AppRouter />
-  </StrictMode>,
-);
+if (!runtimeUnsupported) {
+  initializeDeviceCompatibility();
+  void initializeNativeShell();
+
+  createRoot(root).render(
+    <StrictMode>
+      <AppRouter />
+    </StrictMode>,
+  );
+}
