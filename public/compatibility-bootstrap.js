@@ -12,7 +12,8 @@
       bytes[8] = (bytes[8] & 63) | 128;
       var hex = [];
       for (var index = 0; index < bytes.length; index += 1) {
-        hex.push(bytes[index].toString(16).padStart(2, '0'));
+        var value = bytes[index].toString(16);
+        hex.push(value.length === 1 ? '0' + value : value);
       }
       return hex.slice(0, 4).join('') + '-' +
         hex.slice(4, 6).join('') + '-' +
@@ -27,7 +28,11 @@
         value: randomUuid
       });
     } catch (error) {
-      window.crypto.randomUUID = randomUuid;
+      try {
+        window.crypto.randomUUID = randomUuid;
+      } catch (ignored) {
+        return;
+      }
     }
   }
 
@@ -57,9 +62,13 @@
     panel.style.cssText = [
       'position:fixed',
       'z-index:2147483647',
-      'inset:0',
+      'top:0',
+      'right:0',
+      'bottom:0',
+      'left:0',
       'overflow:auto',
       'box-sizing:border-box',
+      'padding:32px 22px',
       'padding:calc(32px + env(safe-area-inset-top,0px)) 22px calc(32px + env(safe-area-inset-bottom,0px))',
       'background:#0a0a0a',
       'color:#fffaf0',
@@ -82,7 +91,7 @@
     ios.textContent = 'iPhone／iPad：iOS／iPadOS 15以上へ更新してから、Asteraを開き直してください。';
     var detail = document.createElement('code');
     detail.textContent = '不足機能: ' + missing.join(', ');
-    detail.style.cssText = 'display:block;margin-top:16px;padding:12px;border-radius:10px;background:#0a0a0a;color:#d3a15f;overflow-wrap:anywhere;font-size:12px';
+    detail.style.cssText = 'display:block;margin-top:16px;padding:12px;border-radius:10px;background:#0a0a0a;color:#d3a15f;word-break:break-all;overflow-wrap:anywhere;font-size:12px';
 
     card.appendChild(title);
     card.appendChild(message);
@@ -100,7 +109,11 @@
 
   if (missing.length) {
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function () { renderUnsupported(missing); }, { once: true });
+      var onReady = function () {
+        document.removeEventListener('DOMContentLoaded', onReady, false);
+        renderUnsupported(missing);
+      };
+      document.addEventListener('DOMContentLoaded', onReady, false);
     } else {
       renderUnsupported(missing);
     }
