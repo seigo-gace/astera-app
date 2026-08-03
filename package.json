@@ -1,7 +1,7 @@
 {
   "name": "astera-app",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "engines": {
     "node": ">=22.12 <23"
@@ -13,8 +13,10 @@
     "check": "tsc --noEmit",
     "route:audit": "node scripts/route-audit.mjs",
     "responsive:audit": "node scripts/responsive-audit.mjs",
+    "device:audit": "node scripts/device-matrix-audit.mjs",
     "mobile:audit": "node scripts/mobile-audit.mjs",
-    "platform:audit": "npm run route:audit && npm run responsive:audit && npm run mobile:audit",
+    "platform:audit": "npm run route:audit && npm run responsive:audit && npm run device:audit && npm run mobile:audit",
+    "e2e:devices": "playwright test",
     "verify": "npm run platform:audit && npm run build",
     "mobile:bootstrap": "node scripts/mobile-bootstrap.mjs",
     "mobile:sync": "npm run platform:audit && npm run build && cap sync && node scripts/configure-native-platforms.mjs && npm run mobile:audit -- --native",
@@ -50,6 +52,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.4.2",
+    "@playwright/test": "1.62.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
