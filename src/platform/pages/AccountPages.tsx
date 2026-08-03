@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError, asArray, asRecord, queryValue, recordText, textValue, type JsonObject } from '../api-client';
-import { openExternalUrl } from '../external-navigation';
+import { nativeCallback, openExternalUrl } from '../external-navigation';
 import type { RouteMatch } from '../route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
 import { Field, FormResult, KeyValueGrid, Panel, RecordList, ResourceShell, SelectField, submitForm, useResource, type SubmitState } from './page-kit';
@@ -38,7 +38,7 @@ function CreditPage({ route }: { route: RouteMatch }) {
     const payload = await submitForm('/api/billing/checkout-intents', {
       product_id: textValue(data.get('product_id')),
       return_to: 'credit',
-      native_callback: 'jp.asterav8.app://open/account/billing/status',
+      native_callback: nativeCallback('/account/billing/status'),
     }, setState, { success: 'Checkoutを準備しました。', idempotent: true });
     const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']);
     if (!url) {
