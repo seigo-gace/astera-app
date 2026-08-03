@@ -55,18 +55,26 @@ check('exact install policy', npmConfig.includes('save-exact=true'), '.npmrc mus
 check('engine strict policy', npmConfig.includes('engine-strict=true'), '.npmrc must reject unsupported Node versions');
 check('delegated download bridge', !nativeShell.includes('HTMLAnchorElement.prototype.click'), 'do not monkey-patch DOM prototypes');
 
-check('programmatic external bridge uses Capacitor', externalNavigation.includes('Capacitor.isNativePlatform()'), 'programmatic redirects must detect Native');
+check('programmatic external bridge uses Capacitor', externalNavigation.includes('isNativeRuntime()'), 'programmatic redirects must detect Native');
 check('programmatic external bridge uses Browser', externalNavigation.includes('Browser.open'), 'Native external URLs must use system browser');
 check('programmatic external bridge HTTPS only', externalNavigation.includes("destination.protocol !== 'https:'"), 'programmatic external URLs must reject non-HTTPS');
+check('Native callback centralized', externalNavigation.includes('export function nativeCallback'), 'Native callback builder missing');
+check('Native callback path validation', externalNavigation.includes('ASTERA_NATIVE_CALLBACK_PATH_REJECTED'), 'Native callback path must be validated');
+check('Native browser closes after callback', nativeShell.includes('Browser.close()'), 'Native browser should close after verified app callback');
+
 check('Square checkout uses external bridge', checkoutPage.includes('await openExternalUrl(destination)'), 'Square must not remain inside Native WebView');
 check('Square direct WebView redirect removed', !checkoutPage.includes('window.location.assign(destination)'), 'Square direct redirect is forbidden');
+check('Square Native callback', checkoutPage.includes("nativeCallback('/account/billing/status')"), 'Square Native callback missing');
+
 check('OAuth uses absolute API URL', authPages.includes('apiUrl(`/api/auth/oauth/'), 'OAuth must not target localhost Native origin');
 check('OAuth uses external bridge', authPages.includes('await openExternalUrl(apiUrl('), 'OAuth must use system browser on Native');
-check('OAuth Native callback declared', authPages.includes('jp.asterav8.app://open/auth/callback'), 'OAuth Native callback missing');
+check('OAuth Native callback', authPages.includes("nativeCallback('/login')"), 'OAuth Native callback must return to registered Login route');
+check('OAuth Native session exchange', authPages.includes('/api/auth/native/session-exchange'), 'Native OAuth one-time exchange is required');
+
 check('Storage OAuth uses external bridge', workspacePages.includes('await openExternalUrl(url)'), 'Storage OAuth must use system browser on Native');
-check('Storage Native callback declared', workspacePages.includes('jp.asterav8.app://open/app/settings/storage-destinations'), 'Storage Native callback missing');
+check('Storage Native callback', workspacePages.includes("nativeCallback('/app/settings/storage-destinations')"), 'Storage Native callback missing');
 check('Credit checkout uses external bridge', accountPages.includes('await openExternalUrl(url)'), 'Credit checkout must use system browser on Native');
-check('Credit Native callback declared', accountPages.includes('jp.asterav8.app://open/account/billing/status'), 'Credit Native callback missing');
+check('Credit Native callback', accountPages.includes("nativeCallback('/account/billing/status')"), 'Credit Native callback missing');
 check('Result download creates Blob URL', workspacePages.includes('URL.createObjectURL(blob)'), 'Result download must use authenticated Blob bridge');
 check('Result download names file', workspacePages.includes('anchor.download ='), 'Result download file name missing');
 
