@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Astera',
   webDir: 'dist',
   server: {
-    hostname: 'app.asterav8.jp',
+    hostname: 'localhost',
     androidScheme: 'https',
     iosScheme: 'capacitor',
     cleartext: false,
