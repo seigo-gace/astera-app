@@ -27,7 +27,7 @@ const accountPages = read('src/platform/pages/AccountPages.tsx');
 const npmConfig = read('.npmrc');
 
 check('private package', packageJson.private === true, 'package.json must remain private=true');
-check('Node 22 engine', packageJson.engines?.node === '>=22 <23', 'Node engine must be pinned to major 22');
+check('Node 22.12 engine', packageJson.engines?.node === '>=22.12 <23', 'Node engine must satisfy Vite 8 on Node 22');
 
 for (const [groupName, dependencies] of Object.entries({
   dependencies: packageJson.dependencies ?? {},
