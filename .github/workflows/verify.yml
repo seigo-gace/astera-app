@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,7 +24,18 @@ jobs:
           node --check public/app-interactions.js
           node --check public/customer-ai-transport.js
           node --check public/customer-ai-bubble.js
-      - name: Audit mobile source boundaries
+      - name: Audit canonical route coverage
+        run: npm run route:audit
+      - name: Audit Web tablet and mobile behavior
+        run: npm run responsive:audit
+      - name: Audit native source boundaries
         run: npm run mobile:audit
       - name: Typecheck and build
         run: npm run build
+      - name: Upload lockfile candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: astera-package-lock-candidate
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 14
