@@ -68,6 +68,14 @@ jobs:
       - name: Typecheck and build Web source
         run: npm run build
 
+      - name: Upload lockfile candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: astera-package-lock-candidate
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 14
+
   android:
     name: Android debug APK
     needs: web-audit
