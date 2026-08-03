@@ -2,266 +2,353 @@
 
 > **内部開発用。対外向けProduct READMEではありません。**
 >
-> Repository visibilityはPrivateを前提とし、未検証機能、内部構成、Build手順、Release阻害要因を正確に管理します。
+> RepositoryはPrivateを維持し、実装済み・検証済み・未検証を分離して記録します。
 
 ## 目的
 
-`seigo-gace/astera-app` はAsteraの共通Frontend正本です。一つのReact / TypeScript sourceを、次の3経路へ配信します。
+`seigo-gace/astera-app` は、Asteraの唯一の利用者向けFrontend正本です。
+同一のReact / TypeScript Sourceを次の3経路へ配信します。
 
 ```text
-src/（唯一のUI・状態・API連携正本）
-├─ Web      → Vite build → Cloudflare Pages
-├─ Android  → Capacitor Android project → APK / AAB
-└─ iOS      → Capacitor iOS project → Simulator / TestFlight / App Store
+src/ 共通Frontend正本
+├─ Web Browser → Vite → Cloudflare Pages
+├─ Android     → Capacitor Android → APK / AAB
+└─ iOS         → Capacitor iOS → Simulator / TestFlight / App Store
 ```
 
-Android・iOSごとにUIを複製しません。端末固有処理だけを `src/native-shell.ts` とNative project生成後設定へ隔離します。
+Android・iOS・Tablet用に別UIを複製しません。画面、状態、API契約、認証境界は共通Sourceへ集約し、端末固有処理だけをNative Shellへ隔離します。
 
 ## 現在の実装Status
 
-| 領域 | 状態 | 完了条件 |
+| 領域 | Source状態 | 完成判定 |
 |---|---|---|
-| Web共通Source | 実装済み | `npm run build`合格 |
-| Android Shell | Source・自動生成・Debug Build CIあり | CI Artifactと実機Story Test合格 |
-| iOS Shell | Source・自動生成・Simulator Build CIあり | CI Artifactと実iPhone Story Test合格 |
-| Native Deep Link routing | JS受信・cold start処理・Native設定生成あり | Association File公開と両OS実機検証 |
-| Android App Links | Intent Filter生成あり | Release証明書SHA-256確定後 `assetlinks.json` 公開・検証 |
-| iOS Universal Links | Associated Domains生成あり | Apple Team ID確定後AASA公開・検証 |
-| Native認証・Session | **未検証** | Login、継続Session、Logout、7日更新、OAuth callbackを両OS実機で確認 |
-| Square Checkout復帰 | **未検証** | 決済成功・取消・失敗からAsteraへ安全復帰 |
-| Google Play Release | **未実装** | Release Keystore、署名AAB、Play Console設定、審査 |
-| App Store Release | **未実装** | Certificate、Provisioning、Archive、TestFlight、審査 |
+| Canonical画面 | Notion 10〜43の34画面を43 Route Patternへ実装 | Source Coverage実装済み |
+| Web Browser | 共通Router・Responsive Shell・API Client実装 | GitHub Actions／Cloudflare実表示未確認 |
+| Tablet | 761〜1100px、Portrait／Landscape対応 | 実Tablet操作未確認 |
+| Smartphone Web | 760px以下、Drawer、Safe Area、Touch Target対応 | 実Browser端末未確認 |
+| Android | 共通画面をCapacitor Shellへ収容 | APK実Build・実機未確認 |
+| iOS | 共通画面をCapacitor Shellへ収容 | Simulator実Build・iPhone未確認 |
+| Backend結合 | 各画面をCanonical APIへFail-Closed接続 | 実Endpoint／Schema未確認 |
+| Store Release | 未実施 | Google Play／App Store NO-GO |
 
-Debug APKやSimulator Appの生成を、Store公開完了とは扱いません。
+**Sourceへ画面が存在することと、Productionで機能が成立したことを同一扱いしません。**
 
-## 固定識別子
+## Canonical Route Registry
+
+`src/platform/route-registry.ts`を唯一のRoute正本とします。
+
+主な区分：
 
 ```text
-Application ID / Bundle Identifier: jp.asterav8.app
-Web App Host:                       app.asterav8.jp
-API Base:                           VITE_ASTERA_API_BASE
-Native local origin:
-  Android:                          https://localhost
-  iOS:                              capacitor://localhost
-Custom callback scheme:             jp.asterav8.app://
+Public
+├─ /pricing
+├─ /s/:token
+├─ /legal/*
+├─ /status
+├─ /offline
+├─ /maintenance
+└─ /support
+
+Auth
+├─ /login
+├─ /register
+├─ /verify-email
+├─ /forgot-password
+├─ /reset-password
+├─ /account/password/setup
+└─ /auth/2fa
+
+App
+├─ /app/new
+├─ /app/results/:id
+├─ /app/projects
+├─ /app/history
+├─ /app/settings/*
+├─ /app/developer
+└─ /app/shares
+
+Account
+├─ /account
+├─ /account/security
+├─ /account/subscription
+├─ /account/credit
+├─ /account/checkout
+└─ /account/billing/status
 ```
 
-`server.hostname` は `localhost` を維持します。実Web domainをNative local hostnameへ流用しません。
+`/`は`/app/new`へ解決します。未知Pathを汎用Appへ流す旧Fallbackは禁止し、明示的なNot Foundへ送ります。
 
-## 採用技術
+## 全端末共通Architecture
 
-- React 19 / TypeScript / Vite
-- Capacitor 8.4.2
-- Android: API 24以上、Target / Compile API 36
-- iOS: iOS 15以上、Xcode 26以上
-- Cloudflare Pages
-- GitHub Actions
+```text
+src/main.tsx
+  └─ platform/app-router.tsx
+      ├─ route-registry.ts
+      ├─ API / Session Guard
+      ├─ Existing App execution UI
+      ├─ Existing Pricing / Checkout
+      └─ Canonical dedicated pages
+          ├─ Auth
+          ├─ Workspace / History / Settings
+          ├─ Account / Billing / Credit / Developer
+          └─ Share / Legal / Status / Support
+```
 
-直接依存Versionは完全固定し、`.npmrc` の `save-exact=true` と `engine-strict=true` で将来の不用意な範囲更新を防ぎます。
+### Responsive境界
 
-### Lockfileについて
+```text
+Desktop : 1101px以上
+Tablet  : 761〜1100px
+Mobile  : 760px以下
+Compact : 420px以下
+```
 
-現時点のRepositoryには `package-lock.json` がありません。直接依存は固定しましたが、推移依存まで完全再現するにはLockfile生成・Commitが必要です。Lockfile未作成の状態をRelease可能とは判定しません。
+共通要件：
 
-## 主要構造
+- `100dvh`
+- iOS／Android Safe Area
+- Tablet Sidebar
+- Mobile固定Header＋Drawer
+- Mobile入力16px以上
+- Coarse Pointer Touch Target 48px以上
+- Landscape低Height対応
+- Reduced Motion
+- Light／Dark
+- Horizontal Overflow防止
+
+## 認証・Session境界
+
+認証必須Routeは`GET /api/account`でSessionを確認します。
+
+- 未認証：`/login?return_to=...`
+- `return_to`：Same Originの相対Pathだけ許可
+- Cookie：`credentials: include`
+- CSRF：MetaまたはCookieからHeaderへ設定
+- Mutation：必要時Idempotency-Keyを付与
+- API Base未設定：安全停止
+- API Error：成功表示を生成しない
+
+Google／GitHub OAuthのProvider Passwordを取得・流用しません。Social初回はAstera専用Password設定Routeへ接続します。
+
+## API接続方針
+
+共通Client：`src/platform/api-client.ts`
+
+主な接続先：
+
+- `/api/auth/*`
+- `/api/account*`
+- `/api/projects`
+- `/api/history`
+- `/api/results/*`
+- `/api/preferences`
+- `/api/templates`
+- `/api/storage/*`
+- `/api/credit/*`
+- `/api/billing/*`
+- `/api/developer/*`
+- `/api/shares/*`
+- `/api/legal/*`
+- `/api/status`
+
+FrontendはAPI未実装・不整合時にMock成功へFallbackしません。Error Codeを表示し、入力を自動送信しません。
+
+## Native Shell
+
+固定識別子：
+
+```text
+Application ID / Bundle ID : jp.asterav8.app
+Web App Host                : app.asterav8.jp
+Android Local Origin        : https://localhost
+ iOS Local Origin           : capacitor://localhost
+Custom Scheme               : jp.asterav8.app://
+```
+
+Native固有機能：
+
+- Android Back
+- Keyboard Resize
+- Status Bar同期
+- Splash Screen
+- Blob Export→OS共有／保存
+- External HTTPS→System Browser
+- Astera App Link／Universal Link受信
+- Cold Start Deep Link
+
+`CapacitorHttp.enabled`によるGlobal Fetch置換は使用しません。Cookie／Session／AbortControllerを壊さないためです。
+
+## Source構造
 
 ```text
 src/
 ├─ App.tsx
 ├─ main.tsx
 ├─ native-shell.ts
-└─ features/
+├─ features/
+│  ├─ pricing/
+│  └─ checkout/
+└─ platform/
+   ├─ app-router.tsx
+   ├─ route-registry.ts
+   ├─ api-client.ts
+   ├─ ResponsivePageShell.tsx
+   ├─ CanonicalPages.tsx
+   ├─ platform.css
+   └─ pages/
+      ├─ page-kit.tsx
+      ├─ AuthPages.tsx
+      ├─ WorkspacePages.tsx
+      ├─ AccountPages.tsx
+      └─ PublicPages.tsx
 
-capacitor.config.ts
 scripts/
+├─ route-audit.mjs
+├─ responsive-audit.mjs
+├─ mobile-audit.mjs
 ├─ mobile-bootstrap.mjs
-├─ configure-native-platforms.mjs
-└─ mobile-audit.mjs
-
-docs/mobile/
-└─ association-files.template.md
-
-.github/workflows/
-├─ verify.yml
-└─ mobile-build.yml
+└─ configure-native-platforms.mjs
 ```
 
-## 重要な設計境界
-
-### 1. Native HTTPを全面有効化しない
-
-`CapacitorHttp.enabled` は設定していません。Asteraは `credentials: include`、AbortController、Cookie / Sessionを使うため、Native libraryによる `fetch` 全面置換を、認証検証なしで有効にしません。
-
-Native専用HTTPが必要なEndpointだけ、将来明示Adapterとして分離します。
-
-### 2. Deep LinkはJSだけで完成しない
-
-`appUrlOpen` と `getLaunchUrl()` はApp内routing担当です。OSがAsteraへURLを渡すには、次も必要です。
-
-- Android Manifest Intent Filter
-- iOS Associated Domains / Custom URL Scheme
-- `assetlinks.json`
-- `apple-app-site-association`
-- Release署名情報
-- 実機検証
-
-Native project設定は `scripts/configure-native-platforms.mjs` が生成後に適用します。Web側Association Fileは、署名値が確定するまでTemplateのまま公開しません。
-
-### 3. 外部URL
-
-Native内の外部HTTPは拒否し、HTTPSのみ端末Browserへ渡します。`app.asterav8.jp` のURLは内部Pathへ変換します。
-
-### 4. 回答Export
-
-WebのBlob downloadをNative Cacheへ書き込み、OSの共有・保存画面へ渡します。DOM prototypeは書き換えず、delegated click listenerで分離します。Native bridge上の過大転送を避けるため、現行上限は25 MiBです。
-
-## 開発開始
+## 開発Command
 
 必要環境：Node.js 22系。
 
 ```bash
 npm install
 cp .env.example .env
-npm run mobile:audit
 npm run dev
 ```
 
-## Web検証
+全Source Gate：
 
 ```bash
-npm run check
+npm run platform:audit
 npm run build
 ```
 
-Cloudflare Pages:
+または：
 
-```text
-Build command: npm run build
-Output:        dist
-Node.js:       22
+```bash
+npm run verify
 ```
 
-## Native Project生成
+個別Gate：
 
-両OS:
+```bash
+npm run route:audit
+npm run responsive:audit
+npm run mobile:audit
+npm run check
+```
+
+## Web
+
+```bash
+npm run build
+npm run preview
+```
+
+Cloudflare Pages：
+
+```text
+Build Command : npm run build
+Output        : dist
+Node.js       : 22
+```
+
+Cloudflareでは全Canonical PathをSPA EntryへRewriteし、API PathはFunctions／Workerへ分離する必要があります。
+
+## Android／iOS
 
 ```bash
 npm run mobile:bootstrap
-```
-
-個別:
-
-```bash
 npm run mobile:bootstrap -- android
 npm run mobile:bootstrap -- ios
 ```
 
-処理順序:
-
-1. Web build
-2. Source audit
-3. `cap add`（未生成時だけ）
-4. `cap sync`
-5. Native設定適用
-6. Native project audit
-
-未知のPlatform名は安全停止します。誤入力時に両Platformを生成しません。
-
-## Android
-
-必要環境：Android Studio、JDK 21、Android SDK API 36。
+Android：
 
 ```bash
 npm run android:open
 npm run android:run
 ```
 
-GitHub Actions生成物:
-
-- `astera-android-debug`
-- `astera-android-config-evidence`
-
-Debug APKは開発検証用です。Google Play提出物ではありません。
-
-## iOS
-
-必要環境：macOS、Xcode 26以上、Apple Developer Account。
+iOS：
 
 ```bash
 npm run ios:open
 npm run ios:run
 ```
 
-GitHub Actions生成物:
+処理順：
 
+1. Route Audit
+2. Responsive Audit
+3. Native Source Audit
+4. TypeScript／Vite Build
+5. Native Project生成または同期
+6. OS設定適用
+7. Generated Native Audit
+8. Android／iOS Build
+
+## CI Artifact
+
+- `astera-package-lock-candidate`
+- `astera-android-debug`
+- `astera-android-config-evidence`
 - `astera-ios-simulator`
 - `astera-ios-config-evidence`
 
-Simulator AppはiPhone実機配布物でもApp Store提出物でもありません。
+Debug APKやSimulator AppをStore提出完了とは扱いません。
 
-## GitHub Actions
+## 現在の検証Evidence
 
-### verify
+Local Source Candidate：
 
-- Browser script構文検査
-- Mobile source audit
-- TypeScript検査
-- Web build
+- Canonical Route Audit：43／43
+- Responsive Audit：13／13
+- Strict TypeScript静的検査：合格
+- Web／Android／iOS単一Source境界：確認済み
 
-### Mobile Build
+未取得：
 
-- Web / Mobile source audit
-- Android API 36環境でDebug APK生成
-- Xcode 26以上を確認してiOS Simulator App生成
-- 生成後Native設定を再監査
-- Native設定EvidenceをArtifact化
-
-## API・認証のRelease Gate
-
-Native版を完成扱いする前に、次を実機で通します。
-
-- Account登録
-- Email / Password Login
-- Google / GitHub Login callback
-- Passkey
-- 任意2FAとBackup Code
-- 7日Session継続と利用時更新
-- Logout / 全端末Logout
-- Plan取得
-- Square Checkout開始
-- 成功 / 取消 / 失敗復帰
-- Credit反映の冪等性
-- 添付Upload
-- 回答Export / Share
-- Android Back操作
-- iOS復帰・再開
-- App Link / Universal Link cold start
-
-Cookie属性、CORS、OAuth redirect、Native local originが未検証のままStore提出しません。
+- GitHub Actionsの実Run／Log
+- Repository clean install後の実Vite Build Evidence
+- Cloudflare Pages全Route実表示
+- Backend Sandbox全Endpoint
+- Android APK実起動
+- iOS Simulator実起動
+- Smartphone／Tablet実機
+- OAuth／Passkey／2FA
+- Square Checkout復帰
+- Store署名・審査
 
 ## Release阻害要因
 
-- `package-lock.json` 未Commit
-- Android Release Keystore / SHA-256未確定
-- Apple Team ID / Certificate / Provisioning未確定
+- `package-lock.json`未Commit
+- GitHub Actions結果未取得
+- Backend Canonical API実結合未確認
+- Cloudflare SPA Rewrite未確認
+- Android Release Keystore／SHA-256未確定
+- Apple Team ID／Certificate／Provisioning未確定
 - Association File未公開
-- Native認証・Square復帰未実機検証
-- Store metadata、Privacy回答、Screenshot、審査未実施
+- 全43 Routeの実機Story Test未実施
+- Store Metadata／Privacy回答／Screenshot／審査未実施
 
-## 関連する事実値
+## 完成条件
 
-- 2026年8月31日以降、Google Playの新規App / UpdateはAndroid 16（API 36）以上が必要。
-- Capacitor 8はAndroid API 24以上、iOS 15以上をSupport。
-- 2026年4月28日以降、App Store Connect提出はiOS 26 SDK以上が必要。
+次をすべて満たした場合だけMobile／Tablet／Web完成とします。
+
+1. 43 Route Build・Direct Open・Refresh合格
+2. Desktop／Tablet／Mobile Portrait・Landscape合格
+3. 全Auth Lifecycle合格
+4. Account・Plan・Credit・Billing合格
+5. Project・History・Result・Share合格
+6. Settings・Storage・Developer合格
+7. Offline・Maintenance・Error合格
+8. Android／iPhone実機合格
+9. Cloudflare／Backend Sandbox結合合格
+10. Release署名・Store Gate合格
 
 このREADMEは開発状態の正確な把握を目的とし、未実行・未検証を完成表示しません。
-
-## 公式参照
-
-- Capacitor Documentation: https://capacitorjs.com/docs
-- Capacitor Environment Setup: https://capacitorjs.com/docs/getting-started/environment-setup
-- Capacitor 8 Migration Requirements: https://capacitorjs.com/docs/updating/8-0
-- Capacitor Configuration: https://capacitorjs.com/docs/config
-- Capacitor Deep Links: https://capacitorjs.com/docs/guides/deep-links
-- Google Play Target API Requirement: https://developer.android.com/google/play/requirements/target-sdk
-- Apple SDK Minimum Requirements: https://developer.apple.com/news/upcoming-requirements/?id=02032026a
