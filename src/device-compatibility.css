@@ -1,0 +1,297 @@
+:root {
+  --app-viewport-height: 100vh;
+  --app-viewport-width: 100vw;
+  --app-viewport-offset-top: 0px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  min-height: var(--app-viewport-height, 100vh);
+  overflow-x: hidden;
+}
+
+.app-shell,
+.main-column {
+  height: 100vh;
+  height: var(--app-viewport-height, 100vh);
+}
+
+.platform-shell,
+.platform-public-page,
+.checkout-page {
+  min-height: 100vh;
+  min-height: var(--app-viewport-height, 100vh);
+}
+
+.platform-sidebar {
+  height: calc(100vh - var(--safe-top) - var(--safe-bottom));
+  height: calc(var(--app-viewport-height, 100vh) - var(--safe-top) - var(--safe-bottom));
+}
+
+.welcome-panel {
+  min-height: calc(100vh - 230px);
+  min-height: calc(var(--app-viewport-height, 100vh) - 230px);
+}
+
+.dialog-content {
+  max-height: min(calc(100vh - 24px), 760px);
+  max-height: min(calc(var(--app-viewport-height, 100vh) - 24px), 760px);
+}
+
+.fullscreen-dialog {
+  height: min(calc(100vh - 24px), 920px);
+  height: min(calc(var(--app-viewport-height, 100vh) - 24px), 920px);
+}
+
+.timeline,
+.sidebar-scroll-viewport,
+.dialog-content,
+.platform-main,
+.platform-mobile-drawer,
+.platform-public-page {
+  -webkit-overflow-scrolling: touch;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+[role="button"],
+[role="menuitem"] {
+  touch-action: manipulation;
+}
+
+button,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  pointer-events: none;
+}
+
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+.platform-main,
+.platform-page-content,
+.platform-panel,
+.platform-panel-body,
+.platform-record,
+.platform-link-card,
+.timeline-inner,
+.turn,
+.response-card,
+.result-section,
+.composer,
+.composer-wrap {
+  min-width: 0;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .history-menu-trigger,
+  .section-copy {
+    opacity: 1 !important;
+  }
+
+  .platform-link-card:hover,
+  .run-button:not(:disabled):hover,
+  .new-run-button:hover {
+    transform: none;
+  }
+
+  .icon-button,
+  .composer-tool,
+  .composer-plus,
+  .section-copy,
+  .history-menu-trigger,
+  .history-open,
+  .side-link,
+  .copy-response-button,
+  .secondary-button,
+  .menu-item,
+  .option-card,
+  .template-card,
+  .turn-list-dialog button,
+  .credit-chip,
+  .platform-button,
+  .platform-menu-button,
+  .platform-header-account,
+  .platform-public-header nav a,
+  .platform-auth-card footer a {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  .composer textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .platform-main,
+  .timeline-inner {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .platform-page-head h1,
+  .platform-public-hero h1,
+  .welcome-panel h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .platform-auth-card,
+  .platform-panel-body,
+  .dialog-content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .platform-page-head,
+  .platform-public-hero {
+    margin-top: 12px;
+    margin-bottom: 14px;
+  }
+
+  .platform-page-head h1,
+  .platform-public-hero h1,
+  .welcome-panel h1 {
+    font-size: 30px;
+  }
+
+  .dialog-content,
+  .fullscreen-dialog {
+    max-height: calc(var(--app-viewport-height, 100vh) - 8px);
+    border-radius: 14px;
+  }
+}
+
+@supports not (color: color-mix(in srgb, #000, #fff)) {
+  body {
+    background: var(--bg);
+  }
+
+  ::selection {
+    background: var(--copper-dark);
+  }
+
+  .sidebar,
+  .mobile-header,
+  .mobile-sidebar,
+  .menu-content,
+  .dialog-content,
+  .toast,
+  .platform-sidebar,
+  .platform-mobile-header,
+  .platform-mobile-drawer {
+    background: var(--bg-elevated);
+  }
+
+  .new-run-button,
+  .user-message,
+  .copy-response-button,
+  .secondary-button,
+  .selection-chip,
+  .meta-chip,
+  .option-card,
+  .template-card,
+  .credit-summary,
+  .dialog-notice,
+  .select-row select,
+  .switch-root,
+  .credit-chip {
+    background: var(--panel-strong);
+    border-color: var(--line-strong);
+  }
+
+  .response-card,
+  .composer,
+  .platform-panel,
+  .platform-auth-card,
+  .platform-legal-document,
+  .platform-link-card,
+  .platform-record,
+  .platform-button,
+  .platform-toggle-row {
+    background: var(--panel-solid);
+  }
+
+  .platform-shell,
+  .platform-public-page,
+  .checkout-page {
+    background: var(--platform-bg);
+  }
+
+  .platform-sidebar,
+  .platform-mobile-header,
+  .platform-mobile-drawer,
+  .platform-panel,
+  .platform-auth-card,
+  .platform-legal-document,
+  .platform-link-card,
+  .platform-record,
+  .platform-button,
+  .platform-toggle-row {
+    background: var(--platform-surface);
+    border-color: var(--platform-border);
+  }
+
+  .platform-button.is-primary {
+    background: #6e3f24;
+    border-color: var(--platform-accent);
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .sidebar,
+  .mobile-header,
+  .mobile-sidebar,
+  .dialog-overlay,
+  .platform-sidebar,
+  .platform-mobile-header,
+  .platform-mobile-drawer {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .sidebar,
+  .mobile-header,
+  .mobile-sidebar {
+    background: var(--bg-elevated);
+  }
+
+  .platform-sidebar,
+  .platform-mobile-header,
+  .platform-mobile-drawer {
+    background: var(--platform-bg);
+  }
+}
