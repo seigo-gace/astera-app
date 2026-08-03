@@ -133,6 +133,10 @@ function PreferencePage({ route, kind }: { route: RouteMatch; kind: 'options' | 
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (resource.status !== 'ready') {
+      setState({ type: 'error', message: '現在設定を取得できていないため、上書きを停止しました。', code: 'PREFERENCE_SOURCE_NOT_READY' });
+      return;
+    }
     await submitForm(endpoint, values, setState, { method: 'PATCH', success: '設定を保存しました。', idempotent: true });
     reload();
   };
@@ -147,11 +151,11 @@ function PreferencePage({ route, kind }: { route: RouteMatch; kind: 'options' | 
     <ResponsivePageShell route={route} description="Account Preferenceを端末種別に依存せず保存します。">
       {resource.status === 'loading' && <BusyState />}
       {resource.status === 'error' && <ErrorState error={resource.error} onRetry={reload} />}
-      <form className="platform-settings-form" onSubmit={save}>
+      <form className="platform-settings-form" onSubmit={save} aria-disabled={resource.status !== 'ready'}>
         {Object.entries(values).map(([key, value]) => typeof value === 'boolean' ? (
-          <label className="platform-toggle-row" key={key}><span><strong>{labels[key] ?? key}</strong></span><input type="checkbox" checked={value} disabled={key === 'in_app_enabled'} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.checked }))} /></label>
+          <label className="platform-toggle-row" key={key}><span><strong>{labels[key] ?? key}</strong></span><input type="checkbox" checked={value} disabled={key === 'in_app_enabled' || resource.status !== 'ready'} onChange={(event) => setValues((current) => ({ ...current, [key]: event.target.checked }))} /></label>
         ) : <Field key={key} label={labels[key] ?? key} name={key} value={String(value)} onChange={(next) => setValues((current) => ({ ...current, [key]: next }))} />)}
-        <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>保存</button><FormResult state={state} />
+        <button className="platform-button is-primary" type="submit" disabled={state.type === 'working' || resource.status !== 'ready'}>保存</button><FormResult state={state} />
       </form>
     </ResponsivePageShell>
   );
