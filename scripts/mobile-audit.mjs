@@ -24,6 +24,9 @@ const checkoutPage = read('src/features/checkout/CheckoutPage.tsx');
 const authPages = read('src/platform/pages/AuthPages.tsx');
 const workspacePages = read('src/platform/pages/WorkspacePages.tsx');
 const accountPages = read('src/platform/pages/AccountPages.tsx');
+const compatibilityRuntime = read('src/device-compatibility.ts');
+const compatibilityCss = read('src/device-compatibility.css');
+const nativeConfigurator = read('scripts/configure-native-platforms.mjs');
 const npmConfig = read('.npmrc');
 
 check('private package', packageJson.private === true, 'package.json must remain private=true');
@@ -54,6 +57,14 @@ check('HTTPS external navigation', nativeShell.includes("destination.protocol !=
 check('exact install policy', npmConfig.includes('save-exact=true'), '.npmrc must preserve exact direct versions');
 check('engine strict policy', npmConfig.includes('engine-strict=true'), '.npmrc must reject unsupported Node versions');
 check('delegated download bridge', !nativeShell.includes('HTMLAnchorElement.prototype.click'), 'do not monkey-patch DOM prototypes');
+
+check('capability based runtime', compatibilityRuntime.includes('window.visualViewport'), 'visual viewport compatibility is required');
+check('no model allowlist', !/iPhone\s*\d|Pixel\s*\d|Galaxy\s*S|userAgent/.test(compatibilityRuntime), 'device model allowlists are forbidden');
+check('old WebKit viewport fallback', compatibilityCss.includes('--app-viewport-height: 100vh'), '100vh fallback missing');
+check('old WebKit color fallback', compatibilityCss.includes('@supports not (color: color-mix'), 'color-mix fallback missing');
+check('touch input zoom guard', compatibilityCss.includes('font-size: 16px !important'), 'touch inputs must remain 16px or larger');
+check('universal iOS project configuration', nativeConfigurator.includes('TARGETED_DEVICE_FAMILY = "1,2";'), 'iPhone and iPad target missing');
+check('Android resizable project configuration', nativeConfigurator.includes('android:resizeableActivity="true"'), 'Android resizability missing');
 
 check('programmatic external bridge uses Capacitor', externalNavigation.includes('isNativeRuntime()'), 'programmatic redirects must detect Native');
 check('programmatic external bridge uses Browser', externalNavigation.includes('Browser.open'), 'Native external URLs must use system browser');
@@ -105,6 +116,11 @@ if (requireNative) {
     check('Android target API 36', /targetSdkVersion\s*=\s*36/.test(variables), 'targetSdkVersion must be 36');
     check('Android compile API 36', /compileSdkVersion\s*=\s*36/.test(variables), 'compileSdkVersion must be 36');
     check('Android minimum API 24', /minSdkVersion\s*=\s*24/.test(variables), 'minSdkVersion must be 24');
+    check('Android phone tablet foldable resizable', manifest.includes('android:resizeableActivity="true"'), 'activity must be resizable');
+    check('Android orientation unrestricted', !manifest.includes('android:screenOrientation='), 'screen orientation lock is forbidden');
+    check('Android aspect ratio unrestricted', !manifest.includes('android:minAspectRatio=') && !manifest.includes('android:maxAspectRatio='), 'aspect ratio restrictions are forbidden');
+    check('Android screen filters absent', !manifest.includes('<supports-screens'), 'screen-size filters are forbidden');
+    check('Android required hardware absent', !/<uses-feature\b[^>]*android:required="true"[^>]*\/>/.test(manifest), 'required hardware features restrict devices');
   }
 
   if (nativePlatforms.includes('ios') && existsSync('ios/App/App/Info.plist')) {
@@ -121,6 +137,12 @@ if (requireNative) {
       'entitlements are not attached',
     );
     check('iOS deployment target', /IPHONEOS_DEPLOYMENT_TARGET = 15\.0;/.test(project), 'deployment target must be iOS 15');
+    check('iOS iPhone and iPad universal', project.includes('TARGETED_DEVICE_FAMILY = "1,2";'), 'targeted device family must be iPhone and iPad');
+    check('iPhone orientations', info.includes('<key>UISupportedInterfaceOrientations</key>'), 'iPhone orientations missing');
+    check('iPad orientations', info.includes('<key>UISupportedInterfaceOrientations~ipad</key>'), 'iPad orientations missing');
+    check('iPad all orientations', info.includes('UIInterfaceOrientationPortraitUpsideDown'), 'iPad upside-down orientation missing');
+    check('iPad multitasking enabled', !info.includes('<key>UIRequiresFullScreen</key>') && !project.includes('INFOPLIST_KEY_UIRequiresFullScreen'), 'iPad full-screen restriction is forbidden');
+    check('iOS hardware restrictions absent', !info.includes('<key>UIRequiredDeviceCapabilities</key>'), 'required device capabilities restrict models');
   }
 }
 
