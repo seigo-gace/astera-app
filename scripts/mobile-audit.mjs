@@ -19,6 +19,11 @@ function check(name, condition, detail) {
 const packageJson = JSON.parse(read('package.json'));
 const capacitorConfig = read('capacitor.config.ts');
 const nativeShell = read('src/native-shell.ts');
+const externalNavigation = read('src/platform/external-navigation.ts');
+const checkoutPage = read('src/features/checkout/CheckoutPage.tsx');
+const authPages = read('src/platform/pages/AuthPages.tsx');
+const workspacePages = read('src/platform/pages/WorkspacePages.tsx');
+const accountPages = read('src/platform/pages/AccountPages.tsx');
 const npmConfig = read('.npmrc');
 
 check('private package', packageJson.private === true, 'package.json must remain private=true');
@@ -49,6 +54,21 @@ check('HTTPS external navigation', nativeShell.includes("destination.protocol !=
 check('exact install policy', npmConfig.includes('save-exact=true'), '.npmrc must preserve exact direct versions');
 check('engine strict policy', npmConfig.includes('engine-strict=true'), '.npmrc must reject unsupported Node versions');
 check('delegated download bridge', !nativeShell.includes('HTMLAnchorElement.prototype.click'), 'do not monkey-patch DOM prototypes');
+
+check('programmatic external bridge uses Capacitor', externalNavigation.includes('Capacitor.isNativePlatform()'), 'programmatic redirects must detect Native');
+check('programmatic external bridge uses Browser', externalNavigation.includes('Browser.open'), 'Native external URLs must use system browser');
+check('programmatic external bridge HTTPS only', externalNavigation.includes("destination.protocol !== 'https:'"), 'programmatic external URLs must reject non-HTTPS');
+check('Square checkout uses external bridge', checkoutPage.includes('await openExternalUrl(destination)'), 'Square must not remain inside Native WebView');
+check('Square direct WebView redirect removed', !checkoutPage.includes('window.location.assign(destination)'), 'Square direct redirect is forbidden');
+check('OAuth uses absolute API URL', authPages.includes('apiUrl(`/api/auth/oauth/'), 'OAuth must not target localhost Native origin');
+check('OAuth uses external bridge', authPages.includes('await openExternalUrl(apiUrl('), 'OAuth must use system browser on Native');
+check('OAuth Native callback declared', authPages.includes('jp.asterav8.app://open/auth/callback'), 'OAuth Native callback missing');
+check('Storage OAuth uses external bridge', workspacePages.includes('await openExternalUrl(url)'), 'Storage OAuth must use system browser on Native');
+check('Storage Native callback declared', workspacePages.includes('jp.asterav8.app://open/app/settings/storage-destinations'), 'Storage Native callback missing');
+check('Credit checkout uses external bridge', accountPages.includes('await openExternalUrl(url)'), 'Credit checkout must use system browser on Native');
+check('Credit Native callback declared', accountPages.includes('jp.asterav8.app://open/account/billing/status'), 'Credit Native callback missing');
+check('Result download creates Blob URL', workspacePages.includes('URL.createObjectURL(blob)'), 'Result download must use authenticated Blob bridge');
+check('Result download names file', workspacePages.includes('anchor.download ='), 'Result download file name missing');
 
 if (requireNative) {
   const nativePlatforms = requestedNativePlatforms.length > 0
