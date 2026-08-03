@@ -9,14 +9,14 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-and-device-matrix:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.12'
       - name: Install exact direct dependencies
         run: npm install --no-fund
       - name: Validate browser scripts
@@ -26,12 +26,28 @@ jobs:
           node --check public/customer-ai-bubble.js
       - name: Audit canonical route coverage
         run: npm run route:audit
-      - name: Audit Web tablet and mobile behavior
+      - name: Audit responsive behavior
         run: npm run responsive:audit
+      - name: Audit device and legacy WebView compatibility
+        run: npm run device:audit
       - name: Audit native source boundaries
         run: npm run mobile:audit
       - name: Typecheck and build
         run: npm run build
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run iOS Android tablet foldable browser matrix
+        run: npm run e2e:devices
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: astera-device-matrix-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload lockfile candidate
         uses: actions/upload-artifact@v4
         with:
