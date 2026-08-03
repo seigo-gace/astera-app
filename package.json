@@ -1,7 +1,7 @@
 {
   "name": "astera-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "node": ">=22 <23"
@@ -11,9 +11,13 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
+    "route:audit": "node scripts/route-audit.mjs",
+    "responsive:audit": "node scripts/responsive-audit.mjs",
     "mobile:audit": "node scripts/mobile-audit.mjs",
+    "platform:audit": "npm run route:audit && npm run responsive:audit && npm run mobile:audit",
+    "verify": "npm run platform:audit && npm run build",
     "mobile:bootstrap": "node scripts/mobile-bootstrap.mjs",
-    "mobile:sync": "npm run build && cap sync && node scripts/configure-native-platforms.mjs && npm run mobile:audit -- --native",
+    "mobile:sync": "npm run platform:audit && npm run build && cap sync && node scripts/configure-native-platforms.mjs && npm run mobile:audit -- --native",
     "mobile:doctor": "cap doctor",
     "android:open": "npm run mobile:sync && cap open android",
     "android:run": "npm run mobile:sync && cap run android",
