@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { apiUrl, queryValue, textValue } from '../api-client';
-import { openExternalUrl } from '../external-navigation';
+import { apiUrl, asRecord, queryValue, recordText, textValue } from '../api-client';
+import { isNativeRuntime, openExternalUrl } from '../external-navigation';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from './page-kit';
@@ -8,6 +8,33 @@ import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState
 function LoginPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
+  const nativeExchange = queryValue('exchange');
+
+  useEffect(() => {
+    if (!nativeExchange) return;
+    let active = true;
+    void (async () => {
+      const payload = await submitForm('/api/auth/native/session-exchange', {
+        exchange_token: nativeExchange,
+      }, setState, { success: 'Native Sessionを確立しました。', idempotent: true });
+      if (!active || !payload) return;
+      const root = asRecord(payload);
+      const data = asRecord(root.data ?? root);
+      if (data.requires_password_setup === true) {
+        safeNavigate(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`);
+        return;
+      }
+      if (data.requires_2fa === true) {
+        const challenge = recordText(data, ['challenge_id', 'challenge']);
+        const params = new URLSearchParams({ return_to: returnTo });
+        if (challenge) params.set('challenge', challenge);
+        safeNavigate(`/auth/2fa?${params.toString()}`);
+        return;
+      }
+      safeNavigate(returnTo);
+    })();
+    return () => { active = false; };
+  }, [nativeExchange, returnTo]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -23,10 +50,10 @@ function LoginPage({ route }: { route: RouteMatch }) {
   const startOAuth = async (provider: 'google' | 'github') => {
     setState({ type: 'working' });
     try {
-      const params = new URLSearchParams({
-        return_to: returnTo,
-        native_callback: 'jp.asterav8.app://open/auth/callback',
-      });
+      const params = new URLSearchParams({ return_to: returnTo });
+      if (isNativeRuntime()) {
+        params.set('native_callback', 'jp.asterav8.app://open/login');
+      }
       await openExternalUrl(apiUrl(`/api/auth/oauth/${provider}?${params.toString()}`));
       setState({ type: 'idle' });
     } catch (error) {
