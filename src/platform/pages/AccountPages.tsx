@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ApiError, asArray, asRecord, queryValue, recordText, textValue, type JsonObject } from '../api-client';
+import { openExternalUrl } from '../external-navigation';
 import type { RouteMatch } from '../route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
 import { Field, FormResult, KeyValueGrid, Panel, RecordList, ResourceShell, SelectField, submitForm, useResource, type SubmitState } from './page-kit';
@@ -32,13 +33,28 @@ function CreditPage({ route }: { route: RouteMatch }) {
   const [ledger, reload] = useResource('/api/credit/ledger');
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const purchase = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); const data = new FormData(event.currentTarget);
-    const payload = await submitForm('/api/billing/checkout-intents', { product_id: textValue(data.get('product_id')), return_to: 'credit' }, setState, { success: 'Checkoutを準備しました。', idempotent: true });
-    const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']); if (url && /^https:\/\//.test(url)) window.location.assign(url);
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const payload = await submitForm('/api/billing/checkout-intents', {
+      product_id: textValue(data.get('product_id')),
+      return_to: 'credit',
+      native_callback: 'jp.asterav8.app://open/account/billing/status',
+    }, setState, { success: 'Checkoutを準備しました。', idempotent: true });
+    const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']);
+    if (!url) {
+      setState({ type: 'error', message: 'Checkout URLがありません。', code: 'CHECKOUT_URL_MISSING' });
+      return;
+    }
+    try {
+      await openExternalUrl(url);
+      setState({ type: 'idle' });
+    } catch (error) {
+      setState({ type: 'error', message: error instanceof Error ? error.message : 'Checkoutを開けませんでした。', code: 'CHECKOUT_OPEN_FAILED' });
+    }
   };
   return <ResponsivePageShell route={route} description="Credit残高、取引Ledger、追加購入を管理します。">
     <Panel title="残高">{balance.status === 'loading' ? <BusyState /> : balance.status === 'error' ? <ErrorState error={balance.error} /> : <KeyValueGrid value={balance.data} />}</Panel>
-    <Panel title="Creditを追加"><form className="platform-inline-form" onSubmit={purchase}><Field label="Credit Product ID" name="product_id" required /><button className="platform-button is-primary" type="submit">Checkoutへ</button></form><FormResult state={state} /></Panel>
+    <Panel title="Creditを追加"><form className="platform-inline-form" onSubmit={purchase}><Field label="Credit Product ID" name="product_id" required /><button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>Checkoutへ</button></form><FormResult state={state} /></Panel>
     <Panel title="Ledger">{ledger.status === 'loading' ? <BusyState /> : ledger.status === 'error' ? <ErrorState error={ledger.error} onRetry={reload} /> : <RecordList items={asArray(ledger.data, ['ledger', 'entries', 'items'])} titleKeys={['type', 'description', 'transaction_id', 'id']} subtitleKeys={['amount', 'created_at', 'status']} />}</Panel>
   </ResponsivePageShell>;
 }
