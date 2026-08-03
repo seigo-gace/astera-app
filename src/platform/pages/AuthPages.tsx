@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { queryValue, textValue } from '../api-client';
+import { apiUrl, queryValue, textValue } from '../api-client';
+import { openExternalUrl } from '../external-navigation';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from './page-kit';
@@ -19,9 +20,22 @@ function LoginPage({ route }: { route: RouteMatch }) {
     if (payload) safeNavigate(returnTo);
   };
 
-  const oauthUrl = (provider: 'google' | 'github') => {
-    const params = new URLSearchParams({ return_to: returnTo });
-    return `/api/auth/oauth/${provider}?${params.toString()}`;
+  const startOAuth = async (provider: 'google' | 'github') => {
+    setState({ type: 'working' });
+    try {
+      const params = new URLSearchParams({
+        return_to: returnTo,
+        native_callback: 'jp.asterav8.app://open/auth/callback',
+      });
+      await openExternalUrl(apiUrl(`/api/auth/oauth/${provider}?${params.toString()}`));
+      setState({ type: 'idle' });
+    } catch (error) {
+      setState({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'OAuthを開始できませんでした。',
+        code: 'OAUTH_START_FAILED',
+      });
+    }
   };
 
   return (
@@ -34,8 +48,8 @@ function LoginPage({ route }: { route: RouteMatch }) {
         </form>
         <div className="platform-divider"><span>または</span></div>
         <div className="platform-stack-actions">
-          <a className="platform-button" href={oauthUrl('google')}>Googleで続ける</a>
-          <a className="platform-button" href={oauthUrl('github')}>GitHubで続ける</a>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('google')}>Googleで続ける</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('github')}>GitHubで続ける</button>
         </div>
         <FormResult state={state} />
       </AuthCard>
@@ -60,7 +74,7 @@ function RegisterPage({ route }: { route: RouteMatch }) {
       nickname: textValue(data.get('nickname')),
       password,
     }, setState, { success: '確認Emailを送信しました。', idempotent: true });
-    if (payload) window.setTimeout(() => window.location.assign(`/verify-email?email=${encodeURIComponent(email)}`), 300);
+    if (payload) window.setTimeout(() => safeNavigate(`/verify-email?email=${encodeURIComponent(email)}`), 300);
   };
   return (
     <PublicPageFrame route={route} description="Email確認が完了するまで決済や実行は開始しません。">
