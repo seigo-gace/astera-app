@@ -258,8 +258,9 @@ test('all canonical routes render without horizontal overflow or blocked control
   }
 });
 
-test('touch inputs do not trigger iOS focus zoom', async ({ page }, testInfo) => {
-  test.skip(!testInfo.project.use.hasTouch, 'Touch-only regression');
+test('touch inputs do not trigger iOS focus zoom', async ({ page }) => {
+  const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0 || matchMedia('(pointer: coarse)').matches);
+  test.skip(!hasTouch, 'Touch-only regression');
   await page.goto('/login');
   const email = page.getByLabel('Email');
   await expect(email).toBeVisible();
