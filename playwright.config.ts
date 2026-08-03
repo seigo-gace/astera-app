@@ -1,4 +1,4 @@
-import { defineConfig, type Project } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 
 const baseURL = 'http://127.0.0.1:4173';
 
@@ -8,7 +8,7 @@ function project(
   width: number,
   height: number,
   options: { touch?: boolean; mobile?: boolean; scale?: number } = {},
-): Project {
+) {
   return {
     name,
     use: {
@@ -20,7 +20,7 @@ function project(
       hasTouch: options.touch ?? false,
       isMobile: options.mobile ?? false,
       locale: 'ja-JP',
-      colorScheme: 'dark',
+      colorScheme: 'dark' as const,
     },
   };
 }
@@ -45,7 +45,6 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     env: {
-      ...process.env,
       VITE_ASTERA_API_BASE: baseURL,
     },
   },
