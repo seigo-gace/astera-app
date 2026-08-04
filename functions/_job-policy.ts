@@ -155,9 +155,8 @@ export function normalizeEstimateInput(value: unknown): EstimateInput {
   const rawOptions = Array.isArray(source.options) ? source.options : [];
   const options = rawOptions.map(normalizeOption);
   if (new Set(options.map((option) => option.key)).size !== options.length) throw new FunctionHttpError(422, 'EXECUTION_OPTION_DUPLICATED', '同じOptionを重複指定できません。');
-  const fileIds = Array.isArray(source.file_ids ?? source.fileIds)
-    ? (source.file_ids ?? source.fileIds as unknown[]).map(text).filter(Boolean)
-    : [];
+  const rawFileIds = source.file_ids ?? source.fileIds;
+  const fileIds = Array.isArray(rawFileIds) ? rawFileIds.map(text).filter(Boolean) : [];
   if (new Set(fileIds).size !== fileIds.length) throw new FunctionHttpError(422, 'FILE_ID_DUPLICATED', '同じFileを重複指定できません。');
   const privateMode = source.private_mode === true || source.privateMode === true;
   if (privateMode && options.some((option) => option.key === 'external-storage-transfer')) {
