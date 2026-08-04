@@ -19,6 +19,7 @@ type LoadState =
 
 const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
 const CATALOG_ENDPOINT = `${API_BASE}/api/catalog/public`;
+const CATALOG_TIMEOUT_MS = 12_000;
 
 const copy = {
   ja: {
@@ -149,10 +150,10 @@ export default function PricingPage() {
   const requestRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
-    requestRef.current?.abort();
+    requestRef.current?.abort('superseded');
     const controller = new AbortController();
     requestRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    const timeout = window.setTimeout(() => controller.abort('timeout'), CATALOG_TIMEOUT_MS);
     setState({ status: 'loading' });
 
     try {
@@ -167,7 +168,10 @@ export default function PricingPage() {
       const normalized = normalizeCatalog(payload, language);
       if (!controller.signal.aborted) setState({ status: 'ready', ...normalized });
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        if (controller.signal.reason === 'timeout') setState({ status: 'error', message: 'CATALOG_TIMEOUT' });
+        return;
+      }
       const message = error instanceof Error ? error.message : 'CATALOG_UNKNOWN_ERROR';
       setState({ status: 'error', message });
     } finally {
@@ -179,7 +183,7 @@ export default function PricingPage() {
   useEffect(() => {
     document.title = language === 'ja' ? '料金と利用枠 | Astera App' : 'Plans and credits | Astera App';
     void load();
-    return () => requestRef.current?.abort();
+    return () => requestRef.current?.abort('unmount');
   }, [language, load]);
 
   const choosePlan = (planId: string) => {
