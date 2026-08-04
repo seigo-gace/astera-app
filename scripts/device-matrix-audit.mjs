@@ -8,10 +8,12 @@ const index = read('index.html');
 const main = read('src/main.tsx');
 const runtime = read('src/device-compatibility.ts');
 const compatibilityCss = read('src/device-compatibility.css');
+const horizontalCss = read('src/horizontal-stability.css');
 const bootstrap = read('public/compatibility-bootstrap.js');
 const vite = read('vite.config.ts');
 const playwright = read('playwright.config.ts');
 const deviceTests = read('tests/device-matrix.spec.ts');
+const horizontalTests = read('tests/horizontal-stability.spec.ts');
 const nativeConfig = read('scripts/configure-native-platforms.mjs');
 const failures = [];
 const checks = [];
@@ -27,9 +29,14 @@ check('zoom remains available', !/user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?
 check('preflight before module', index.indexOf('/compatibility-bootstrap.js') >= 0 && index.indexOf('/compatibility-bootstrap.js') < index.indexOf('/src/main.tsx'), 'runtime preflight must execute before modules');
 check('unsupported runtime guarded', main.includes('__ASTERA_RUNTIME_UNSUPPORTED__') && main.includes('if (!runtimeUnsupported)'), 'React must not cover the compatibility notice');
 
-check('compatibility CSS imported last', /AppRouter[^]*device-compatibility\.css/.test(main), 'compatibility CSS must load after route styles');
+const deviceCssIndex = main.indexOf("import './device-compatibility.css'");
+const horizontalCssIndex = main.indexOf("import './horizontal-stability.css'");
+check('compatibility CSS imported after route styles', /AppRouter[^]*device-compatibility\.css/.test(main), 'device compatibility CSS must load after route styles');
+check('horizontal stability CSS imported last', deviceCssIndex >= 0 && horizontalCssIndex > deviceCssIndex, 'horizontal stability guard must load after all route and device styles');
 check('compatibility runtime initialized', main.includes('initializeDeviceCompatibility();'), 'device runtime must initialize before render');
 check('visual viewport measured', runtime.includes('window.visualViewport'), 'iOS and Android visual viewport handling missing');
+check('layout width avoids visual viewport jitter', runtime.includes('root.clientWidth || window.innerWidth') && runtime.includes('--app-layout-width'), 'horizontal layout width must use the stable layout viewport');
+check('layout width updates are deduplicated', runtime.includes('setPixelVariable') && runtime.includes('value === previousValue'), 'unchanged viewport values must not churn CSS variables');
 check('pageshow recovery', runtime.includes("addEventListener('pageshow'"), 'iOS back-forward cache recovery missing');
 check('orientation recovery', runtime.includes("addEventListener('orientationchange'"), 'rotation handling missing');
 check('capability not model detection', !/iPhone\s*\d|Pixel\s*\d|Galaxy\s*S|userAgent/i.test(runtime), 'model or user-agent allowlists are forbidden');
@@ -45,6 +52,15 @@ check('iOS input zoom guard', /\.composer textarea[^]*font-size:\s*16px\s*!impor
 check('touch manipulation', compatibilityCss.includes('touch-action: manipulation'), 'tap handling rule missing');
 check('small phone layout', compatibilityCss.includes('@media (max-width: 360px)'), 'small phone fallback missing');
 check('short landscape layout', compatibilityCss.includes('(orientation: landscape) and (max-height: 500px)'), 'short landscape fallback missing');
+
+check('document horizontal lock', horizontalCss.includes('overscroll-behavior-x: none') && horizontalCss.includes('overflow-x: hidden'), 'root horizontal scrolling must be blocked');
+check('overflow clip enhancement', horizontalCss.includes('@supports (overflow: clip)') && horizontalCss.includes('overflow-x: clip'), 'modern engines must clip transformed off-canvas content');
+check('stable desktop scrollbar gutter', horizontalCss.includes('scrollbar-gutter: stable'), 'vertical scrollbar appearance must not shift the layout');
+check('viewport based drawer width', horizontalCss.includes("var(--app-layout-width, 100%)") && horizontalCss.includes('.mobile-sidebar'), 'drawers must not size from raw 100vw');
+check('chip row wraps', /\.selection-row\s*\{[^}]*flex-wrap:\s*wrap[^}]*overflow-x:\s*visible/s.test(horizontalCss), 'selection chips must wrap instead of creating a horizontal scroller');
+check('long content wraps', horizontalCss.includes('overflow-wrap: anywhere') && horizontalCss.includes('word-break: break-word'), 'long URLs and identifiers must not widen the document');
+check('fixed overlays constrained', horizontalCss.includes('.dialog-content') && horizontalCss.includes('.toast') && horizontalCss.includes('max-width: calc(100% - 24px)'), 'dialogs and toasts must remain inside the viewport');
+check('tables remain inside page', horizontalCss.includes('table-layout: fixed') && horizontalCss.includes('td {'), 'table content must wrap without page overflow');
 
 check('feature based unsupported notice', bootstrap.includes('missingFeatures()') && bootstrap.includes('Asteraを安全に起動できません'), 'outdated WebView must show a usable notice');
 check('secure UUID fallback', bootstrap.includes('getRandomValues') && bootstrap.includes("window.crypto, 'randomUUID'"), 'randomUUID fallback missing');
@@ -63,6 +79,10 @@ check('Chromium foldable matrix', playwright.includes('chromium-foldable'), 'fol
 check('all route device test', deviceTests.includes('all canonical routes render without horizontal overflow or blocked controls'), 'all routes must run in every browser project');
 check('tap interception test', deviceTests.includes('document.elementFromPoint'), 'click interception check missing');
 check('iOS focus zoom test', deviceTests.includes('touch inputs do not trigger iOS focus zoom'), 'touch input zoom test missing');
+check('horizontal wheel regression', horizontalTests.includes('horizontal wheel and drawer interactions cannot move the document sideways') && horizontalTests.includes('page.mouse.wheel(1200, 0)'), 'horizontal gesture regression test missing');
+check('long string regression', horizontalTests.includes('long unbroken content and many chips wrap') && horizontalTests.includes('horizontal-long-code'), 'long content overflow test missing');
+check('scrollbar layout shift regression', horizontalTests.includes('vertical scrollbar appearance and viewport restoration do not shift the page horizontally'), 'scrollbar and viewport restoration test missing');
+check('document scroll coordinates checked', horizontalTests.includes('windowScrollX') && horizontalTests.includes('documentScrollLeft') && horizontalTests.includes('bodyScrollLeft'), 'horizontal scroll coordinates must be asserted');
 
 check('iPhone and iPad universal', nativeConfig.includes('TARGETED_DEVICE_FAMILY = "1,2";'), 'iOS target must include iPhone and iPad');
 check('iPhone orientations', nativeConfig.includes('UISupportedInterfaceOrientations'), 'iPhone orientation list missing');
