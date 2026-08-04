@@ -12,6 +12,7 @@ const storyPaths = [
   'tests/canonical-result-user-stories.spec.ts',
   'tests/process-boundary-user-stories.spec.ts',
   'tests/checkout-resilience-user-stories.spec.ts',
+  'tests/ui-honesty-user-stories.spec.ts',
 ];
 const storySources = Object.fromEntries(storyPaths.map((relativePath) => [relativePath, read(relativePath)]));
 const combinedStorySource = Object.values(storySources).join('\n');
@@ -47,6 +48,9 @@ const sourceRequirements = [
   ['public/app-interactions.js', 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED'],
   ['public/app-interactions.js', 'ASTERA_INPUT_TOO_LARGE'],
   ['public/app-interactions.js', "headers.set('Idempotency-Key', requestId)"],
+  ['public/ui-honesty.js', 'PURPOSE_OPTION_SELECTOR'],
+  ['public/ui-honesty.js', 'data-project-source-unavailable'],
+  ['public/ui-honesty.js', 'data-session-settings-notice'],
 ];
 
 const requiredStories = [
@@ -80,10 +84,13 @@ const requiredStories = [
   'STORY-PROCESS-001',
   'STORY-PROCESS-002',
   'STORY-PROCESS-003',
+  'STORY-UI-001',
+  'STORY-UI-002',
+  'STORY-UI-003',
 ];
 
 const gaps = [];
-if (storyIds.length < 37) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
+if (storyIds.length < 40) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
 if (composerStoryIds.length < 8) gaps.push(`COMPOSER_STORY_COUNT_TOO_LOW:${composerStoryIds.length}`);
 if (protectedPaths.length < 20) gaps.push(`PROTECTED_PATH_COUNT_TOO_LOW:${protectedPaths.length}`);
 if (publicPaths.length < 5) gaps.push(`PUBLIC_PATH_COUNT_TOO_LOW:${publicPaths.length}`);
@@ -139,6 +146,9 @@ const report = {
     'unresolved attachment data fail-closed behavior',
     '200000-character input boundary',
     'non-JSON process response rejection',
+    'single Purpose selection',
+    'disabled unavailable Project Source controls',
+    'session-only legacy Settings disclosure',
     'composer draft retention after failure',
     'fullscreen input behavior and user message accordion',
   ],
