@@ -53,6 +53,7 @@ async function horizontalState(page: Page) {
       documentScrollWidth: documentElement.scrollWidth,
       bodyScrollWidth: body.scrollWidth,
       windowScrollX: window.scrollX,
+      windowScrollY: window.scrollY,
       documentScrollLeft: documentElement.scrollLeft,
       bodyScrollLeft: body.scrollLeft,
       rootLeft: rootRect?.left ?? 0,
@@ -72,6 +73,13 @@ async function expectNoDocumentHorizontalOverflow(page: Page, label: string): Pr
   expect(Math.abs(state.rootLeft), `${label}: root left anchor`).toBeLessThanOrEqual(1);
   expect(state.rootRight, `${label}: root right boundary`).toBeLessThanOrEqual(state.clientWidth + 1);
   expect(state.rootWidth, `${label}: root width`).toBeGreaterThan(0);
+}
+
+async function waitForSettledOrientation(page: Page, orientation: 'portrait' | 'landscape'): Promise<void> {
+  await expect.poll(() => page.evaluate(() => ({
+    orientation: document.documentElement.dataset.asteraOrientation,
+    rotating: document.documentElement.classList.contains('astera-rotating'),
+  }))).toEqual({ orientation, rotating: false });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -164,4 +172,77 @@ test('vertical scrollbar appearance and viewport restoration do not shift the pa
     await page.waitForTimeout(80);
     await expectNoDocumentHorizontalOverflow(page, 'restored viewport');
   }
+});
+
+test('portrait landscape round trip preserves input and scroll without horizontal movement', async ({ page }) => {
+  const initial = page.viewportSize();
+  if (!initial) throw new Error('VIEWPORT_SIZE_MISSING');
+  const shortSide = Math.min(initial.width, initial.height);
+  const longSide = Math.max(initial.width, initial.height);
+  const portrait = { width: shortSide, height: longSide };
+  const landscape = { width: longSide, height: shortSide };
+
+  await page.setViewportSize(portrait);
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await waitForSettledOrientation(page, 'portrait');
+  await page.getByLabel('Email').fill('rotation@example.test');
+  await page.getByLabel('Password').fill('rotation-password-123');
+
+  await page.evaluate(() => {
+    const events: string[] = [];
+    window.addEventListener('astera:orientationchange', (event) => {
+      const detail = (event as CustomEvent<{ current?: string }>).detail;
+      if (detail?.current) events.push(detail.current);
+    });
+    (window as Window & { __ASTERA_ORIENTATION_EVENTS__?: string[] }).__ASTERA_ORIENTATION_EVENTS__ = events;
+
+    const spacer = document.createElement('div');
+    spacer.id = 'rotation-scroll-spacer';
+    spacer.style.height = '1800px';
+    spacer.style.width = '1px';
+    document.body.appendChild(spacer);
+    window.scrollTo({ top: 180, left: 0, behavior: 'auto' });
+  });
+
+  await page.setViewportSize(landscape);
+  await waitForSettledOrientation(page, 'landscape');
+  await expect(page.getByLabel('Email')).toHaveValue('rotation@example.test');
+  await expect(page.getByLabel('Password')).toHaveValue('rotation-password-123');
+  await expectNoDocumentHorizontalOverflow(page, 'landscape settled');
+  const landscapeState = await horizontalState(page);
+  expect(landscapeState.windowScrollY).toBeGreaterThanOrEqual(170);
+
+  await page.setViewportSize(portrait);
+  await waitForSettledOrientation(page, 'portrait');
+  await expect(page.getByLabel('Email')).toHaveValue('rotation@example.test');
+  await expect(page.getByLabel('Password')).toHaveValue('rotation-password-123');
+  await expectNoDocumentHorizontalOverflow(page, 'portrait restored');
+  const portraitState = await horizontalState(page);
+  expect(portraitState.windowScrollY).toBeGreaterThanOrEqual(170);
+
+  const orientationEvents = await page.evaluate(() =>
+    (window as Window & { __ASTERA_ORIENTATION_EVENTS__?: string[] }).__ASTERA_ORIENTATION_EVENTS__ ?? [],
+  );
+  expect(orientationEvents).toContain('landscape');
+  expect(orientationEvents).toContain('portrait');
+});
+
+test('open compact drawer closes before landscape layout settles', async ({ page }) => {
+  const initial = page.viewportSize();
+  if (!initial) throw new Error('VIEWPORT_SIZE_MISSING');
+  const shortSide = Math.min(initial.width, initial.height);
+  test.skip(shortSide > 760, 'Compact drawer is not used at this portrait width');
+
+  const longSide = Math.max(initial.width, initial.height);
+  await page.setViewportSize({ width: shortSide, height: longSide });
+  await page.goto('/app/projects', { waitUntil: 'domcontentloaded' });
+  await waitForSettledOrientation(page, 'portrait');
+
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await expect(page.locator('#platform-mobile-drawer')).toBeVisible();
+
+  await page.setViewportSize({ width: longSide, height: shortSide });
+  await waitForSettledOrientation(page, 'landscape');
+  await expect(page.locator('#platform-mobile-drawer')).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page, 'drawer rotation settled');
 });
