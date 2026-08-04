@@ -29,18 +29,39 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+function objectValue(value: unknown): JsonObject | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : null;
+}
+
+function errorPayload(payload: unknown): JsonObject | null {
+  const root = objectValue(payload);
+  if (!root) return null;
+  const nested = objectValue(root.error);
+  return nested ?? root;
+}
+
+function firstString(record: JsonObject | null, keys: string[]): string {
+  if (!record) return '';
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 function responseCode(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return '';
-  const record = payload as JsonObject;
-  const value = record.code ?? record.error_code ?? record.error;
-  return typeof value === 'string' ? value : '';
+  const root = objectValue(payload);
+  const nested = errorPayload(payload);
+  return firstString(nested, ['code', 'error_code', 'type'])
+    || firstString(root, ['code', 'error_code'])
+    || (typeof root?.error === 'string' ? root.error : '');
 }
 
 function responseMessage(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return '';
-  const record = payload as JsonObject;
-  const value = record.message ?? record.error_description ?? record.detail;
-  return typeof value === 'string' ? value : '';
+  const root = objectValue(payload);
+  const nested = errorPayload(payload);
+  return firstString(nested, ['message', 'error_description', 'detail', 'title'])
+    || firstString(root, ['message', 'error_description', 'detail', 'title']);
 }
 
 export type ApiRequestOptions = {
@@ -49,20 +70,23 @@ export type ApiRequestOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
   idempotent?: boolean;
+  idempotencyKey?: string;
   headers?: Record<string, string>;
 };
 
 export async function apiRequest<T = unknown>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const method = options.method ?? 'GET';
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), options.timeoutMs ?? 15_000);
-  const abortListener = () => controller.abort();
+  const timeout = window.setTimeout(() => controller.abort('timeout'), options.timeoutMs ?? 15_000);
+  const abortListener = () => controller.abort(options.signal?.reason ?? 'cancelled');
   options.signal?.addEventListener('abort', abortListener, { once: true });
   const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   const csrf = csrfToken();
   if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
-  if (options.idempotent && method !== 'GET') headers['Idempotency-Key'] = crypto.randomUUID();
+  if (method !== 'GET' && (options.idempotent || options.idempotencyKey)) {
+    headers['Idempotency-Key'] = options.idempotencyKey ?? crypto.randomUUID();
+  }
 
   try {
     const response = await fetch(apiUrl(path), {
