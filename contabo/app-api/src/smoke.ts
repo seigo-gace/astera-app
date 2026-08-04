@@ -87,14 +87,14 @@ try {
     headers: { Authorization: 'Bearer internal-test-token', 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  assert.equal(created.status, 201, await created.text());
+  if (created.status !== 201) throw new Error(`RUNTIME_JOB_CREATE_FAILED:${created.status}:${await created.text()}`);
 
   let completed: Record<string, unknown> | null = null;
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const response = await app.request(`/internal/v1/jobs/${jobId}`, {
       headers: { Authorization: 'Bearer internal-test-token' },
     });
-    assert.equal(response.status, 200, await response.text());
+    if (response.status !== 200) throw new Error(`RUNTIME_JOB_POLL_FAILED:${response.status}:${await response.text()}`);
     const payload = await response.json() as { job: Record<string, unknown> };
     if (payload.job.state === 'completed') {
       completed = payload.job;
@@ -111,7 +111,7 @@ try {
     headers: { Authorization: 'Bearer internal-test-token', 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  assert.equal(duplicate.status, 200, await duplicate.text());
+  if (duplicate.status !== 200) throw new Error(`RUNTIME_JOB_IDEMPOTENCY_FAILED:${duplicate.status}:${await duplicate.text()}`);
   const duplicatePayload = await duplicate.json() as { created: boolean; job: { state: string } };
   assert.equal(duplicatePayload.created, false);
   assert.equal(duplicatePayload.job.state, 'completed');
