@@ -16,6 +16,12 @@ export function nativeCallback(path: string): string | undefined {
 
 export async function openExternalUrl(rawUrl: string): Promise<void> {
   const destination = new URL(rawUrl, window.location.origin);
+
+  if (destination.origin === window.location.origin) {
+    window.location.assign(destination.toString());
+    return;
+  }
+
   if (destination.protocol !== 'https:') {
     throw new Error('ASTERA_EXTERNAL_URL_REQUIRES_HTTPS');
   }
