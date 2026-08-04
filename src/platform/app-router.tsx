@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import App from '../App';
 import CheckoutPage from '../features/checkout/CheckoutPage';
+import CanonicalComposerPage from '../features/composer/CanonicalComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, type AccountSessionProjection } from './account-session';
 import { ApiError, apiRequest, asRecord, recordText } from './api-client';
@@ -105,7 +105,7 @@ export default function AppRouter() {
   if (route.id === 'account-checkout') return <CheckoutPage />;
 
   if (route.id === 'app' || route.id === 'new-run') {
-    return <AccountSessionGate><App /></AccountSessionGate>;
+    return <AccountSessionGate><CanonicalComposerPage route={route} /></AccountSessionGate>;
   }
 
   const page = <CanonicalPage route={route} />;
