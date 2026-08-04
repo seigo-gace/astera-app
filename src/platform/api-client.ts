@@ -15,6 +15,7 @@ export class ApiError extends Error {
 }
 
 const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+const HISTORY_SEARCH_DEBOUNCE_MS = 250;
 
 function csrfToken(): string | null {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content?.trim();
@@ -64,6 +65,34 @@ function responseMessage(payload: unknown): string {
     || firstString(root, ['message', 'error_description', 'detail', 'title']);
 }
 
+function waitFor(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    const abort = () => {
+      window.clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
+function shouldDebounceHistorySearch(requestUrl: string, method: string): boolean {
+  if (method !== 'GET') return false;
+  try {
+    const url = new URL(requestUrl, window.location.origin);
+    return url.pathname === '/api/history' && url.searchParams.has('q');
+  } catch {
+    return false;
+  }
+}
+
 export type ApiRequestOptions = {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -85,11 +114,17 @@ export async function apiRequest<T = unknown>(path: string, options: ApiRequestO
   const csrf = csrfToken();
   if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
   if (method !== 'GET' && (options.idempotent || options.idempotencyKey)) {
-    headers['Idempotency-Key'] = options.idempotencyKey ?? crypto.randomUUID();
+    const requestId = options.idempotencyKey ?? crypto.randomUUID();
+    headers['Idempotency-Key'] = requestId;
+    headers['X-Request-ID'] = requestId;
   }
 
   try {
-    const response = await fetch(apiUrl(path), {
+    const requestUrl = apiUrl(path);
+    if (shouldDebounceHistorySearch(requestUrl, method)) {
+      await waitFor(HISTORY_SEARCH_DEBOUNCE_MS, controller.signal);
+    }
+    const response = await fetch(requestUrl, {
       method,
       credentials: 'include',
       headers,
@@ -97,7 +132,7 @@ export async function apiRequest<T = unknown>(path: string, options: ApiRequestO
       signal: controller.signal,
     });
     const contentType = response.headers.get('content-type') ?? '';
-    const payload: unknown = contentType.includes('application/json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
+    const payload: unknown = contentType.toLowerCase().includes('json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
     if (!response.ok) {
       throw new ApiError(responseMessage(payload) || `Astera API request failed (${response.status})`, response.status, responseCode(payload) || `HTTP_${response.status}`, payload);
     }
