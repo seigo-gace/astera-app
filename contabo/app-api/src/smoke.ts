@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { once } from 'node:events';
-import { createApp } from './index.js';
+import { createFullApp } from './full-app.js';
 import type { RuntimeConfig } from './config.js';
 
 const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -28,7 +28,7 @@ const processServer = createServer(async (request, response) => {
       purpose_version: 'purpose-v1',
       completion_state: 'complete',
       sections: {
-        true_purpose: { title: '真の目的', body: '目的', source_ids: [] },
+        true_purpose: { title: '真の目的', body: 'Smoke Testの目的', source_ids: [] },
         missing_assumptions: { title: '不足前提', body: '前提', source_ids: [] },
         fact_check: { title: '事実確認', body: '事実', source_ids: [] },
         risk_detection: { title: '危機・リスク', body: 'リスク', source_ids: [] },
@@ -58,7 +58,7 @@ const config: RuntimeConfig = {
   processTimeoutMs: 5_000,
   shutdownTimeoutMs: 5_000,
 };
-const { app, service } = createApp(config);
+const { app, service } = createFullApp(config);
 
 try {
   await service.database.ready();
@@ -117,7 +117,29 @@ try {
   assert.equal(duplicatePayload.job.state, 'completed');
   assert.equal(processCalls, 1);
 
-  console.log(JSON.stringify({ event: 'contabo_runtime_smoke_passed', job_id: jobId, process_calls: processCalls }));
+  const workspaceHeaders = {
+    Authorization: 'Bearer internal-test-token',
+    'X-Astera-Internal-Authenticated': '1',
+    'X-Astera-User-ID': 'user-smoke',
+    'X-Astera-Tenant-ID': 'tenant-smoke',
+    'X-Astera-Account-Status': 'active',
+    'X-Astera-UI-Language': 'ja-JP',
+  };
+  const historyResponse = await app.request('/api/history', { headers: workspaceHeaders });
+  if (historyResponse.status !== 200) throw new Error(`WORKSPACE_HISTORY_FAILED:${historyResponse.status}:${await historyResponse.text()}`);
+  const historyPayload = await historyResponse.json() as { history: Array<{ job_id: string; title: string }> };
+  assert.equal(historyPayload.history.length, 1);
+  assert.equal(historyPayload.history[0]?.job_id, jobId);
+  assert.equal(historyPayload.history[0]?.title, 'Smoke Testの目的');
+
+  const resultId = historyPayload.history[0]?.job_id ? (await service.database.pool.query<{ id: string }>('SELECT id FROM results WHERE job_id = $1', [jobId])).rows[0]?.id : null;
+  assert.ok(resultId);
+  const resultResponse = await app.request(`/api/results/${resultId}`, { headers: workspaceHeaders });
+  if (resultResponse.status !== 200) throw new Error(`WORKSPACE_RESULT_FAILED:${resultResponse.status}:${await resultResponse.text()}`);
+  const resultPayload = await resultResponse.json() as { result: { sections?: unknown } };
+  assert.ok(resultPayload.result.sections);
+
+  console.log(JSON.stringify({ event: 'contabo_runtime_smoke_passed', job_id: jobId, process_calls: processCalls, history_items: historyPayload.history.length }));
 } finally {
   for (const controller of service.active.values()) controller.abort('smoke_shutdown');
   await service.database.close();
