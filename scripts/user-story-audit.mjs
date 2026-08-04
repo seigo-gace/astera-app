@@ -10,6 +10,8 @@ const storyPaths = [
   'tests/user-journey-stories.spec.ts',
   'tests/composer-user-stories.spec.ts',
   'tests/canonical-result-user-stories.spec.ts',
+  'tests/process-boundary-user-stories.spec.ts',
+  'tests/checkout-resilience-user-stories.spec.ts',
 ];
 const storySources = Object.fromEntries(storyPaths.map((relativePath) => [relativePath, read(relativePath)]));
 const combinedStorySource = Object.values(storySources).join('\n');
@@ -37,9 +39,13 @@ const sourceRequirements = [
   ['src/platform/api-client.ts', 'errorPayload'],
   ['src/platform/api-client.ts', 'idempotencyKey?: string'],
   ['src/platform/route-registry.ts', 'decodePathSegment'],
+  ['src/features/checkout/CheckoutPage.tsx', 'checkoutRef'],
+  ['src/features/checkout/CheckoutPage.tsx', 'CHECKOUT_INTENT_TIMEOUT'],
   ['public/app-interactions.js', 'ASTERA_PROCESS_ALREADY_RUNNING'],
   ['public/app-interactions.js', 'ASTERA_RESPONSE_SECTIONS_INCOMPLETE'],
   ['public/app-interactions.js', 'canonicalSectionsFromObject'],
+  ['public/app-interactions.js', 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED'],
+  ['public/app-interactions.js', 'ASTERA_INPUT_TOO_LARGE'],
   ['public/app-interactions.js', "headers.set('Idempotency-Key', requestId)"],
 ];
 
@@ -48,6 +54,7 @@ const requiredStories = [
   'STORY-AUTH-003',
   'STORY-AUTH-004',
   'STORY-CHECKOUT-002',
+  'STORY-CHECKOUT-003',
   'STORY-LOGIN-002',
   'STORY-LOGIN-003',
   'STORY-LOGIN-004',
@@ -70,10 +77,13 @@ const requiredStories = [
   'STORY-COMPOSER-007',
   'STORY-COMPOSER-008',
   'STORY-RESULT-001',
+  'STORY-PROCESS-001',
+  'STORY-PROCESS-002',
+  'STORY-PROCESS-003',
 ];
 
 const gaps = [];
-if (storyIds.length < 29) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
+if (storyIds.length < 37) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
 if (composerStoryIds.length < 8) gaps.push(`COMPOSER_STORY_COUNT_TOO_LOW:${composerStoryIds.length}`);
 if (protectedPaths.length < 20) gaps.push(`PROTECTED_PATH_COUNT_TOO_LOW:${protectedPaths.length}`);
 if (publicPaths.length < 5) gaps.push(`PUBLIC_PATH_COUNT_TOO_LOW:${publicPaths.length}`);
@@ -111,7 +121,7 @@ const report = {
     'account state continuation and security hold',
     'single account projection per protected page',
     'pricing and checkout login boundary',
-    'trusted checkout destination',
+    'trusted checkout destination and duplicate intent prevention',
     'password setup and two-factor continuation',
     'open redirect rejection',
     'registration validation and duplicate submission',
@@ -126,6 +136,9 @@ const report = {
     'process request identity and duplicate run prevention',
     'fixed eight-section result validation',
     'canonical eight-key object normalization',
+    'unresolved attachment data fail-closed behavior',
+    '200000-character input boundary',
+    'non-JSON process response rejection',
     'composer draft retention after failure',
     'fullscreen input behavior and user message accordion',
   ],
