@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://app.asterav8.jp/schemas/release-manifest.json",
+  "title": "Astera App Release Manifest",
+  "description": "A release is not production-ready until every required digest and evidence reference is populated with executed evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "releaseId",
+    "commitSha",
+    "changeIds",
+    "cloudflareArtifactDigest",
+    "contaboArtifactDigest",
+    "d1MigrationVersion",
+    "postgresMigrationVersion",
+    "catalogVersion",
+    "openApiVersions",
+    "testReportDigest",
+    "sbomDigest",
+    "evidence"
+  ],
+  "properties": {
+    "releaseId": { "type": "string", "minLength": 1 },
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "changeIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "cloudflareArtifactDigest": { "type": "string", "minLength": 16 },
+    "contaboArtifactDigest": { "type": "string", "minLength": 16 },
+    "d1MigrationVersion": { "type": "string", "minLength": 1 },
+    "postgresMigrationVersion": { "type": "string", "minLength": 1 },
+    "catalogVersion": { "type": "string", "minLength": 1 },
+    "openApiVersions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "testReportDigest": { "type": "string", "minLength": 16 },
+    "sbomDigest": { "type": "string", "minLength": 16 },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["githubActionsRunUrl", "cloudflareDeploymentId", "backendSandboxRunId", "browserMatrixArtifact", "mobileArtifacts"],
+      "properties": {
+        "githubActionsRunUrl": { "type": "string", "format": "uri" },
+        "cloudflareDeploymentId": { "type": "string", "minLength": 1 },
+        "backendSandboxRunId": { "type": "string", "minLength": 1 },
+        "browserMatrixArtifact": { "type": "string", "minLength": 1 },
+        "mobileArtifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["android", "ios"],
+          "properties": {
+            "android": { "type": "string", "minLength": 1 },
+            "ios": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "approvedAt": { "type": "string", "format": "date-time" }
+  }
+}
