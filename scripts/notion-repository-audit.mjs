@@ -8,6 +8,11 @@ const exists = (relativePath) => fs.existsSync(resolve(relativePath));
 const read = (relativePath) => fs.readFileSync(resolve(relativePath), 'utf8');
 const readJson = (relativePath) => JSON.parse(read(relativePath));
 
+const storyFiles = fs.readdirSync(resolve('tests'))
+  .filter((name) => name.endsWith('user-stories.spec.ts'))
+  .sort()
+  .map((name) => `tests/${name}`);
+
 const requiredFrontendFiles = [
   'src/platform/route-registry.ts',
   'src/platform/app-router.tsx',
@@ -21,12 +26,14 @@ const requiredFrontendFiles = [
   'src/features/pricing/PricingPage.tsx',
   'src/features/checkout/CheckoutPage.tsx',
   'src/platform/api-client.ts',
+  'src/platform/external-navigation.ts',
   'src/platform/deterministic-japanese-mcp-client.ts',
   'public/app-interactions.js',
+  'public/process-user-errors.js',
+  'public/ui-honesty.js',
   'tests/device-matrix.spec.ts',
-  'tests/user-journey-stories.spec.ts',
-  'tests/composer-user-stories.spec.ts',
   'scripts/user-story-audit.mjs',
+  ...storyFiles,
 ];
 
 const requiredContractAndEvidenceFiles = [
@@ -64,19 +71,32 @@ const requiredOfficialBrandAssets = [
   'public/site.webmanifest',
 ];
 
+const sourceMarkers = [
+  ['src/platform/app-router.tsx', 'AccountSessionProvider'],
+  ['src/platform/route-registry.ts', "route.group === 'auth'"],
+  ['src/platform/api-client.ts', 'HISTORY_SEARCH_DEBOUNCE_MS'],
+  ['src/features/pricing/PricingPage.tsx', 'CATALOG_TIMEOUT'],
+  ['src/features/checkout/CheckoutPage.tsx', 'CHECKOUT_INTENT_TIMEOUT'],
+  ['src/platform/pages/AccountPages.tsx', 'API_KEY_SECRET_MISSING'],
+  ['public/app-interactions.js', 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED'],
+  ['public/app-interactions.js', 'canonicalSectionsFromObject'],
+  ['public/process-user-errors.js', 'AsteraProcessError'],
+  ['public/ui-honesty.js', 'PURPOSE_OPTION_SELECTOR'],
+  ['scripts/user-story-audit.mjs', 'STORY_ID_COUNT_TOO_LOW'],
+];
+
+const readinessChecks = [
+  ['cloudflare/functions/src/index.ts', ["status: 'contract_source_only'", 'deployed: false']],
+  ['contabo/app-api/src/index.ts', ["status: 'contract_source_only'", 'deployed: false', 'deterministicJapaneseMcpConnected: false']],
+  ['contabo/workers/src/index.ts', ["status: 'contract_source_only'", 'deployed: false']],
+];
+
 const scopeExclusions = [
   {
     name: 'Astera deterministic Japanese MCP',
     repository: 'seigo-gace/Deterministic-Japanese-Parser-MCP',
     reason: 'Separate repository, source of truth, deployment unit, and release evidence.',
-    appAuditScope: [
-      'connection contract',
-      'version pinning',
-      'timeout',
-      'fail-closed behavior',
-      'Meaning Graph and Task Graph handoff',
-      'latency boundary',
-    ],
+    appAuditScope: ['connection contract', 'version pinning', 'timeout', 'fail-closed behavior', 'Meaning Graph and Task Graph handoff', 'latency boundary'],
   },
   {
     name: 'Developer API Skill Runtime',
@@ -103,64 +123,35 @@ const traceability = exists(traceabilityPath) ? readJson(traceabilityPath) : nul
 const traceabilityGroupTotal = traceability?.notionHierarchy?.groups
   ?.reduce((sum, group) => sum + Number(group.count ?? 0), 0) ?? null;
 
-const readinessChecks = [
-  {
-    path: 'cloudflare/functions/src/index.ts',
-    expected: ["status: 'contract_source_only'", 'deployed: false'],
-  },
-  {
-    path: 'contabo/app-api/src/index.ts',
-    expected: ["status: 'contract_source_only'", 'deployed: false', 'deterministicJapaneseMcpConnected: false'],
-  },
-  {
-    path: 'contabo/workers/src/index.ts',
-    expected: ["status: 'contract_source_only'", 'deployed: false'],
-  },
-];
+const sourceGaps = [];
+for (const file of requiredFrontendFiles) if (!exists(file)) sourceGaps.push(`MISSING_FRONTEND_FILE:${file}`);
+for (const file of requiredContractAndEvidenceFiles) if (!exists(file)) sourceGaps.push(`MISSING_CONTRACT_OR_EVIDENCE_FILE:${file}`);
+for (const file of requiredOfficialBrandAssets) if (!exists(file)) sourceGaps.push(`MISSING_OFFICIAL_BRAND_ASSET:${file}`);
+for (const file of brokenIndexAssetReferences) sourceGaps.push(`BROKEN_INDEX_ASSET_REFERENCE:${file}`);
 
-const readinessMismatches = readinessChecks.flatMap(({ path: relativePath, expected }) => {
-  if (!exists(relativePath)) return [`READINESS_FILE_MISSING:${relativePath}`];
-  const source = read(relativePath);
-  return expected
-    .filter((marker) => !source.includes(marker))
-    .map((marker) => `READINESS_MARKER_MISSING:${relativePath}:${marker}`);
-});
+if (storyFiles.length < 7) sourceGaps.push(`USER_STORY_FILE_COUNT_TOO_LOW:${storyFiles.length}`);
+if (declaredRouteCount !== 43 || routeEntries !== 43) sourceGaps.push(`ROUTE_COUNT_MISMATCH:declared=${declaredRouteCount}:detected=${routeEntries}`);
 
-const missingFrontendFiles = requiredFrontendFiles.filter((item) => !exists(item));
-const missingContractAndEvidenceFiles = requiredContractAndEvidenceFiles.filter((item) => !exists(item));
-const missingBrandAssets = requiredOfficialBrandAssets.filter((item) => !exists(item));
-const routeMismatch = declaredRouteCount !== 43 || routeEntries !== 43;
-
-const traceabilityGaps = [];
-if (!traceability) {
-  traceabilityGaps.push(`TRACEABILITY_MANIFEST_MISSING:${traceabilityPath}`);
-} else {
-  if (traceability.notionHierarchy?.pageCount !== 90) {
-    traceabilityGaps.push(`NOTION_PAGE_COUNT_MISMATCH:${traceability.notionHierarchy?.pageCount ?? 'missing'}`);
-  }
-  if (traceability.notionHierarchy?.unreadPages !== 0) {
-    traceabilityGaps.push(`NOTION_UNREAD_PAGES:${traceability.notionHierarchy?.unreadPages ?? 'missing'}`);
-  }
-  if (traceabilityGroupTotal !== 90) {
-    traceabilityGaps.push(`NOTION_GROUP_TOTAL_MISMATCH:${traceabilityGroupTotal ?? 'missing'}`);
-  }
-  if (traceability.verifiedRepositoryReality?.historicLocalCandidateEvidence?.status !== 'not_current_main_evidence') {
-    traceabilityGaps.push('HISTORIC_LOCAL_EVIDENCE_NOT_INVALIDATED');
-  }
-  if (traceability.verifiedRepositoryReality?.deterministicJapaneseMcp?.mcpStatus !== 'created_in_separate_repository') {
-    traceabilityGaps.push('MCP_SEPARATE_REPOSITORY_STATUS_MISSING');
-  }
+for (const [file, marker] of sourceMarkers) {
+  if (!exists(file)) continue;
+  if (!read(file).includes(marker)) sourceGaps.push(`SOURCE_MARKER_MISSING:${file}:${marker}`);
 }
 
-const sourceGaps = [
-  ...missingFrontendFiles.map((item) => `MISSING_FRONTEND_FILE:${item}`),
-  ...missingContractAndEvidenceFiles.map((item) => `MISSING_CONTRACT_OR_EVIDENCE_FILE:${item}`),
-  ...missingBrandAssets.map((item) => `MISSING_OFFICIAL_BRAND_ASSET:${item}`),
-  ...brokenIndexAssetReferences.map((item) => `BROKEN_INDEX_ASSET_REFERENCE:${item}`),
-  ...readinessMismatches,
-  ...traceabilityGaps,
-  ...(routeMismatch ? [`ROUTE_COUNT_MISMATCH:declared=${declaredRouteCount}:detected=${routeEntries}`] : []),
-];
+for (const [file, markers] of readinessChecks) {
+  if (!exists(file)) continue;
+  const source = read(file);
+  for (const marker of markers) if (!source.includes(marker)) sourceGaps.push(`READINESS_MARKER_MISSING:${file}:${marker}`);
+}
+
+if (!traceability) {
+  sourceGaps.push(`TRACEABILITY_MANIFEST_MISSING:${traceabilityPath}`);
+} else {
+  if (traceability.notionHierarchy?.pageCount !== 90) sourceGaps.push(`NOTION_PAGE_COUNT_MISMATCH:${traceability.notionHierarchy?.pageCount ?? 'missing'}`);
+  if (traceability.notionHierarchy?.unreadPages !== 0) sourceGaps.push(`NOTION_UNREAD_PAGES:${traceability.notionHierarchy?.unreadPages ?? 'missing'}`);
+  if (traceabilityGroupTotal !== 90) sourceGaps.push(`NOTION_GROUP_TOTAL_MISMATCH:${traceabilityGroupTotal ?? 'missing'}`);
+  if (traceability.verifiedRepositoryReality?.historicLocalCandidateEvidence?.status !== 'not_current_main_evidence') sourceGaps.push('HISTORIC_LOCAL_EVIDENCE_NOT_INVALIDATED');
+  if (traceability.verifiedRepositoryReality?.deterministicJapaneseMcp?.mcpStatus !== 'created_in_separate_repository') sourceGaps.push('MCP_SEPARATE_REPOSITORY_STATUS_MISSING');
+}
 
 const releaseBlockers = [
   'OFFICIAL_BRAND_BYTES_NOT_RECOVERED',
@@ -181,6 +172,7 @@ const report = {
   packageVersion: packageJson.version,
   declaredRouteCount,
   detectedRouteEntries: routeEntries,
+  userStoryFiles: storyFiles,
   scopeExclusions,
   notionHierarchy: traceability?.notionHierarchy ?? null,
   currentMain: {
@@ -213,7 +205,7 @@ console.log(JSON.stringify({
   packageVersion: report.packageVersion,
   routes: `${routeEntries}/${declaredRouteCount ?? 'unknown'}`,
   notionPages: traceability?.notionHierarchy?.pageCount ?? 'unknown',
-  scopeExclusions: scopeExclusions.map((item) => item.name),
+  userStoryFiles: storyFiles.length,
   sourceGapCount: sourceGaps.length,
   sourceGaps,
   releaseBlockers,
