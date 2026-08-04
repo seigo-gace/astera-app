@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-and-device-matrix:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,29 +32,33 @@ jobs:
         run: npm run device:audit
       - name: Audit native source boundaries
         run: npm run mobile:audit
+      - name: Audit adversarial user journeys
+        run: npm run story:audit:strict
       - name: Typecheck Notion-derived contracts and service boundaries
         run: npm run contract:check
       - name: Typecheck and build frontend
         run: npm run build
       - name: Generate Notion repository audit report
         run: npm run notion:audit
-      - name: Upload Notion repository audit
+      - name: Upload source audit reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: astera-notion-repository-audit
-          path: audit-results/notion-repository-audit.json
+          name: astera-source-audits
+          path: |
+            audit-results/notion-repository-audit.json
+            audit-results/user-story-audit.json
           if-no-files-found: warn
           retention-days: 30
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
-      - name: Run iOS Android tablet foldable browser matrix
+      - name: Run device and user journey browser matrix
         run: npm run e2e:devices
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: astera-device-matrix-report
+          name: astera-device-and-story-report
           path: |
             playwright-report
             test-results
