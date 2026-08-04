@@ -1,4 +1,11 @@
-type Env = {
+import {
+  functionErrorResponse,
+  requestCorrelationId,
+  requireAsteraActor,
+  type AsteraFunctionEnv,
+} from '../_account-projection';
+
+type Env = AsteraFunctionEnv & {
   APP_API_ORIGIN?: string;
   APP_API_SERVICE_TOKEN?: string;
   APP_API_TIMEOUT_MS?: string;
@@ -30,6 +37,16 @@ const ALLOWED_PREFIXES = [
   '/api/return-contexts',
 ] as const;
 
+const LOCALLY_OWNED_PREFIXES = [
+  '/api/catalog/',
+  '/api/account',
+  '/api/auth/',
+  '/api/billing/',
+  '/api/credit/',
+  '/api/jobs',
+  '/api/uploads',
+] as const;
+
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'keep-alive',
@@ -40,6 +57,16 @@ const HOP_BY_HOP_HEADERS = new Set([
   'transfer-encoding',
   'upgrade',
   'host',
+]);
+
+const SPOOFABLE_INTERNAL_HEADERS = new Set([
+  'x-astera-user-id',
+  'x-astera-tenant-id',
+  'x-astera-account-status',
+  'x-astera-ui-language',
+  'x-astera-email',
+  'x-astera-session-id',
+  'x-astera-internal-authenticated',
 ]);
 
 function jsonError(status: number, code: string, message: string, correlationId: string, details?: unknown): Response {
@@ -63,29 +90,24 @@ function normalizedOrigin(raw: string | undefined): URL | null {
   }
 }
 
-function isAllowedPath(pathname: string): boolean {
-  if (!pathname.startsWith('/api/')) return false;
-  return ALLOWED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+function matchesPrefix(pathname: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
 }
 
-function requestHeaders(request: Request, serviceToken: string | undefined, correlationId: string): Headers {
-  const headers = new Headers();
-  for (const [key, value] of request.headers) {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) headers.append(key, value);
-  }
-  headers.set('X-Correlation-ID', correlationId);
-  headers.set('X-Request-ID', headers.get('X-Request-ID') || correlationId);
-  headers.set('X-Forwarded-Proto', new URL(request.url).protocol.replace(':', ''));
-  headers.set('X-Forwarded-Host', new URL(request.url).host);
-  if (serviceToken?.trim()) headers.set('Authorization', `Bearer ${serviceToken.trim()}`);
-  return headers;
+function isAllowedPath(pathname: string): boolean {
+  return pathname.startsWith('/api/') && matchesPrefix(pathname, ALLOWED_PREFIXES);
+}
+
+function isLocallyOwnedPath(pathname: string): boolean {
+  return matchesPrefix(pathname, LOCALLY_OWNED_PREFIXES);
 }
 
 function responseHeaders(upstream: Response, correlationId: string, publicOrigin: string): Headers {
   const headers = new Headers();
   for (const [key, value] of upstream.headers) {
-    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
-    if (key.toLowerCase() === 'set-cookie') {
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower)) continue;
+    if (lower === 'set-cookie') {
       const sanitized = value
         .replace(/;\s*Domain=[^;]+/ig, '')
         .replace(/;\s*SameSite=None/ig, '; SameSite=Lax');
@@ -110,16 +132,58 @@ function timeoutMs(raw: string | undefined): number {
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
   const requestUrl = new URL(request.url);
-  const correlationId = request.headers.get('X-Request-ID')?.trim() || crypto.randomUUID();
+  const correlationId = requestCorrelationId(request);
 
   if (!isAllowedPath(requestUrl.pathname)) {
     return jsonError(404, 'API_ROUTE_NOT_FOUND', 'Astera App API Routeが定義されていません。', correlationId);
+  }
+
+  // A concrete Pages Function must own Auth, Account, Billing, Credit, Job and Upload routes.
+  // If Cloudflare reaches this catch-all for one of them, deployment routing is incomplete and
+  // proxying would bypass its D1/R2/Square invariants.
+  if (isLocallyOwnedPath(requestUrl.pathname)) {
+    return jsonError(
+      503,
+      'LOCAL_API_ROUTE_NOT_BOUND',
+      'Cloudflare上の専用API FunctionがRouteへBindingされていません。',
+      correlationId,
+      { pathname: requestUrl.pathname },
+    );
   }
 
   const upstreamOrigin = normalizedOrigin(env.APP_API_ORIGIN);
   if (!upstreamOrigin) {
     return jsonError(503, 'APP_API_ORIGIN_NOT_CONFIGURED', 'Astera App Backend API接続先が設定されていません。', correlationId);
   }
+  if (!env.APP_API_SERVICE_TOKEN?.trim()) {
+    return jsonError(503, 'APP_API_SERVICE_TOKEN_NOT_CONFIGURED', 'Astera App Backend用Service Tokenが設定されていません。', correlationId);
+  }
+
+  let actor;
+  try {
+    actor = await requireAsteraActor(request, env);
+  } catch (error) {
+    return functionErrorResponse(error, correlationId);
+  }
+
+  const headers = new Headers();
+  for (const [key, value] of request.headers) {
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower) || SPOOFABLE_INTERNAL_HEADERS.has(lower) || lower === 'authorization') continue;
+    headers.append(key, value);
+  }
+  headers.set('Authorization', `Bearer ${env.APP_API_SERVICE_TOKEN.trim()}`);
+  headers.set('X-Correlation-ID', correlationId);
+  headers.set('X-Request-ID', headers.get('X-Request-ID') || correlationId);
+  headers.set('X-Forwarded-Proto', requestUrl.protocol.replace(':', ''));
+  headers.set('X-Forwarded-Host', requestUrl.host);
+  headers.set('X-Astera-Internal-Authenticated', '1');
+  headers.set('X-Astera-User-ID', actor.user.id);
+  headers.set('X-Astera-Tenant-ID', actor.profile.tenant_id);
+  headers.set('X-Astera-Account-Status', actor.profile.account_status);
+  headers.set('X-Astera-UI-Language', actor.profile.ui_language);
+  headers.set('X-Astera-Email', actor.user.email);
+  if (actor.session?.id) headers.set('X-Astera-Session-ID', actor.session.id);
 
   const upstreamUrl = new URL(`${upstreamOrigin.pathname}${requestUrl.pathname}`, upstreamOrigin.origin);
   upstreamUrl.search = requestUrl.search;
@@ -132,7 +196,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   try {
     const upstream = await fetch(upstreamUrl, {
       method: request.method,
-      headers: requestHeaders(request, env.APP_API_SERVICE_TOKEN, correlationId),
+      headers,
       body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
       redirect: 'manual',
       signal: controller.signal,
