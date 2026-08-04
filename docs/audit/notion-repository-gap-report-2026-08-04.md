@@ -14,6 +14,18 @@
 - GitHub Actions実Run Evidence: 未取得
 - Production: NO-GO
 
+## 監査範囲の境界
+
+AsteraのMCP開発は未作成ではない。非AI・非生成・決定論的な日本語解析MCPは、別Repository `seigo-gace/Deterministic-Japanese-Parser-MCP` で作成・強化済みである。
+
+このApp監査では次を厳守する。
+
+- `astera-app`内にMCP Sourceがないことを欠損扱いしない。
+- MCP本体をApp Repositoryへ複製しない。
+- App側では接続Contract、Version固定、Timeout、Fail-closed、Meaning Graph／Task Graph受渡し、性能境界だけを監査する。
+- Developer API Registry上の未構築`Skill Runtime`は、日本語解析MCPとは別Moduleとして扱う。
+- App、Astera本体、MCPは別Repository／別正本／別Release Evidenceを持ち、接続点だけを横断管理する。
+
 ## 確認できた実装
 
 - React／TypeScript／Vite Frontend
@@ -89,6 +101,7 @@
 - 正式Logo元Byteの復旧とBrowser／Search／Bookmark／PWA Asset反映
 - Notion Candidateにのみ存在したServer／Contract／Migration Sourceの回収または現仕様からの再実装
 - FrontendとCanonical Backend APIの結合
+- Astera Appから日本語解析MCPへの接続Contract／Version／Fail-closed実結合
 - CI、Cloudflare、D1、PostgreSQL、Square、OAuth、Storage、VaultのEvidence
 - Browser Matrix、Android／iOS Build、実機、署名
 
