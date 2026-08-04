@@ -13,6 +13,7 @@ type CheckoutState =
 const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
 const ACCOUNT_CATALOG_ENDPOINT = `${API_BASE}/api/account/catalog`;
 const CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/billing/checkout-intents`;
+const REQUEST_TIMEOUT_MS = 15_000;
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -82,6 +83,7 @@ export default function CheckoutPage() {
   const [state, setState] = useState<CheckoutState>({ status: 'loading' });
   const [accepted, setAccepted] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
+  const checkoutRef = useRef<AbortController | null>(null);
 
   const loadAccountCatalog = useCallback(async () => {
     if (!planId) {
@@ -89,9 +91,10 @@ export default function CheckoutPage() {
       return;
     }
 
-    requestRef.current?.abort();
+    requestRef.current?.abort('superseded');
     const controller = new AbortController();
     requestRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort('timeout'), REQUEST_TIMEOUT_MS);
     setState({ status: 'loading' });
 
     try {
@@ -111,9 +114,13 @@ export default function CheckoutPage() {
       if (!plan) throw new Error('PLAN_NOT_AVAILABLE_FOR_ACCOUNT');
       setState({ status: 'ready', ...plan });
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        if (controller.signal.reason === 'timeout') setState({ status: 'error', message: 'ACCOUNT_CATALOG_TIMEOUT' });
+        return;
+      }
       setState({ status: 'error', message: error instanceof Error ? error.message : 'ACCOUNT_CATALOG_UNKNOWN_ERROR' });
     } finally {
+      window.clearTimeout(timeout);
       if (requestRef.current === controller) requestRef.current = null;
     }
   }, [planId]);
@@ -121,12 +128,19 @@ export default function CheckoutPage() {
   useEffect(() => {
     document.title = 'Checkout確認 | Astera App';
     void loadAccountCatalog();
-    return () => requestRef.current?.abort();
+    return () => {
+      requestRef.current?.abort('unmount');
+      checkoutRef.current?.abort('unmount');
+    };
   }, [loadAccountCatalog]);
 
   const createCheckoutIntent = async () => {
-    if (state.status !== 'ready' || !accepted) return;
+    if (state.status !== 'ready' || !accepted || checkoutRef.current) return;
     const snapshot = state;
+    const controller = new AbortController();
+    checkoutRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort('timeout'), REQUEST_TIMEOUT_MS);
+    const idempotencyKey = crypto.randomUUID();
     setState({ ...snapshot, status: 'submitting' });
 
     try {
@@ -136,13 +150,15 @@ export default function CheckoutPage() {
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
-          'Idempotency-Key': crypto.randomUUID(),
+          'Idempotency-Key': idempotencyKey,
+          'X-Request-ID': idempotencyKey,
         },
         body: JSON.stringify({
           plan_id: planId,
           return_to: returnTo,
           native_callback: nativeCallback('/account/billing/status'),
         }),
+        signal: controller.signal,
       });
       if (response.status === 401 || response.status === 403) {
         setState({ status: 'login-required' });
@@ -155,7 +171,14 @@ export default function CheckoutPage() {
       await openExternalUrl(destination);
       setState({ ...snapshot, status: 'ready' });
     } catch (error) {
+      if (controller.signal.aborted) {
+        if (controller.signal.reason === 'timeout') setState({ status: 'error', message: 'CHECKOUT_INTENT_TIMEOUT' });
+        return;
+      }
       setState({ status: 'error', message: error instanceof Error ? error.message : 'CHECKOUT_INTENT_UNKNOWN_ERROR' });
+    } finally {
+      window.clearTimeout(timeout);
+      if (checkoutRef.current === controller) checkoutRef.current = null;
     }
   };
 
