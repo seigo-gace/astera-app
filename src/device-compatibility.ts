@@ -123,7 +123,12 @@ function applyCapabilities(forcedOrientation?: AsteraOrientation): void {
 
 function scheduleCapabilities(): void {
   if (scheduledFrame) return;
-  scheduledFrame = window.requestAnimationFrame(() => applyCapabilities());
+  scheduledFrame = window.requestAnimationFrame(() => {
+    const forcedOrientation = root.classList.contains('astera-rotating')
+      ? currentOrientation ?? undefined
+      : undefined;
+    applyCapabilities(forcedOrientation);
+  });
 }
 
 function clearOrientationTimers(): void {
