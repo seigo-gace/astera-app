@@ -22,6 +22,7 @@ jobs:
       - name: Validate browser scripts
         run: |
           node --check public/app-interactions.js
+          node --check public/process-user-errors.js
           node --check public/ui-honesty.js
           node --check public/customer-ai-transport.js
           node --check public/customer-ai-bubble.js
