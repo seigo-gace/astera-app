@@ -62,11 +62,15 @@ function scheduleCapabilities(): void {
 }
 
 function observeMedia(query: MediaQueryList): void {
-  if ('addEventListener' in query) {
+  if (typeof query.addEventListener === 'function') {
     query.addEventListener('change', scheduleCapabilities);
     return;
   }
-  query.addListener(scheduleCapabilities);
+
+  const legacyQuery = query as MediaQueryList & {
+    addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+  };
+  legacyQuery.addListener?.(scheduleCapabilities);
 }
 
 export function initializeDeviceCompatibility(): void {
