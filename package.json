@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.3.0",
   "type": "module",
+  "workspaces": [
+    "contabo/app-api"
+  ],
   "engines": {
     "node": ">=22.12 <23"
   },
@@ -11,7 +14,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
-    "contract:check": "tsc -p tsconfig.contracts.json --noEmit",
+    "contract:check": "tsc -p tsconfig.contracts.json --noEmit && npm run contabo:check",
+    "contabo:check": "npm --prefix contabo/app-api run check",
+    "contabo:build": "npm --prefix contabo/app-api run build",
     "route:audit": "node scripts/route-audit.mjs",
     "responsive:audit": "node scripts/responsive-audit.mjs",
     "device:audit": "node scripts/device-matrix-audit.mjs",
@@ -23,7 +28,7 @@
     "platform:audit": "npm run route:audit && npm run responsive:audit && npm run device:audit && npm run mobile:audit",
     "e2e:devices": "playwright test",
     "e2e:stories": "playwright test tests/user-journey-stories.spec.ts",
-    "verify": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run cloudflare:functions:build && npm run notion:audit:strict",
+    "verify": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run contabo:build && npm run cloudflare:functions:build && npm run notion:audit:strict",
     "mobile:bootstrap": "node scripts/mobile-bootstrap.mjs",
     "mobile:sync": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run notion:audit:strict && cap sync && node scripts/configure-native-platforms.mjs && npm run mobile:audit -- --native",
     "mobile:doctor": "cap doctor",
@@ -51,14 +56,14 @@
     "@radix-ui/react-scroll-area": "1.2.14",
     "@radix-ui/react-switch": "1.3.3",
     "@radix-ui/react-tooltip": "1.2.12",
+    "@better-auth/passkey": "1.6.25",
+    "better-auth": "1.6.25",
     "i18next": "26.3.6",
     "i18next-browser-languagedetector": "8.2.0",
     "lucide-react": "1.25.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "react-i18next": "17.0.10",
-    "@better-auth/passkey": "1.6.25",
-    "better-auth": "1.6.25"
+    "react-i18next": "17.0.10"
   },
   "devDependencies": {
     "@capacitor/cli": "8.4.2",
