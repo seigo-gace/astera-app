@@ -1,0 +1,257 @@
+:root {
+  --app-layout-width: 100%;
+  --app-scrollbar-width: 0px;
+}
+
+html {
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  scrollbar-gutter: stable;
+}
+
+body,
+#root {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+@supports (overflow: clip) {
+  html,
+  body,
+  #root {
+    overflow-x: clip;
+  }
+}
+
+.app-shell,
+.main-column,
+.timeline,
+.timeline-inner,
+.composer-wrap,
+.composer,
+.platform-shell,
+.platform-main,
+.platform-page-content,
+.platform-public-page,
+.platform-public-header,
+.platform-public-content,
+.checkout-page {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-shell,
+.platform-shell,
+.platform-public-page,
+.checkout-page {
+  overflow-x: hidden;
+}
+
+@supports (overflow: clip) {
+  .app-shell,
+  .platform-shell,
+  .platform-public-page,
+  .checkout-page {
+    overflow-x: clip;
+  }
+}
+
+.platform-page-head,
+.platform-head-actions,
+.platform-action-row,
+.platform-stack-actions,
+.platform-panel,
+.platform-panel > header,
+.platform-panel-body,
+.platform-record,
+.platform-link-card,
+.platform-card-grid,
+.platform-kv-grid,
+.platform-inline-form,
+.platform-form,
+.platform-settings-form,
+.platform-toggle-row,
+.platform-auth-card,
+.platform-legal-document,
+.response-card,
+.response-header,
+.result-sections,
+.result-section,
+.result-section-heading,
+.processing-state,
+.composer-actions,
+.composer-left-actions,
+.dialog-heading,
+.fullscreen-actions,
+.select-row,
+.setting-row,
+.template-card,
+.option-card,
+.user-message,
+.turn,
+.turn-meta {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.platform-page-head > *,
+.platform-panel > header > *,
+.platform-record > *,
+.platform-link-card > *,
+.platform-toggle-row > *,
+.response-header > *,
+.result-section-heading > *,
+.processing-state > *,
+.composer-actions > *,
+.composer-left-actions > *,
+.dialog-heading > *,
+.select-row > *,
+.setting-row > *,
+.template-card > *,
+.option-card > * {
+  min-width: 0;
+}
+
+.selection-row {
+  max-width: 100%;
+  flex-wrap: wrap;
+  overflow-x: visible;
+  overscroll-behavior-x: none;
+}
+
+.selection-chip {
+  max-width: min(300px, 100%);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.mobile-sidebar {
+  width: min(318px, calc(var(--app-layout-width, 100%) - 48px));
+  max-width: calc(100% - 48px);
+  overflow-x: hidden;
+  contain: layout paint;
+  will-change: transform;
+}
+
+.platform-mobile-drawer {
+  width: min(340px, calc(var(--app-layout-width, 100%) - 24px));
+  max-width: calc(100% - 24px);
+  overflow-x: hidden;
+  contain: layout paint;
+}
+
+.mobile-backdrop,
+.platform-backdrop,
+.dialog-overlay {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.jump-bottom {
+  max-width: calc(100% - 26px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dialog-content,
+.settings-dialog,
+.fullscreen-dialog {
+  max-width: calc(100% - 16px);
+  overflow-x: hidden;
+}
+
+.toast {
+  width: max-content;
+  max-width: calc(100% - 24px);
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.platform-page-content,
+.platform-panel-body,
+.platform-record,
+.platform-link-card,
+.platform-kv-grid dd,
+.platform-auth-card,
+.platform-legal-document,
+.timeline-inner,
+.user-message,
+.result-section,
+.dialog-content,
+.info-panel-body,
+.menu-note,
+.credit-summary,
+.dialog-notice {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+pre,
+code,
+kbd,
+samp {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+pre {
+  white-space: pre-wrap;
+}
+
+table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+th,
+td {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .composer-actions,
+  .platform-page-head,
+  .platform-panel > header,
+  .dialog-heading,
+  .fullscreen-actions {
+    max-width: 100%;
+  }
+
+  .select-row select {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .mobile-sidebar {
+    width: calc(var(--app-layout-width, 100%) - 24px);
+    max-width: calc(100% - 24px);
+  }
+
+  .toast,
+  .dialog-content,
+  .settings-dialog,
+  .fullscreen-dialog {
+    max-width: calc(100% - 12px);
+  }
+}
