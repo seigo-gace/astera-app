@@ -24,7 +24,7 @@ const requiredFrontendFiles = [
 
 // These paths are explicitly named as implementation targets in the current
 // Astera App Notion Code/GitHub source-of-truth pages. They must not be called
-// "reflected" or "implemented" until the paths exist in the repository.
+// "reflected" or "implemented" until the paths exist in this repository.
 const notionDeclaredImplementationPaths = [
   'packages/contracts',
   'packages/commercial-contracts',
@@ -37,6 +37,32 @@ const notionDeclaredImplementationPaths = [
   'docs/openapi',
   'docs/release-manifest',
   'docs/evidence',
+];
+
+// Astera's deterministic Japanese MCP was developed as a separate product and
+// release unit. Its source belongs to seigo-gace/Deterministic-Japanese-Parser-MCP,
+// not to asterа-app. The app audit verifies only the future connection contract;
+// it must never report the separate MCP source as an app repository gap.
+const scopeExclusions = [
+  {
+    name: 'Astera deterministic Japanese MCP',
+    repository: 'seigo-gace/Deterministic-Japanese-Parser-MCP',
+    reason: 'Separate repository, source of truth, deployment unit, and release evidence.',
+    appAuditScope: [
+      'connection contract',
+      'version pinning',
+      'timeout',
+      'fail-closed behavior',
+      'Meaning Graph and Task Graph handoff',
+      'latency boundary',
+    ],
+  },
+  {
+    name: 'Developer API Skill Runtime',
+    repository: null,
+    reason: 'Different module from the deterministic Japanese MCP; status must be tracked independently.',
+    appAuditScope: ['registry status', 'availability gate', 'key issuance prohibition while unavailable'],
+  },
 ];
 
 const requiredOfficialBrandAssets = [
@@ -66,6 +92,7 @@ const report = {
   packageVersion: packageJson.version,
   declaredRouteCount,
   detectedRouteEntries: routeEntries,
+  scopeExclusions,
   currentMain: {
     frontendFiles: Object.fromEntries(requiredFrontendFiles.map((item) => [item, exists(item)])),
     notionDeclaredImplementationPaths: Object.fromEntries(notionDeclaredImplementationPaths.map((item) => [item, exists(item)])),
@@ -106,6 +133,7 @@ console.log(JSON.stringify({
   verdict: report.verdict,
   packageVersion: report.packageVersion,
   routes: `${routeEntries}/${declaredRouteCount ?? 'unknown'}`,
+  scopeExclusions: scopeExclusions.map((item) => item.name),
   hardGapCount: hardGaps.length,
   hardGaps,
   report: path.relative(root, outputPath),
