@@ -36,8 +36,8 @@ jobs:
         run: npm run contract:check
       - name: Typecheck and build frontend
         run: npm run build
-      - name: Audit Notion claims against repository reality
-        run: npm run notion:audit:strict
+      - name: Generate Notion repository audit report
+        run: npm run notion:audit
       - name: Upload Notion repository audit
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,9 +61,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload lockfile candidate
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: astera-package-lock-candidate
           path: package-lock.json
           if-no-files-found: error
           retention-days: 14
+      - name: Enforce final Notion source gate
+        if: always()
+        run: npm run notion:audit:strict
