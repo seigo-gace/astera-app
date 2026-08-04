@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import App from '../App';
 import CheckoutPage from '../features/checkout/CheckoutPage';
 import PricingPage from '../features/pricing/PricingPage';
+import { AccountSessionProvider, type AccountSessionProjection } from './account-session';
 import { ApiError, apiRequest, asRecord, recordText } from './api-client';
 import { CanonicalPage } from './CanonicalPages';
 import { BusyState, ErrorState } from './ResponsivePageShell';
@@ -10,7 +11,7 @@ import './platform.css';
 
 type GateState =
   | { status: 'loading' }
-  | { status: 'ready' }
+  | { status: 'ready'; session: AccountSessionProjection }
   | { status: 'error'; error: unknown };
 
 function currentReturnTo(): string {
@@ -59,7 +60,14 @@ function AccountSessionGate({ children }: { children: ReactNode }) {
           });
           return;
         }
-        setState({ status: 'ready' });
+        setState({
+          status: 'ready',
+          session: {
+            payload,
+            accountStatus: accountStatus || 'active',
+            displayName: recordText(account, ['nickname', 'display_name', 'name', 'email'], 'Account'),
+          },
+        });
       })
       .catch((error: unknown) => {
         if (error instanceof ApiError) {
@@ -77,7 +85,7 @@ function AccountSessionGate({ children }: { children: ReactNode }) {
 
   if (state.status === 'loading') return <BusyState label="AccountとSessionを確認しています…" />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={() => setAttempt((value) => value + 1)} />;
-  return children;
+  return <AccountSessionProvider value={state.session}>{children}</AccountSessionProvider>;
 }
 
 function RootRedirect() {
