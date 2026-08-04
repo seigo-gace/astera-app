@@ -1,9 +1,9 @@
 import { serve } from '@hono/node-server';
 import { loadConfig } from './config.js';
-import { createApp } from './index.js';
+import { createFullApp } from './full-app.js';
 
 const config = loadConfig();
-const { app, service } = createApp(config);
+const { app, service } = createFullApp(config);
 
 await service.database.ready();
 await service.recover();
