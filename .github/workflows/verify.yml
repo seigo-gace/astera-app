@@ -12,13 +12,30 @@ jobs:
   build-and-device-matrix:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: astera
+          POSTGRES_PASSWORD: astera_test_password
+          POSTGRES_DB: astera_app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U astera -d astera_app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://astera:astera_test_password@127.0.0.1:5432/astera_app_test?sslmode=disable
+      MIGRATIONS_DIR: ${{ github.workspace }}/migrations/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.12'
-      - name: Install exact direct dependencies
-        run: npm install --no-fund
+      - name: Install exact direct dependencies and workspaces
+        run: npm install --no-fund --no-audit
       - name: Validate browser scripts
         run: |
           node --check public/app-interactions.js
@@ -36,10 +53,20 @@ jobs:
         run: npm run mobile:audit
       - name: Audit adversarial user journeys
         run: npm run story:audit:strict
-      - name: Typecheck Notion-derived contracts and service boundaries
+      - name: Typecheck Worker contracts and Contabo runtime
         run: npm run contract:check
       - name: Typecheck and build frontend
         run: npm run build
+      - name: Bundle Cloudflare Pages Functions
+        run: npm run cloudflare:functions:build
+      - name: Build Contabo runtime
+        run: npm run contabo:build
+      - name: Apply PostgreSQL migrations
+        run: npm --prefix contabo/app-api run migrate
+      - name: Run PostgreSQL-backed Contabo runtime smoke
+        run: npm --prefix contabo/app-api run smoke
+      - name: Build non-root Contabo container
+        run: docker build -f contabo/app-api/Dockerfile .
       - name: Generate Notion repository audit report
         run: npm run notion:audit
       - name: Upload source audit reports
