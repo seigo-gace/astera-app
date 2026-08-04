@@ -8,10 +8,10 @@ The authored browser matrix covers:
 
 - 22 authenticated routes and exact return-context restoration;
 - 6 public routes that must not require an account projection;
-- 32 uniquely identified adversarial stories across authentication and Composer execution;
+- 33 uniquely identified adversarial stories across authentication, Composer execution and canonical Result compatibility;
 - Chromium desktop and WebKit touch representatives for adversarial journeys;
 - the existing 11-project device matrix for layout, touch, rotation, tablet, foldable, Android, iPhone, iPad and desktop coverage;
-- authentication stages, registration, Email verification, Password reset, 2FA, Account state, Checkout, Settings, network failure, API errors, retry, duplicate input, malformed URLs, Composer execution, result completeness and accordion behavior.
+- authentication stages, registration, Email verification, Password reset, 2FA, Account state, Checkout, Settings, network failure, API errors, retry, duplicate input, malformed URLs, Composer execution, result completeness, canonical Result objects and accordion behavior.
 
 ## Defects found and fixed
 
@@ -87,10 +87,17 @@ A non-empty one-section payload was accepted by the React normalizer.
 
 **Fix:** the process boundary accepts only JSON with exactly eight non-empty unique sections, including canonical and legacy key aliases. Incomplete output fails closed and the Composer draft remains available.
 
+### 13. The canonical Result contract could not be rendered
+
+The current shared contract defines `sections` as an object keyed by the canonical eight section names, while the legacy React UI only reads arrays or top-level legacy aliases. A correct backend response would therefore be rejected or displayed as empty.
+
+**Fix:** canonical eight-key objects are validated in their fixed order, converted into the legacy display array without discarding titles, content or source IDs, and then returned to the React UI. A dedicated canonical-object story checks all eight rendered sections.
+
 ## Authored story evidence
 
 - Authentication and route source: `tests/user-journey-stories.spec.ts`
 - Composer source: `tests/composer-user-stories.spec.ts`
+- Canonical Result source: `tests/canonical-result-user-stories.spec.ts`
 - Static gate: `scripts/user-story-audit.mjs`
 - Commands:
   - `npm run story:audit:strict`
@@ -100,18 +107,19 @@ A non-empty one-section payload was accepted by the React normalizer.
 
 The static audit requires at least:
 
-- 28 unique story tests, currently authored as 32 unique Story IDs;
+- 29 unique story tests, currently authored as 33 unique Story IDs;
 - 8 Composer-specific stories;
 - 20 protected routes, currently 22;
 - 5 public routes, currently 6;
-- explicit coverage for account state, Checkout trust, required auth stages, open-redirect prevention, duplicate registration, nested errors, network failure, preference safety, retry, malformed paths, Enter behavior, duplicate runs, process identity, fixed eight-section Results and draft preservation.
+- explicit coverage for account state, Checkout trust, required auth stages, open-redirect prevention, duplicate registration, nested errors, network failure, preference safety, retry, malformed paths, Enter behavior, duplicate runs, process identity, fixed eight-section Results, canonical Result objects and draft preservation.
 
 ## Evidence status
 
-- Source review: complete for the changed route, auth, API, submission, page-shell and Composer interaction boundaries.
+- Source review: complete for the changed route, auth, API, submission, page-shell, Composer interaction and Result compatibility boundaries.
 - Defect fixes: committed to `main`.
 - Story test source: committed.
 - Static audit source: committed.
+- Node 22 syntax check for the complete browser interaction runtime and story audit script: passed.
 - GitHub Actions execution: not yet confirmed.
 - Playwright pass/fail report: not yet confirmed.
 - Cloudflare, backend sandbox, Square, OAuth, Storage, Vault, MCP endpoint and physical-device execution: not confirmed.
