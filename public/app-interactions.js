@@ -7,6 +7,7 @@
   const USER_MESSAGE_SELECTOR = '.user-message';
   const RUN_BUTTON_SELECTOR = '.run-button:not(.is-stop)';
   const PREVIEW_LIMIT = 96;
+  const MAX_INPUT_CHARACTERS = 200_000;
   const CANONICAL_RESULT_SECTION_KEYS = [
     'true_purpose',
     'missing_assumptions',
@@ -85,6 +86,9 @@
 
   function enhanceAllUserMessages(root = document) {
     root.querySelectorAll(USER_MESSAGE_SELECTOR).forEach(enhanceUserMessage);
+    root.querySelectorAll(COMPOSER_SELECTOR).forEach((textarea) => {
+      if (textarea instanceof HTMLTextAreaElement) textarea.maxLength = MAX_INPUT_CHARACTERS;
+    });
   }
 
   function processRequestUrl(input) {
@@ -112,6 +116,46 @@
     if (typeof value === 'string') return value.trim().length > 0;
     if (Array.isArray(value)) return value.length > 0;
     return false;
+  }
+
+  async function processRequestPayload(input, init) {
+    const body = init.body ?? (input instanceof Request ? await input.clone().text() : null);
+    if (typeof body !== 'string' || !body.trim()) return null;
+    try {
+      const payload = JSON.parse(body);
+      return isRecord(payload) ? payload : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function processRequestError(payload) {
+    if (!payload) {
+      return { code: 'ASTERA_PROCESS_PAYLOAD_INVALID', message: '実行Requestの形式を確認できません。', status: 422 };
+    }
+    if (typeof payload.input !== 'string' || !payload.input.trim()) {
+      return { code: 'ASTERA_INPUT_REQUIRED', message: '実行する本文がありません。', status: 422 };
+    }
+    if ([...payload.input].length > MAX_INPUT_CHARACTERS) {
+      return {
+        code: 'ASTERA_INPUT_TOO_LARGE',
+        message: `入力は${MAX_INPUT_CHARACTERS.toLocaleString()}文字以内にしてください。`,
+        status: 413,
+      };
+    }
+    const files = Array.isArray(payload.files) ? payload.files : [];
+    const unresolvedFile = files.find((file) => {
+      if (!isRecord(file)) return true;
+      return !['upload_id', 'object_id', 'storage_reference'].some((key) => typeof file[key] === 'string' && file[key].trim());
+    });
+    if (unresolvedFile) {
+      return {
+        code: 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED',
+        message: '添付Fileの実DataがUploadされていないため、内容を解析したように見せず安全停止しました。',
+        status: 409,
+      };
+    }
+    return null;
   }
 
   function sectionBody(section) {
@@ -225,10 +269,14 @@
     headers.set('X-Request-ID', requestId);
 
     try {
+      const requestPayload = await processRequestPayload(input, init);
+      const requestError = processRequestError(requestPayload);
+      if (requestError) return processErrorResponse(requestError.code, requestError.message, requestError.status);
+
       const response = await originalFetch(input, { ...init, headers });
       if (!response.ok) return response;
       const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('application/json')) {
+      if (!contentType.toLowerCase().includes('json')) {
         return processErrorResponse('ASTERA_RESPONSE_JSON_REQUIRED', 'AsteraのResult形式を確認できませんでした。');
       }
       const payload = await response.clone().json().catch(() => null);
