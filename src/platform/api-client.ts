@@ -17,6 +17,15 @@ export class ApiError extends Error {
 const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
 const HISTORY_SEARCH_DEBOUNCE_MS = 250;
 
+function isNativeRuntime(): boolean {
+  const capacitor = (window as Window & {
+    Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+  }).Capacitor;
+  if (capacitor?.isNativePlatform?.()) return true;
+  const platform = capacitor?.getPlatform?.();
+  return platform === 'android' || platform === 'ios';
+}
+
 function csrfToken(): string | null {
   const meta = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content?.trim();
   if (meta) return meta;
@@ -26,8 +35,16 @@ function csrfToken(): string | null {
 
 export function apiUrl(path: string): string {
   if (/^https:\/\//i.test(path)) return path;
-  if (!API_BASE) throw new ApiError('Astera API Baseが設定されていません。', 0, 'ASTERA_API_BASE_NOT_CONFIGURED');
-  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (API_BASE) return `${API_BASE}${normalizedPath}`;
+  if (isNativeRuntime()) {
+    throw new ApiError(
+      'Native AppのAstera API接続先が設定されていません。',
+      0,
+      'ASTERA_NATIVE_API_BASE_NOT_CONFIGURED',
+    );
+  }
+  return normalizedPath;
 }
 
 function objectValue(value: unknown): JsonObject | null {
