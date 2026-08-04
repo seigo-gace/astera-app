@@ -1,9 +1,44 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { apiUrl, asRecord, queryValue, recordText, textValue } from '../api-client';
+import { apiUrl, asRecord, queryValue, recordText, textValue, type JsonObject } from '../api-client';
 import { nativeCallback, openExternalUrl } from '../external-navigation';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from './page-kit';
+
+function authenticationState(payload: unknown): JsonObject {
+  const root = asRecord(payload);
+  const data = asRecord(root.data ?? root);
+  return {
+    ...data,
+    ...asRecord(data.account),
+    ...asRecord(root.account),
+  };
+}
+
+function requiredAuthenticationPath(payload: unknown, returnTo: string): string | null {
+  const state = authenticationState(payload);
+  if (state.requires_password_setup === true || state.account_status === 'pending_password_setup') {
+    return `/account/password/setup?return_to=${encodeURIComponent(returnTo)}`;
+  }
+  if (state.requires_2fa === true || state.auth_stage === 'pending_2fa') {
+    const challenge = recordText(state, ['challenge_id', 'challenge']);
+    const params = new URLSearchParams({ return_to: returnTo });
+    if (challenge) params.set('challenge', challenge);
+    return `/auth/2fa?${params.toString()}`;
+  }
+  if (state.account_status === 'pending_email_verification') {
+    const params = new URLSearchParams({ return_to: returnTo });
+    const email = recordText(state, ['email']);
+    if (email) params.set('email', email);
+    return `/verify-email?${params.toString()}`;
+  }
+  return null;
+}
+
+function loginPath(returnTo: string): string {
+  const params = new URLSearchParams({ return_to: returnTo });
+  return `/login?${params.toString()}`;
+}
 
 function LoginPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
@@ -18,20 +53,7 @@ function LoginPage({ route }: { route: RouteMatch }) {
         exchange_token: nativeExchange,
       }, setState, { success: 'Native Sessionを確立しました。', idempotent: true });
       if (!active || !payload) return;
-      const root = asRecord(payload);
-      const data = asRecord(root.data ?? root);
-      if (data.requires_password_setup === true) {
-        safeNavigate(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`);
-        return;
-      }
-      if (data.requires_2fa === true) {
-        const challenge = recordText(data, ['challenge_id', 'challenge']);
-        const params = new URLSearchParams({ return_to: returnTo });
-        if (challenge) params.set('challenge', challenge);
-        safeNavigate(`/auth/2fa?${params.toString()}`);
-        return;
-      }
-      safeNavigate(returnTo);
+      safeNavigate(requiredAuthenticationPath(payload, returnTo) ?? returnTo);
     })();
     return () => { active = false; };
   }, [nativeExchange, returnTo]);
@@ -44,7 +66,7 @@ function LoginPage({ route }: { route: RouteMatch }) {
       password: textValue(data.get('password')),
       return_to: returnTo,
     }, setState, { success: 'Loginしました。' });
-    if (payload) safeNavigate(returnTo);
+    if (payload) safeNavigate(requiredAuthenticationPath(payload, returnTo) ?? returnTo);
   };
 
   const startOAuth = async (provider: 'google' | 'github') => {
@@ -66,7 +88,7 @@ function LoginPage({ route }: { route: RouteMatch }) {
 
   return (
     <PublicPageFrame route={route} description="Astera Accountへ安全にLoginします。">
-      <AuthCard footer={<><a href="/forgot-password">Passwordを忘れた場合</a><a href="/register">Accountを作成</a></>}>
+      <AuthCard footer={<><a href={`/forgot-password?return_to=${encodeURIComponent(returnTo)}`}>Passwordを忘れた場合</a><a href={`/register?return_to=${encodeURIComponent(returnTo)}`}>Accountを作成</a></>}>
         <form className="platform-form" onSubmit={onSubmit}>
           <Field label="Email" name="email" type="email" autoComplete="email" required />
           <Field label="Password" name="password" type="password" autoComplete="current-password" required />
@@ -85,6 +107,7 @@ function LoginPage({ route }: { route: RouteMatch }) {
 
 function RegisterPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
+  const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -99,17 +122,21 @@ function RegisterPage({ route }: { route: RouteMatch }) {
       email,
       nickname: textValue(data.get('nickname')),
       password,
+      return_to: returnTo,
     }, setState, { success: '確認Emailを送信しました。', idempotent: true });
-    if (payload) window.setTimeout(() => safeNavigate(`/verify-email?email=${encodeURIComponent(email)}`), 300);
+    if (payload) {
+      const params = new URLSearchParams({ email, return_to: returnTo });
+      window.setTimeout(() => safeNavigate(`/verify-email?${params.toString()}`), 300);
+    }
   };
   return (
     <PublicPageFrame route={route} description="Email確認が完了するまで決済や実行は開始しません。">
-      <AuthCard footer={<a href="/login">既にAccountがある場合</a>}>
+      <AuthCard footer={<a href={loginPath(returnTo)}>既にAccountがある場合</a>}>
         <form className="platform-form" onSubmit={onSubmit}>
           <Field label="Email" name="email" type="email" autoComplete="email" required />
           <Field label="Nickname" name="nickname" autoComplete="nickname" required />
-          <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} />
-          <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} />
+          <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
           <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>Account登録</button>
         </form>
         <FormResult state={state} />
@@ -121,21 +148,22 @@ function RegisterPage({ route }: { route: RouteMatch }) {
 function VerifyEmailPage({ route }: { route: RouteMatch }) {
   const token = queryValue('token');
   const initialEmail = queryValue('email');
+  const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const [email, setEmail] = useState(initialEmail);
   const [state, setState] = useState<SubmitState>({ type: token ? 'working' : 'idle' });
 
   useEffect(() => {
     if (!token) return;
-    void submitForm('/api/auth/email/verify', { token }, setState, {
+    void submitForm('/api/auth/email/verify', { token, return_to: returnTo }, setState, {
       success: 'Emailを確認しました。',
-      navigateTo: '/login',
+      navigateTo: loginPath(returnTo),
       idempotent: true,
     });
-  }, [token]);
+  }, [returnTo, token]);
 
   const resend = async (event: FormEvent) => {
     event.preventDefault();
-    await submitForm('/api/auth/email/resend', { email }, setState, { success: '確認Emailを再送しました。', idempotent: true });
+    await submitForm('/api/auth/email/resend', { email, return_to: returnTo }, setState, { success: '確認Emailを再送しました。', idempotent: true });
   };
 
   return (
@@ -156,32 +184,37 @@ function VerifyEmailPage({ route }: { route: RouteMatch }) {
 function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boolean }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const token = queryValue('token');
+  const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     if (reset) {
+      if (!token) {
+        setState({ type: 'error', message: 'Password再設定Tokenがありません。', code: 'RESET_TOKEN_REQUIRED' });
+        return;
+      }
       const password = textValue(data.get('password'));
       const confirm = textValue(data.get('password_confirm'));
       if (password !== confirm) {
         setState({ type: 'error', message: 'Passwordが一致しません。', code: 'PASSWORD_MISMATCH' });
         return;
       }
-      await submitForm('/api/account/password/reset', { token, password }, setState, {
-        success: 'Passwordを更新しました。', navigateTo: '/login', idempotent: true,
+      await submitForm('/api/account/password/reset', { token, password, return_to: returnTo }, setState, {
+        success: 'Passwordを更新しました。', navigateTo: loginPath(returnTo), idempotent: true,
       });
       return;
     }
-    await submitForm('/api/account/password/forgot', { email: textValue(data.get('email')) }, setState, {
+    await submitForm('/api/account/password/forgot', { email: textValue(data.get('email')), return_to: returnTo }, setState, {
       success: '該当Accountがある場合、再設定Emailを送信しました。', idempotent: true,
     });
   };
   return (
     <PublicPageFrame route={route} description={reset ? '有効なTokenで新しいPasswordを設定します。' : 'Accountの存在を第三者へ露出せず再設定を開始します。'}>
-      <AuthCard footer={<a href="/login">Loginへ戻る</a>}>
+      <AuthCard footer={<a href={loginPath(returnTo)}>Loginへ戻る</a>}>
         <form className="platform-form" onSubmit={onSubmit}>
           {reset ? <>
-            <Field label="新しいPassword" name="password" type="password" autoComplete="new-password" required minLength={12} />
-            <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} />
+            <Field label="新しいPassword" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+            <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
           </> : <Field label="Email" name="email" type="email" autoComplete="email" required />}
           <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{reset ? 'Passwordを更新' : '再設定Emailを送信'}</button>
         </form>
@@ -193,6 +226,7 @@ function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boole
 
 function PasswordSetupPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
+  const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -202,15 +236,15 @@ function PasswordSetupPage({ route }: { route: RouteMatch }) {
       setState({ type: 'error', message: 'Passwordが一致しません。', code: 'PASSWORD_MISMATCH' });
       return;
     }
-    await submitForm('/api/account/password/setup', { password }, setState, {
-      success: 'Astera用Passwordを設定しました。', navigateTo: safeReturnPath(queryValue('return_to'), '/app/new'), idempotent: true,
+    await submitForm('/api/account/password/setup', { password, return_to: returnTo }, setState, {
+      success: 'Astera用Passwordを設定しました。', navigateTo: returnTo, idempotent: true,
     });
   };
   return (
     <PublicPageFrame route={route} description="Google／GitHubのPasswordは取得せず、Astera専用Passwordを設定します。">
       <AuthCard><form className="platform-form" onSubmit={onSubmit}>
-        <Field label="Astera用Password" name="password" type="password" autoComplete="new-password" required minLength={12} />
-        <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} />
+        <Field label="Astera用Password" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+        <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
         <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>設定して続ける</button>
       </form><FormResult state={state} /></AuthCard>
     </PublicPageFrame>
@@ -219,19 +253,26 @@ function PasswordSetupPage({ route }: { route: RouteMatch }) {
 
 function TwoFactorPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
+  const challenge = queryValue('challenge');
+  const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!challenge) {
+      setState({ type: 'error', message: '2FA Challengeがありません。Loginからやり直してください。', code: 'TWO_FACTOR_CHALLENGE_REQUIRED' });
+      return;
+    }
     const data = new FormData(event.currentTarget);
     const payload = await submitForm('/api/auth/2fa/verify', {
       code: textValue(data.get('code')).replace(/\s/g, ''),
-      challenge_id: queryValue('challenge'),
+      challenge_id: challenge,
+      return_to: returnTo,
     }, setState, { success: '認証しました。', idempotent: true });
-    if (payload) safeNavigate(safeReturnPath(queryValue('return_to'), '/app/new'));
+    if (payload) safeNavigate(returnTo);
   };
   return (
     <PublicPageFrame route={route} description="Authenticator CodeまたはBackup Codeを検証します。">
       <AuthCard><form className="platform-form" onSubmit={onSubmit}>
-        <Field label="認証Code" name="code" inputMode="numeric" required />
+        <Field label="認証Code" name="code" inputMode="numeric" autoComplete="one-time-code" required maxLength={64} />
         <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>認証</button>
       </form><FormResult state={state} /></AuthCard>
     </PublicPageFrame>
