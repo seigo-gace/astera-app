@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useVerifiedAccountSession } from './account-session';
 import { ApiError, apiRequest, asRecord, recordText } from './api-client';
 import type { RouteMatch } from './route-registry';
 
@@ -46,10 +47,11 @@ type SessionState =
   | { status: 'error'; error: unknown };
 
 function useSession(required: boolean): SessionState {
-  const [state, setState] = useState<SessionState>(required ? { status: 'loading' } : { status: 'ready', displayName: '' });
+  const verified = useVerifiedAccountSession();
+  const [state, setState] = useState<SessionState>(required && !verified ? { status: 'loading' } : { status: 'ready', displayName: verified?.displayName ?? '' });
 
   useEffect(() => {
-    if (!required) return;
+    if (!required || verified) return;
     const controller = new AbortController();
     apiRequest('/api/account', { signal: controller.signal })
       .then((payload) => {
@@ -69,9 +71,9 @@ function useSession(required: boolean): SessionState {
         if (!controller.signal.aborted) setState({ status: 'error', error });
       });
     return () => controller.abort();
-  }, [required]);
+  }, [required, verified]);
 
-  return state;
+  return verified ? { status: 'ready', displayName: verified.displayName } : state;
 }
 
 export function ResponsivePageShell({
