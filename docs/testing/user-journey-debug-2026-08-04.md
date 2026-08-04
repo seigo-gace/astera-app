@@ -4,125 +4,78 @@
 
 This pass tests the application from the user's point of view rather than treating route existence, component source, or mocked success as completion.
 
-The authored browser matrix covers:
+The authored browser matrix now contains:
 
-- 22 authenticated routes and exact return-context restoration;
-- 6 public routes that must not require an account projection;
-- 33 uniquely identified adversarial stories across authentication, Composer execution and canonical Result compatibility;
+- 48 unique adversarial Story IDs in 7 dedicated Story files;
+- 22 authenticated routes with exact return-context restoration;
+- 6 public routes that must not request the protected account projection;
+- 8 Composer-specific stories;
 - Chromium desktop and WebKit touch representatives for adversarial journeys;
-- the existing 11-project device matrix for layout, touch, rotation, tablet, foldable, Android, iPhone, iPad and desktop coverage;
-- authentication stages, registration, Email verification, Password reset, 2FA, Account state, Checkout, Settings, network failure, API errors, retry, duplicate input, malformed URLs, Composer execution, result completeness, canonical Result objects and accordion behavior.
+- the existing 11-project device matrix for desktop, Android, iPhone, iPad, tablet, foldable, touch, rotation and legacy WebView coverage.
 
 ## Defects found and fixed
 
-### 1. Protected route gate was incomplete
+1. **Incomplete protected-route gate** — every `access: authenticated` route now uses one Account Session Gate; Checkout keeps its inline Login/Register gate so the selected plan remains visible.
+2. **Duplicate account projection** — Router and responsive shell now share one verified account projection through `AccountSessionProvider`.
+3. **Required authentication stages were skipped** — Email Login and Native Session Exchange now honor pending Email verification, initial Password setup and 2FA.
+4. **Return context was lost** — Register → Verify Email → Login → Password setup / 2FA retains the original Checkout, Credit, Developer or App destination.
+5. **Authentication return loops** — `return_to` pointing to Login, Register, Verify, Reset, Password setup or 2FA is rejected.
+6. **Missing reset Tokens and 2FA Challenges reached the API** — local fail-closed errors preserve the user's typed input.
+7. **Nested API errors were hidden** — flat and nested error shapes expose the actionable message and code.
+8. **Concurrent idempotent form submissions duplicated requests** — one in-flight Promise and one request identity are reused.
+9. **Malformed encoded route parameters crashed matching** — malformed parameters now resolve to Not Found.
+10. **Plain Enter could submit the Composer** — plain Enter and Shift+Enter are line breaks; Ctrl/Cmd+Enter is explicit execution in normal and Fullscreen Composer.
+11. **Rapid execution raced React state** — capture-phase launch locking and `/process` in-flight rejection prevent duplicate execution.
+12. **Process requests lacked identity** — `Idempotency-Key` and `X-Request-ID` use the same generated value.
+13. **Incomplete Results appeared complete** — only exactly eight non-empty unique sections are accepted.
+14. **Canonical eight-key Result objects were incompatible with the legacy UI** — canonical objects are validated and normalized into the fixed display order without dropping titles, content or source IDs.
+15. **Local file attachments sent only metadata** — unresolved files without an upload/object/storage reference fail closed before backend execution; the app does not pretend that file content was analyzed.
+16. **Input length was not authoritative** — Composer and request boundary enforce 200,000 Unicode characters.
+17. **Non-JSON proxy/error pages could be shown as Results** — successful responses must be JSON and pass the eight-section gate.
+18. **Process failures showed only HTTP numbers** — the user sees the specific stop reason and error code.
+19. **Checkout could duplicate or hang** — one intent request at a time, 15-second timeout, paired request identity and abort on unmount.
+20. **Checkout URL validation and navigation disagreed** — safe same-origin returns are allowed; external destinations remain HTTPS-only and Square-host allowlisted at Checkout surfaces.
+21. **Purpose selection contradicted the single-selection specification** — selecting another Purpose deselects the previous one.
+22. **Project Source controls silently did nothing** — unavailable controls are disabled with a visible implementation-state notice.
+23. **Legacy Settings implied persistent save** — the dialog now states that its changes are session-only and links to the actual Settings page.
+24. **Pricing timeout became endless loading** — timeout produces `CATALOG_TIMEOUT` and a Retry action.
+25. **History search requested on every keystroke** — an abortable 250 ms debounce sends only the final query.
+26. **Passkey, 2FA and Backup Code controls produced fake success** — incomplete security flows are disabled until the full Browser Credential / QR / Secret path exists.
+27. **Credit product ID was free text** — only active products from the account catalog can be submitted.
+28. **Credit Checkout accepted untrusted destinations** — the same Checkout destination trust boundary is applied.
+29. **Unavailable Developer targets could issue keys** — unavailable/preparing targets remain visible but cannot be selected.
+30. **Issued Developer secrets could be discarded** — a key issuance succeeds only when the one-time secret is received and displayed; missing secret fails closed.
 
-Only `/app` and `/app/new` were gated at the router. Other authenticated routes depended on individual page shells and could produce inconsistent loading or error behavior.
+## Story files
 
-**Fix:** every route marked `access: 'authenticated'` now passes through one Account Session Gate, except Checkout, which intentionally owns an inline Login/Register gate to preserve the selected plan.
+- `tests/user-journey-stories.spec.ts`
+- `tests/composer-user-stories.spec.ts`
+- `tests/canonical-result-user-stories.spec.ts`
+- `tests/process-boundary-user-stories.spec.ts`
+- `tests/checkout-resilience-user-stories.spec.ts`
+- `tests/ui-honesty-user-stories.spec.ts`
+- `tests/account-commercial-user-stories.spec.ts`
 
-### 2. Account projection could be requested twice
+Static gate: `scripts/user-story-audit.mjs`
 
-The router and responsive shell could both call `/api/account` for one page view.
+Commands:
 
-**Fix:** the verified projection is shared through `AccountSessionProvider`. Protected page navigation now uses one account request and reuses the result for the account name and page shell.
+- `npm run story:audit:strict`
+- `npm run e2e:stories`
+- `npm run e2e:devices`
 
-### 3. Email Login ignored required stages
-
-A successful Email Login response could require initial Password setup, 2FA or Email verification, but the UI navigated directly to the requested page.
-
-**Fix:** Email Login and Native Session Exchange now use the same continuation resolver and cannot skip required authentication stages.
-
-### 4. Registration and Email verification lost the user's destination
-
-A user choosing a plan could be sent through registration and Email verification, then lose the original Checkout return path.
-
-**Fix:** `return_to` is preserved through Register → Verify Email → Login → Password setup / 2FA → original page.
-
-### 5. Empty reset Tokens and 2FA Challenges reached the API
-
-The UI allowed a reset or 2FA request with missing required context.
-
-**Fix:** these fail locally with `RESET_TOKEN_REQUIRED` or `TWO_FACTOR_CHALLENGE_REQUIRED`; the typed input remains intact and no request is sent.
-
-### 6. Nested API errors were hidden
-
-Backend errors shaped as `{ error: { code, message } }` became generic `HTTP_...` messages.
-
-**Fix:** nested and flat error payloads are normalized so the user sees the actionable message and code.
-
-### 7. Rapid duplicate submissions could create separate idempotency keys
-
-Two near-simultaneous clicks on an idempotent action could start two browser requests.
-
-**Fix:** concurrent idempotent submissions are deduplicated by method, endpoint and stable request body. One in-flight Promise and one Idempotency Key are used.
-
-### 8. Malformed encoded path parameters could crash route matching
-
-`decodeURIComponent` was used without a fail-closed boundary.
-
-**Fix:** malformed parameters resolve to the Not Found route instead of throwing.
-
-### 9. Plain Enter still depended on a legacy interception layer
-
-The React Composer retained an Enter-to-run handler. The browser interaction layer stopped propagation, but this behavior had no direct user-story evidence.
-
-**Fix:** explicit stories verify that plain Enter and Shift+Enter remain line breaks in normal and Fullscreen Composer, while Ctrl/Cmd+Enter is the explicit keyboard execution action.
-
-### 10. Rapid run activation could race React state
-
-Two clicks could occur before the `isRunning` state had rendered the Stop button.
-
-**Fix:** the capture-phase interaction guard locks launch immediately and the `/process` fetch boundary rejects a second in-flight execution.
-
-### 11. Process requests had no browser-owned request identity
-
-The legacy `/process` request did not attach an Idempotency Key or Request ID.
-
-**Fix:** the process boundary adds one generated identifier to both `Idempotency-Key` and `X-Request-ID`.
-
-### 12. Incomplete Result sections could be shown as completed output
-
-A non-empty one-section payload was accepted by the React normalizer.
-
-**Fix:** the process boundary accepts only JSON with exactly eight non-empty unique sections, including canonical and legacy key aliases. Incomplete output fails closed and the Composer draft remains available.
-
-### 13. The canonical Result contract could not be rendered
-
-The current shared contract defines `sections` as an object keyed by the canonical eight section names, while the legacy React UI only reads arrays or top-level legacy aliases. A correct backend response would therefore be rejected or displayed as empty.
-
-**Fix:** canonical eight-key objects are validated in their fixed order, converted into the legacy display array without discarding titles, content or source IDs, and then returned to the React UI. A dedicated canonical-object story checks all eight rendered sections.
-
-## Authored story evidence
-
-- Authentication and route source: `tests/user-journey-stories.spec.ts`
-- Composer source: `tests/composer-user-stories.spec.ts`
-- Canonical Result source: `tests/canonical-result-user-stories.spec.ts`
-- Static gate: `scripts/user-story-audit.mjs`
-- Commands:
-  - `npm run story:audit:strict`
-  - `npm run e2e:stories`
-  - `npm run e2e:devices`
-- CI stores the source audit JSON and Playwright report before the final Notion/brand strict gate.
-
-The static audit requires at least:
-
-- 29 unique story tests, currently authored as 33 unique Story IDs;
-- 8 Composer-specific stories;
-- 20 protected routes, currently 22;
-- 5 public routes, currently 6;
-- explicit coverage for account state, Checkout trust, required auth stages, open-redirect prevention, duplicate registration, nested errors, network failure, preference safety, retry, malformed paths, Enter behavior, duplicate runs, process identity, fixed eight-section Results, canonical Result objects and draft preservation.
+CI validates all Browser helper scripts, audits the Story sources, typechecks/builds the app, runs the full Playwright device and Story matrix, then uploads reports before the final Notion/brand strict gate.
 
 ## Evidence status
 
-- Source review: complete for the changed route, auth, API, submission, page-shell, Composer interaction and Result compatibility boundaries.
-- Defect fixes: committed to `main`.
-- Story test source: committed.
-- Static audit source: committed.
-- Node 22 syntax check for the complete browser interaction runtime and story audit script: passed.
-- GitHub Actions execution: not yet confirmed.
-- Playwright pass/fail report: not yet confirmed.
-- Cloudflare, backend sandbox, Square, OAuth, Storage, Vault, MCP endpoint and physical-device execution: not confirmed.
+- Source review and fixes: committed to `main`.
+- Authored Story source: committed.
+- Story and Notion static gates: committed.
+- JavaScript/TypeScript syntax checks: must be rerun against the final HEAD after the last commercial-account changes.
+- GitHub Actions execution: not yet confirmed through an accessible repository-wide Run listing.
+- Playwright pass/fail artifacts: not yet confirmed.
+- Cloudflare, backend sandbox, Square, OAuth, Storage, Vault, MCP endpoint, emulator/simulator and physical-device execution: not confirmed.
+- Official approved logo bytes: missing; strict source gate remains failing.
 - Production: **NO-GO**.
 
-No authored test or source review is reported as an executed pass until a workflow run and artifacts are available.
+Authored tests and source review are not reported as executed passes until workflow/job evidence is available.
