@@ -5,6 +5,24 @@ let lastLayoutWidth = 0;
 let lastViewportHeight = 0;
 let lastViewportOffsetTop = 0;
 let lastScrollbarWidth = -1;
+let currentOrientation: AsteraOrientation | null = null;
+let orientationSnapshot: ScrollSnapshot | null = null;
+let orientationTimers: number[] = [];
+
+type AsteraOrientation = 'portrait' | 'landscape';
+
+type ScrollSnapshot = {
+  windowY: number;
+  entries: Array<{ element: HTMLElement; top: number }>;
+};
+
+const ORIENTATION_SCROLL_CONTAINERS = [
+  '.timeline',
+  '.platform-main',
+  '.dialog-content',
+  '.sidebar-scroll-viewport',
+  '.platform-mobile-drawer',
+] as const;
 
 function viewportSize(): { width: number; height: number; offsetTop: number; scrollbarWidth: number } {
   const viewport = window.visualViewport;
@@ -22,6 +40,10 @@ function viewportSize(): { width: number; height: number; offsetTop: number; scr
   };
 }
 
+function orientationFromViewport(width: number, height: number): AsteraOrientation {
+  return width > height ? 'landscape' : 'portrait';
+}
+
 function viewportClass(width: number): 'compact' | 'mobile' | 'tablet' | 'desktop' {
   if (width <= 420) return 'compact';
   if (width <= 760) return 'mobile';
@@ -35,12 +57,42 @@ function setPixelVariable(name: string, value: number, previousValue: number): n
   return value;
 }
 
-function applyCapabilities(): void {
+function captureScrollSnapshot(): ScrollSnapshot {
+  const entries = ORIENTATION_SCROLL_CONTAINERS.flatMap((selector) =>
+    Array.from(document.querySelectorAll<HTMLElement>(selector)).map((element) => ({
+      element,
+      top: element.scrollTop,
+    })),
+  );
+
+  return {
+    windowY: window.scrollY,
+    entries,
+  };
+}
+
+function restoreScrollSnapshot(snapshot: ScrollSnapshot): void {
+  window.scrollTo({ top: snapshot.windowY, left: 0, behavior: 'auto' });
+  root.scrollLeft = 0;
+  document.body.scrollLeft = 0;
+
+  for (const entry of snapshot.entries) {
+    if (!entry.element.isConnected) continue;
+    const maxTop = Math.max(0, entry.element.scrollHeight - entry.element.clientHeight);
+    entry.element.scrollTo({
+      top: Math.min(entry.top, maxTop),
+      left: 0,
+      behavior: 'auto',
+    });
+  }
+}
+
+function applyCapabilities(forcedOrientation?: AsteraOrientation): void {
   scheduledFrame = 0;
   const size = viewportSize();
   const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
   const hoverAvailable = window.matchMedia('(hover: hover)').matches;
-  const landscape = size.width > size.height;
+  const orientation = forcedOrientation ?? orientationFromViewport(size.width, size.height);
 
   if (size.width !== lastLayoutWidth) {
     lastLayoutWidth = setPixelVariable('--app-layout-width', size.width, lastLayoutWidth);
@@ -50,7 +102,7 @@ function applyCapabilities(): void {
   lastViewportOffsetTop = setPixelVariable('--app-viewport-offset-top', size.offsetTop, lastViewportOffsetTop);
   lastScrollbarWidth = setPixelVariable('--app-scrollbar-width', size.scrollbarWidth, lastScrollbarWidth);
   root.dataset.asteraViewport = viewportClass(size.width);
-  root.dataset.asteraOrientation = landscape ? 'landscape' : 'portrait';
+  root.dataset.asteraOrientation = orientation;
   root.classList.toggle('astera-touch', coarsePointer);
   root.classList.toggle('astera-hoverless', !hoverAvailable);
   root.classList.toggle('astera-short-viewport', size.height <= 560);
@@ -58,19 +110,60 @@ function applyCapabilities(): void {
 
 function scheduleCapabilities(): void {
   if (scheduledFrame) return;
-  scheduledFrame = window.requestAnimationFrame(applyCapabilities);
+  scheduledFrame = window.requestAnimationFrame(() => applyCapabilities());
 }
 
-function observeMedia(query: MediaQueryList): void {
+function clearOrientationTimers(): void {
+  for (const timer of orientationTimers) window.clearTimeout(timer);
+  orientationTimers = [];
+}
+
+function beginOrientationTransition(nextOrientation: AsteraOrientation): void {
+  const previousOrientation = currentOrientation ?? nextOrientation;
+  if (nextOrientation === currentOrientation && root.classList.contains('astera-rotating')) return;
+
+  clearOrientationTimers();
+  orientationSnapshot = captureScrollSnapshot();
+  currentOrientation = nextOrientation;
+  root.classList.add('astera-rotating');
+  root.dataset.asteraOrientation = nextOrientation;
+
+  window.dispatchEvent(new CustomEvent('astera:orientationchange', {
+    detail: {
+      previous: previousOrientation,
+      current: nextOrientation,
+    },
+  }));
+
+  const settleDelays = [0, 80, 180, 360];
+  orientationTimers = settleDelays.map((delay, index) => window.setTimeout(() => {
+    applyCapabilities(nextOrientation);
+    if (orientationSnapshot) restoreScrollSnapshot(orientationSnapshot);
+
+    if (index === settleDelays.length - 1) {
+      root.classList.remove('astera-rotating');
+      orientationSnapshot = null;
+      orientationTimers = [];
+      window.dispatchEvent(new CustomEvent('astera:orientation-settled', {
+        detail: { current: nextOrientation },
+      }));
+    }
+  }, delay));
+}
+
+function observeMedia(
+  query: MediaQueryList,
+  listener: (event: MediaQueryListEvent) => void = scheduleCapabilities,
+): void {
   if (typeof query.addEventListener === 'function') {
-    query.addEventListener('change', scheduleCapabilities);
+    query.addEventListener('change', listener);
     return;
   }
 
   const legacyQuery = query as MediaQueryList & {
-    addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+    addListener?: (legacyListener: (event: MediaQueryListEvent) => void) => void;
   };
-  legacyQuery.addListener?.(scheduleCapabilities);
+  legacyQuery.addListener?.(listener);
 }
 
 export function initializeDeviceCompatibility(): void {
@@ -78,9 +171,11 @@ export function initializeDeviceCompatibility(): void {
   initialized = true;
   root.dataset.asteraDeviceCompatibility = 'ready';
 
-  applyCapabilities();
+  const initialSize = viewportSize();
+  currentOrientation = orientationFromViewport(initialSize.width, initialSize.height);
+  applyCapabilities(currentOrientation);
+
   window.addEventListener('resize', scheduleCapabilities, { passive: true });
-  window.addEventListener('orientationchange', scheduleCapabilities, { passive: true });
   window.addEventListener('pageshow', scheduleCapabilities, { passive: true });
   document.addEventListener('visibilitychange', scheduleCapabilities, { passive: true });
 
@@ -88,4 +183,11 @@ export function initializeDeviceCompatibility(): void {
   window.visualViewport?.addEventListener('scroll', scheduleCapabilities, { passive: true });
   observeMedia(window.matchMedia('(pointer: coarse)'));
   observeMedia(window.matchMedia('(hover: hover)'));
+  observeMedia(window.matchMedia('(orientation: landscape)'), (event) => {
+    beginOrientationTransition(event.matches ? 'landscape' : 'portrait');
+  });
+  window.addEventListener('orientationchange', () => {
+    const landscape = window.matchMedia('(orientation: landscape)').matches;
+    beginOrientationTransition(landscape ? 'landscape' : 'portrait');
+  }, { passive: true });
 }
