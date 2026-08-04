@@ -66,6 +66,14 @@ function normalizePathname(pathname: string): string {
   return withoutTrailingSlash.startsWith('/') ? withoutTrailingSlash : `/${withoutTrailingSlash}`;
 }
 
+function decodePathSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 function matchPattern(pattern: string, pathname: string): Record<string, string> | null {
   if (pattern === '*') return {};
   const patternParts = normalizePathname(pattern).split('/').filter(Boolean);
@@ -78,7 +86,9 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
     const actual = pathParts[index];
     if (expected.startsWith(':')) {
       if (!actual) return null;
-      params[expected.slice(1)] = decodeURIComponent(actual);
+      const decoded = decodePathSegment(actual);
+      if (decoded === null) return null;
+      params[expected.slice(1)] = decoded;
       continue;
     }
     if (expected !== actual) return null;
@@ -101,9 +111,14 @@ export function matchCanonicalRoute(pathname: string): RouteMatch {
 export function safeReturnPath(rawValue: string | null | undefined, fallback = '/app/new'): string {
   if (!rawValue) return fallback;
   try {
-    const decoded = decodeURIComponent(rawValue);
-    if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.includes('\\')) return fallback;
-    const url = new URL(decoded, window.location.origin);
+    const candidate = rawValue.startsWith('/') ? rawValue : decodeURIComponent(rawValue);
+    if (
+      !candidate.startsWith('/')
+      || candidate.startsWith('//')
+      || candidate.includes('\\')
+      || /[\u0000-\u001f\u007f]/.test(candidate)
+    ) return fallback;
+    const url = new URL(candidate, window.location.origin);
     if (url.origin !== window.location.origin) return fallback;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
