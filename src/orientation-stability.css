@@ -1,0 +1,85 @@
+html.astera-rotating,
+html.astera-rotating body,
+html.astera-rotating #root {
+  scroll-behavior: auto !important;
+}
+
+html.astera-rotating .app-shell,
+html.astera-rotating .main-column,
+html.astera-rotating .timeline,
+html.astera-rotating .composer-wrap,
+html.astera-rotating .turn-rail,
+html.astera-rotating .mobile-sidebar,
+html.astera-rotating .mobile-backdrop,
+html.astera-rotating .platform-shell,
+html.astera-rotating .platform-main,
+html.astera-rotating .platform-mobile-drawer,
+html.astera-rotating .platform-backdrop,
+html.astera-rotating .dialog-content,
+html.astera-rotating .fullscreen-dialog,
+html.astera-rotating .toast {
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-astera-orientation='landscape'] .app-shell,
+html[data-astera-orientation='landscape'] .platform-shell,
+html[data-astera-orientation='landscape'] .platform-public-page,
+html[data-astera-orientation='landscape'] .checkout-page {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+html[data-astera-orientation='landscape'] .mobile-header,
+html[data-astera-orientation='landscape'] .platform-mobile-header,
+html[data-astera-orientation='landscape'] .platform-public-header {
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+html[data-astera-orientation='landscape'] .composer-wrap {
+  padding-left: max(9px, env(safe-area-inset-left, 0px));
+  padding-right: max(9px, env(safe-area-inset-right, 0px));
+}
+
+html[data-astera-orientation='landscape'] .mobile-sidebar,
+html[data-astera-orientation='landscape'] .platform-mobile-drawer {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+html[data-astera-orientation='landscape'].astera-short-viewport .mobile-header,
+html[data-astera-orientation='landscape'].astera-short-viewport .platform-mobile-header {
+  height: 52px;
+  min-height: 52px;
+}
+
+html[data-astera-orientation='landscape'].astera-short-viewport .app-shell,
+html[data-astera-orientation='landscape'].astera-short-viewport .app-shell.sidebar-collapsed {
+  grid-template-rows: 52px minmax(0, 1fr);
+}
+
+html[data-astera-orientation='landscape'].astera-short-viewport .composer textarea {
+  max-height: 88px;
+}
+
+html[data-astera-orientation='landscape'].astera-short-viewport .dialog-content,
+html[data-astera-orientation='landscape'].astera-short-viewport .fullscreen-dialog {
+  max-height: calc(var(--app-viewport-height, 100vh) - 8px);
+}
+
+html[data-astera-orientation='landscape'].astera-short-viewport .platform-page-head,
+html[data-astera-orientation='landscape'].astera-short-viewport .platform-public-hero,
+html[data-astera-orientation='landscape'].astera-short-viewport .welcome-panel {
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.astera-rotating .app-shell,
+  html.astera-rotating .main-column,
+  html.astera-rotating .platform-shell,
+  html.astera-rotating .dialog-content,
+  html.astera-rotating .fullscreen-dialog {
+    animation: none !important;
+  }
+}
