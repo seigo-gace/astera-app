@@ -9,6 +9,7 @@ const read = (relativePath) => fs.readFileSync(resolve(relativePath), 'utf8');
 const storyPaths = [
   'tests/user-journey-stories.spec.ts',
   'tests/composer-user-stories.spec.ts',
+  'tests/canonical-result-user-stories.spec.ts',
 ];
 const storySources = Object.fromEntries(storyPaths.map((relativePath) => [relativePath, read(relativePath)]));
 const combinedStorySource = Object.values(storySources).join('\n');
@@ -38,6 +39,7 @@ const sourceRequirements = [
   ['src/platform/route-registry.ts', 'decodePathSegment'],
   ['public/app-interactions.js', 'ASTERA_PROCESS_ALREADY_RUNNING'],
   ['public/app-interactions.js', 'ASTERA_RESPONSE_SECTIONS_INCOMPLETE'],
+  ['public/app-interactions.js', 'canonicalSectionsFromObject'],
   ['public/app-interactions.js', "headers.set('Idempotency-Key', requestId)"],
 ];
 
@@ -67,10 +69,11 @@ const requiredStories = [
   'STORY-COMPOSER-006',
   'STORY-COMPOSER-007',
   'STORY-COMPOSER-008',
+  'STORY-RESULT-001',
 ];
 
 const gaps = [];
-if (storyIds.length < 28) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
+if (storyIds.length < 29) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
 if (composerStoryIds.length < 8) gaps.push(`COMPOSER_STORY_COUNT_TOO_LOW:${composerStoryIds.length}`);
 if (protectedPaths.length < 20) gaps.push(`PROTECTED_PATH_COUNT_TOO_LOW:${protectedPaths.length}`);
 if (publicPaths.length < 5) gaps.push(`PUBLIC_PATH_COUNT_TOO_LOW:${publicPaths.length}`);
@@ -122,6 +125,7 @@ const report = {
     'plain Enter line breaks and explicit shortcut execution',
     'process request identity and duplicate run prevention',
     'fixed eight-section result validation',
+    'canonical eight-key object normalization',
     'composer draft retention after failure',
     'fullscreen input behavior and user message accordion',
   ],
