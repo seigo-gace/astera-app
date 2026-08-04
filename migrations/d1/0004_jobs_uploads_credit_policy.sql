@@ -106,3 +106,56 @@ CREATE TABLE IF NOT EXISTS job_events (
 
 CREATE INDEX IF NOT EXISTS job_events_job_created
   ON job_events(job_id, created_at ASC);
+
+-- Reservation is rejected before any balance can become negative.
+CREATE TRIGGER IF NOT EXISTS credit_reservation_before_insert
+BEFORE INSERT ON credit_reservations
+WHEN NEW.status = 'reserved'
+BEGIN
+  SELECT CASE
+    WHEN NOT EXISTS (
+      SELECT 1 FROM credit_accounts
+      WHERE id = NEW.credit_account_id
+        AND (available_balance - reserved_balance) >= NEW.estimated_amount
+    )
+    THEN RAISE(ABORT, 'CREDIT_INSUFFICIENT_FOR_RESERVATION')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS credit_reservation_after_insert
+AFTER INSERT ON credit_reservations
+WHEN NEW.status = 'reserved'
+BEGIN
+  UPDATE credit_accounts
+  SET reserved_balance = reserved_balance + NEW.estimated_amount,
+      version = version + 1,
+      updated_at = NEW.created_at
+  WHERE id = NEW.credit_account_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS credit_reservation_commit
+AFTER UPDATE OF status, committed_amount ON credit_reservations
+WHEN OLD.status = 'reserved' AND NEW.status = 'committed'
+BEGIN
+  SELECT CASE
+    WHEN NEW.committed_amount IS NULL OR NEW.committed_amount < 0 OR NEW.committed_amount > OLD.estimated_amount
+    THEN RAISE(ABORT, 'CREDIT_COMMIT_AMOUNT_INVALID')
+  END;
+  UPDATE credit_accounts
+  SET available_balance = available_balance - NEW.committed_amount,
+      reserved_balance = reserved_balance - OLD.estimated_amount,
+      version = version + 1,
+      updated_at = NEW.updated_at
+  WHERE id = NEW.credit_account_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS credit_reservation_release
+AFTER UPDATE OF status ON credit_reservations
+WHEN OLD.status = 'reserved' AND NEW.status IN ('released', 'expired')
+BEGIN
+  UPDATE credit_accounts
+  SET reserved_balance = reserved_balance - OLD.estimated_amount,
+      version = version + 1,
+      updated_at = NEW.updated_at
+  WHERE id = NEW.credit_account_id;
+END;
