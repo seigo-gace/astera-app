@@ -1,0 +1,205 @@
+{
+  "auditDate": "2026-08-04",
+  "repository": "seigo-gace/astera-app",
+  "branch": "main",
+  "notionHierarchy": {
+    "pageCount": 90,
+    "unreadPages": 0,
+    "groups": [
+      {
+        "name": "root",
+        "count": 10,
+        "pages": [
+          "Astera App｜開発正本",
+          "01_議事録",
+          "02_基本・詳細設計",
+          "03_ロジック・Code",
+          "04_検証・デバッグ",
+          "05_GitHub反映・統合",
+          "06_デプロイ・実環境",
+          "07_未決定・確認事項",
+          "08_検索Index・DB",
+          "09_サイトマップ"
+        ]
+      },
+      {
+        "name": "module-design-10-24",
+        "count": 15,
+        "pages": [
+          "認証・Account Lifecycle",
+          "Billing・Square・Credit",
+          "Composer・Job Runtime",
+          "File Security Pipeline",
+          "Result Schema・Revision・根拠",
+          "Private Mode・暗号化・一時Object",
+          "高精度翻訳 Runtime Profile",
+          "Agent Mode Execution Policy",
+          "書類作成・Google Sheets Template",
+          "Astera Storage Lifecycle",
+          "外部Storage転送・OAuth",
+          "Developer Mode・Public API Broker",
+          "Observability・Incident・SLO",
+          "法務・同意・Data Rights",
+          "Capacity・Cost・Dependency"
+        ]
+      },
+      {
+        "name": "code-contract-10-22",
+        "count": 13,
+        "pages": [
+          "Package・Contract Boundary",
+          "Auth・Account Contract Code",
+          "Billing・Credit Contract Code",
+          "Job・File・Private Contract Code",
+          "Result・History・Share Contract Code",
+          "Option・Template・Storage Contract Code",
+          "Developer API Broker Contract Code",
+          "D1 Schema・Migration Candidate",
+          "PostgreSQL Schema・Migration Candidate",
+          "Environment・Config Schema",
+          "Error Code Catalog",
+          "Build・Test Script Manifest",
+          "Release Manifest・Evidence Schema"
+        ]
+      },
+      {
+        "name": "test-evidence-10-23",
+        "count": 14,
+        "pages": [
+          "Documentation・Contract Consistency Gate",
+          "Auth・Account・Security Test Gate",
+          "Billing・Square・Credit Test Gate",
+          "Job・File・Private Data Test Gate",
+          "Result・History・Share Test Gate",
+          "Option・Translation・Agent・Document Test Gate",
+          "Storage・OAuth・Transfer Test Gate",
+          "Developer API Broker Test Gate",
+          "Migration・Backup・Recovery Gate",
+          "Performance・Capacity・Cost Gate",
+          "UI・Accessibility・100 Story Test Gate",
+          "0.9.0 GitHub投入前Evidence",
+          "Notion全Page Inventory・GitHub Traceability",
+          "模擬稼働・Story Debug Evidence"
+        ]
+      },
+      {
+        "name": "screen-sitemap-10-43",
+        "count": 34,
+        "pages": [
+          "料金・プラン",
+          "Login",
+          "Account登録",
+          "Email確認",
+          "Password忘れ・再設定",
+          "Social初回Password設定",
+          "2FA Challenge",
+          "AppShell・共通外装",
+          "新しい実行",
+          "Result詳細",
+          "Project",
+          "History",
+          "Asteraについて",
+          "Settings入口",
+          "Option設定",
+          "表示・言語",
+          "個別Template管理",
+          "外部Storage接続",
+          "Astera Storage",
+          "Data・Privacy",
+          "Account概要",
+          "Account Security",
+          "Plan・Subscription",
+          "Credit購入・Ledger",
+          "Checkout確認",
+          "Billing Status",
+          "Developer Mode",
+          "Public Share",
+          "Private Share",
+          "Share管理",
+          "Legal",
+          "System State",
+          "Customer AI Bubble",
+          "通知・Credit警告"
+        ]
+      },
+      {
+        "name": "cross-cutting-source-of-truth",
+        "count": 4,
+        "pages": [
+          "Notion運用原則",
+          "Astera横断変更連携・影響管理正本",
+          "Commercial Catalog正本",
+          "Cloudflare Data正本"
+        ]
+      }
+    ]
+  },
+  "verifiedRepositoryReality": {
+    "frontend": {
+      "status": "source_present",
+      "details": "React/TypeScript/Vite shell, 43 canonical routes, responsive and native compatibility source are present."
+    },
+    "sharedContracts": {
+      "status": "source_added_not_runtime_proof",
+      "paths": [
+        "packages/contracts/src",
+        "packages/commercial-contracts/src",
+        "packages/config-schema/src"
+      ]
+    },
+    "cloudflareBackend": {
+      "status": "contract_source_only",
+      "deployed": false
+    },
+    "contaboBackend": {
+      "status": "contract_source_only",
+      "deployed": false
+    },
+    "d1": {
+      "status": "migration_source_only",
+      "applied": false
+    },
+    "postgresql": {
+      "status": "migration_source_only",
+      "applied": false
+    },
+    "openapi": {
+      "status": "contract_source_present",
+      "endpointVerification": false
+    },
+    "historicLocalCandidateEvidence": {
+      "status": "not_current_main_evidence",
+      "invalidatedClaims": [
+        "147/147 current repository tests",
+        "145/145 current repository story tests",
+        "D1 5 files / 24 tables applied",
+        "OpenAPI deployed",
+        "official logo integrated",
+        "all Notion pages implemented"
+      ]
+    },
+    "officialBrand": {
+      "status": "blocked_missing_approved_bytes",
+      "accessibleApprovedFiles": 0,
+      "production": "NO-GO"
+    },
+    "deterministicJapaneseMcp": {
+      "mcpStatus": "created_in_separate_repository",
+      "repository": "seigo-gace/Deterministic-Japanese-Parser-MCP",
+      "appConnectionStatus": "contract_source_only",
+      "skillRuntimeIsSeparate": true
+    },
+    "githubActions": {
+      "status": "not_confirmed"
+    },
+    "sandboxIntegrations": {
+      "status": "not_confirmed"
+    },
+    "physicalDevices": {
+      "status": "not_confirmed"
+    },
+    "production": {
+      "status": "NO-GO"
+    }
+  }
+}
