@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import App from '../App';
 import CheckoutPage from '../features/checkout/CheckoutPage';
 import PricingPage from '../features/pricing/PricingPage';
-import { ApiError, apiRequest } from './api-client';
+import { ApiError, apiRequest, asRecord, recordText } from './api-client';
 import { CanonicalPage } from './CanonicalPages';
 import { BusyState, ErrorState } from './ResponsivePageShell';
 import { matchCanonicalRoute } from './route-registry';
@@ -13,27 +13,71 @@ type GateState =
   | { status: 'ready' }
   | { status: 'error'; error: unknown };
 
-function AuthenticatedAppGate() {
+function currentReturnTo(): string {
+  return window.location.pathname + window.location.search + window.location.hash;
+}
+
+function accountProjection(payload: unknown) {
+  const root = asRecord(payload);
+  return asRecord(root.account ?? root.data ?? root);
+}
+
+function accountContinuation(payload: unknown, returnTo: string): string | null {
+  const account = accountProjection(payload);
+  const status = recordText(account, ['account_status', 'status']);
+  const params = new URLSearchParams({ return_to: returnTo });
+  const email = recordText(account, ['email']);
+  if (email) params.set('email', email);
+
+  if (status === 'pending_email_verification') return `/verify-email?${params.toString()}`;
+  if (status === 'pending_password_setup') return `/account/password/setup?${params.toString()}`;
+  return null;
+}
+
+function AccountSessionGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    setState({ status: 'loading' });
     apiRequest('/api/account', { signal: controller.signal })
-      .then(() => setState({ status: 'ready' }))
-      .catch((error: unknown) => {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-          const returnTo = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
-          window.location.replace(`/login?return_to=${returnTo}`);
+      .then((payload) => {
+        const returnTo = currentReturnTo();
+        const continuation = accountContinuation(payload, returnTo);
+        if (continuation) {
+          window.location.replace(continuation);
           return;
+        }
+
+        const account = accountProjection(payload);
+        const accountStatus = recordText(account, ['account_status', 'status']);
+        if (accountStatus && accountStatus !== 'active') {
+          setState({
+            status: 'error',
+            error: new ApiError('Accountの現在状態ではこのPageを利用できません。', 403, `ACCOUNT_${accountStatus.toUpperCase()}`, payload),
+          });
+          return;
+        }
+        setState({ status: 'ready' });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ApiError) {
+          const authenticationCodes = new Set(['AUTHENTICATION_REQUIRED', 'SESSION_REQUIRED', 'SESSION_EXPIRED', 'UNAUTHORIZED']);
+          if (error.status === 401 || (error.status === 403 && authenticationCodes.has(error.code))) {
+            const returnTo = encodeURIComponent(currentReturnTo());
+            window.location.replace(`/login?return_to=${returnTo}`);
+            return;
+          }
         }
         if (!controller.signal.aborted) setState({ status: 'error', error });
       });
     return () => controller.abort();
-  }, []);
+  }, [attempt]);
 
   if (state.status === 'loading') return <BusyState label="AccountとSessionを確認しています…" />;
-  if (state.status === 'error') return <ErrorState error={state.error} onRetry={() => window.location.reload()} />;
-  return <App />;
+  if (state.status === 'error') return <ErrorState error={state.error} onRetry={() => setAttempt((value) => value + 1)} />;
+  return children;
 }
 
 function RootRedirect() {
@@ -46,17 +90,18 @@ function RootRedirect() {
 export default function AppRouter() {
   const route = matchCanonicalRoute(window.location.pathname);
 
-  switch (route.id) {
-    case 'root':
-      return <RootRedirect />;
-    case 'app':
-    case 'new-run':
-      return <AuthenticatedAppGate />;
-    case 'pricing':
-      return <PricingPage />;
-    case 'account-checkout':
-      return <CheckoutPage />;
-    default:
-      return <CanonicalPage route={route} />;
+  if (route.id === 'root') return <RootRedirect />;
+  if (route.id === 'pricing') return <PricingPage />;
+
+  // Checkout owns an inline Login/Register gate so the selected plan and return context remain visible.
+  if (route.id === 'account-checkout') return <CheckoutPage />;
+
+  if (route.id === 'app' || route.id === 'new-run') {
+    return <AccountSessionGate><App /></AccountSessionGate>;
   }
+
+  const page = <CanonicalPage route={route} />;
+  return route.access === 'authenticated'
+    ? <AccountSessionGate>{page}</AccountSessionGate>
+    : page;
 }
