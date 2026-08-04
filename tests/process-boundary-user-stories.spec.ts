@@ -45,7 +45,8 @@ test('STORY-PROCESS-001 unresolved local file metadata fails closed before backe
   await page.locator('.composer textarea').fill('添付Fileを根拠として検証する');
   await page.locator('.composer textarea').press('Control+Enter');
 
-  await expect(page.locator('.error-panel')).toContainText('ASTERA_API_409');
+  await expect(page.locator('.error-panel')).toContainText('添付Fileの実DataがUploadされていない');
+  await expect(page.locator('.error-panel')).toContainText('FILE_UPLOAD_PIPELINE_NOT_CONNECTED');
   await expect(page.locator('.selection-chip')).toContainText('evidence.txt');
   await expect(page.locator('.composer textarea')).toHaveValue('添付Fileを根拠として検証する');
   expect(processRequests).toBe(0);
@@ -63,16 +64,20 @@ test('STORY-PROCESS-002 Composer and request boundary enforce the 200000 charact
   await expect(textarea).toHaveAttribute('maxlength', '200000');
 
   const result = await page.evaluate(async () => {
-    const response = await fetch('/process', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ input: 'あ'.repeat(200_001), purposes: [], paid_options: [], files: [], template: null }),
-    });
-    return { status: response.status, payload: await response.json() };
+    try {
+      await fetch('/process', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ input: 'あ'.repeat(200_001), purposes: [], paid_options: [], files: [], template: null }),
+      });
+      return { message: '' };
+    } catch (error) {
+      return { message: error instanceof Error ? error.message : String(error) };
+    }
   });
 
-  expect(result.status).toBe(413);
-  expect(result.payload.error.code).toBe('ASTERA_INPUT_TOO_LARGE');
+  expect(result.message).toContain('200,000文字以内');
+  expect(result.message).toContain('ASTERA_INPUT_TOO_LARGE');
   expect(processRequests).toBe(0);
 });
 
@@ -90,7 +95,8 @@ test('STORY-PROCESS-003 non-JSON success responses fail closed and preserve the 
   await textarea.fill('ProxyのHTMLをResultとして表示しない');
   await textarea.press('Control+Enter');
 
-  await expect(page.locator('.error-panel')).toContainText('ASTERA_API_502');
+  await expect(page.locator('.error-panel')).toContainText('AsteraのResult形式を確認できませんでした。');
+  await expect(page.locator('.error-panel')).toContainText('ASTERA_RESPONSE_JSON_REQUIRED');
   await expect(page.locator('.result-section')).toHaveCount(0);
   await expect(textarea).toHaveValue('ProxyのHTMLをResultとして表示しない');
 });
