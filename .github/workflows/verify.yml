@@ -32,6 +32,16 @@ jobs:
         run: npm run device:audit
       - name: Audit native source boundaries
         run: npm run mobile:audit
+      - name: Audit Notion claims against repository reality
+        run: npm run notion:audit:strict
+      - name: Upload Notion repository audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: astera-notion-repository-audit
+          path: audit-results/notion-repository-audit.json
+          if-no-files-found: warn
+          retention-days: 30
       - name: Typecheck and build
         run: npm run build
       - name: Install Chromium and WebKit
