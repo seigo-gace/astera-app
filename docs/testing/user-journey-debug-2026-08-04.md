@@ -8,9 +8,10 @@ The authored browser matrix covers:
 
 - 22 authenticated routes and exact return-context restoration;
 - 6 public routes that must not require an account projection;
+- 32 uniquely identified adversarial stories across authentication and Composer execution;
 - Chromium desktop and WebKit touch representatives for adversarial journeys;
 - the existing 11-project device matrix for layout, touch, rotation, tablet, foldable, Android, iPhone, iPad and desktop coverage;
-- authentication stages, registration, Email verification, Password reset, 2FA, Account state, Checkout, Settings, network failure, API errors, retry, duplicate input and malformed URLs.
+- authentication stages, registration, Email verification, Password reset, 2FA, Account state, Checkout, Settings, network failure, API errors, retry, duplicate input, malformed URLs, Composer execution, result completeness and accordion behavior.
 
 ## Defects found and fixed
 
@@ -62,9 +63,34 @@ Two near-simultaneous clicks on an idempotent action could start two browser req
 
 **Fix:** malformed parameters resolve to the Not Found route instead of throwing.
 
+### 9. Plain Enter still depended on a legacy interception layer
+
+The React Composer retained an Enter-to-run handler. The browser interaction layer stopped propagation, but this behavior had no direct user-story evidence.
+
+**Fix:** explicit stories verify that plain Enter and Shift+Enter remain line breaks in normal and Fullscreen Composer, while Ctrl/Cmd+Enter is the explicit keyboard execution action.
+
+### 10. Rapid run activation could race React state
+
+Two clicks could occur before the `isRunning` state had rendered the Stop button.
+
+**Fix:** the capture-phase interaction guard locks launch immediately and the `/process` fetch boundary rejects a second in-flight execution.
+
+### 11. Process requests had no browser-owned request identity
+
+The legacy `/process` request did not attach an Idempotency Key or Request ID.
+
+**Fix:** the process boundary adds one generated identifier to both `Idempotency-Key` and `X-Request-ID`.
+
+### 12. Incomplete Result sections could be shown as completed output
+
+A non-empty one-section payload was accepted by the React normalizer.
+
+**Fix:** the process boundary accepts only JSON with exactly eight non-empty unique sections, including canonical and legacy key aliases. Incomplete output fails closed and the Composer draft remains available.
+
 ## Authored story evidence
 
-- Test source: `tests/user-journey-stories.spec.ts`
+- Authentication and route source: `tests/user-journey-stories.spec.ts`
+- Composer source: `tests/composer-user-stories.spec.ts`
 - Static gate: `scripts/user-story-audit.mjs`
 - Commands:
   - `npm run story:audit:strict`
@@ -74,14 +100,15 @@ Two near-simultaneous clicks on an idempotent action could start two browser req
 
 The static audit requires at least:
 
-- 20 unique story tests;
-- 20 protected routes;
-- 5 public routes;
-- explicit coverage for account state, Checkout trust, required auth stages, open-redirect prevention, duplicate registration, nested errors, network failure, preference safety, retry and malformed paths.
+- 28 unique story tests, currently authored as 32 unique Story IDs;
+- 8 Composer-specific stories;
+- 20 protected routes, currently 22;
+- 5 public routes, currently 6;
+- explicit coverage for account state, Checkout trust, required auth stages, open-redirect prevention, duplicate registration, nested errors, network failure, preference safety, retry, malformed paths, Enter behavior, duplicate runs, process identity, fixed eight-section Results and draft preservation.
 
 ## Evidence status
 
-- Source review: complete for the changed route, auth, API, submission and page-shell boundaries.
+- Source review: complete for the changed route, auth, API, submission, page-shell and Composer interaction boundaries.
 - Defect fixes: committed to `main`.
 - Story test source: committed.
 - Static audit source: committed.
