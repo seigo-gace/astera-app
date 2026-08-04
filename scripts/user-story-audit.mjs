@@ -13,6 +13,7 @@ const storyPaths = [
   'tests/process-boundary-user-stories.spec.ts',
   'tests/checkout-resilience-user-stories.spec.ts',
   'tests/ui-honesty-user-stories.spec.ts',
+  'tests/account-commercial-user-stories.spec.ts',
 ];
 const storySources = Object.fromEntries(storyPaths.map((relativePath) => [relativePath, read(relativePath)]));
 const combinedStorySource = Object.values(storySources).join('\n');
@@ -37,11 +38,18 @@ const sourceRequirements = [
   ['src/platform/pages/AuthPages.tsx', 'RESET_TOKEN_REQUIRED'],
   ['src/platform/pages/AuthPages.tsx', 'TWO_FACTOR_CHALLENGE_REQUIRED'],
   ['src/platform/pages/page-kit.tsx', 'inFlightIdempotentSubmissions'],
+  ['src/platform/api-client.ts', 'HISTORY_SEARCH_DEBOUNCE_MS'],
   ['src/platform/api-client.ts', 'errorPayload'],
   ['src/platform/api-client.ts', 'idempotencyKey?: string'],
+  ['src/platform/route-registry.ts', "route.group === 'auth'"],
   ['src/platform/route-registry.ts', 'decodePathSegment'],
+  ['src/features/pricing/PricingPage.tsx', 'CATALOG_TIMEOUT'],
   ['src/features/checkout/CheckoutPage.tsx', 'checkoutRef'],
   ['src/features/checkout/CheckoutPage.tsx', 'CHECKOUT_INTENT_TIMEOUT'],
+  ['src/platform/pages/AccountPages.tsx', '成功したように見せる空POSTは行いません。'],
+  ['src/platform/pages/AccountPages.tsx', 'creditProducts'],
+  ['src/platform/pages/AccountPages.tsx', 'targetCanIssue'],
+  ['src/platform/pages/AccountPages.tsx', 'API_KEY_SECRET_MISSING'],
   ['public/app-interactions.js', 'ASTERA_PROCESS_ALREADY_RUNNING'],
   ['public/app-interactions.js', 'ASTERA_RESPONSE_SECTIONS_INCOMPLETE'],
   ['public/app-interactions.js', 'canonicalSectionsFromObject'],
@@ -62,6 +70,7 @@ const requiredStories = [
   'STORY-LOGIN-002',
   'STORY-LOGIN-003',
   'STORY-LOGIN-004',
+  'STORY-LOGIN-005',
   'STORY-REGISTER-002',
   'STORY-VERIFY-001',
   'STORY-PASSWORD-001',
@@ -87,10 +96,17 @@ const requiredStories = [
   'STORY-UI-001',
   'STORY-UI-002',
   'STORY-UI-003',
+  'STORY-PRICING-001',
+  'STORY-HISTORY-001',
+  'STORY-SECURITY-001',
+  'STORY-CREDIT-001',
+  'STORY-CREDIT-002',
+  'STORY-DEVELOPER-001',
+  'STORY-DEVELOPER-002',
 ];
 
 const gaps = [];
-if (storyIds.length < 40) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
+if (storyIds.length < 48) gaps.push(`STORY_ID_COUNT_TOO_LOW:${storyIds.length}`);
 if (composerStoryIds.length < 8) gaps.push(`COMPOSER_STORY_COUNT_TOO_LOW:${composerStoryIds.length}`);
 if (protectedPaths.length < 20) gaps.push(`PROTECTED_PATH_COUNT_TOO_LOW:${protectedPaths.length}`);
 if (publicPaths.length < 5) gaps.push(`PUBLIC_PATH_COUNT_TOO_LOW:${publicPaths.length}`);
@@ -127,6 +143,9 @@ const report = {
     'authenticated route redirect and exact return context',
     'account state continuation and security hold',
     'single account projection per protected page',
+    'authentication return-loop prevention',
+    'pricing failure recovery and catalog timeout boundary',
+    'history search debounce',
     'pricing and checkout login boundary',
     'trusted checkout destination and duplicate intent prevention',
     'password setup and two-factor continuation',
@@ -149,6 +168,9 @@ const report = {
     'single Purpose selection',
     'disabled unavailable Project Source controls',
     'session-only legacy Settings disclosure',
+    'disabled incomplete Passkey and 2FA mutations',
+    'catalog-owned Credit products and Checkout URL trust',
+    'Developer target availability and one-time Secret handling',
     'composer draft retention after failure',
     'fullscreen input behavior and user message accordion',
   ],
