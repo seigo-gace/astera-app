@@ -1,13 +1,23 @@
 const root = document.documentElement;
 let scheduledFrame = 0;
 let initialized = false;
+let lastLayoutWidth = 0;
+let lastViewportHeight = 0;
+let lastViewportOffsetTop = 0;
 
-function viewportSize(): { width: number; height: number; offsetTop: number } {
+function viewportSize(): { width: number; height: number; offsetTop: number; scrollbarWidth: number } {
   const viewport = window.visualViewport;
+  const documentWidth = root.clientWidth || window.innerWidth;
+  const layoutWidth = Math.max(240, Math.floor(documentWidth));
+  const viewportHeight = Math.max(320, Math.floor(viewport?.height ?? window.innerHeight));
+  const offsetTop = Math.max(0, Math.floor(viewport?.offsetTop ?? 0));
+  const scrollbarWidth = Math.max(0, Math.round(window.innerWidth - documentWidth));
+
   return {
-    width: Math.max(240, Math.round(viewport?.width ?? window.innerWidth)),
-    height: Math.max(320, Math.round(viewport?.height ?? window.innerHeight)),
-    offsetTop: Math.max(0, Math.round(viewport?.offsetTop ?? 0)),
+    width: layoutWidth,
+    height: viewportHeight,
+    offsetTop,
+    scrollbarWidth,
   };
 }
 
@@ -18,6 +28,12 @@ function viewportClass(width: number): 'compact' | 'mobile' | 'tablet' | 'deskto
   return 'desktop';
 }
 
+function setPixelVariable(name: string, value: number, previousValue: number): number {
+  if (value === previousValue) return previousValue;
+  root.style.setProperty(name, `${value}px`);
+  return value;
+}
+
 function applyCapabilities(): void {
   scheduledFrame = 0;
   const size = viewportSize();
@@ -25,9 +41,11 @@ function applyCapabilities(): void {
   const hoverAvailable = window.matchMedia('(hover: hover)').matches;
   const landscape = size.width > size.height;
 
-  root.style.setProperty('--app-viewport-height', `${size.height}px`);
+  lastLayoutWidth = setPixelVariable('--app-layout-width', size.width, lastLayoutWidth);
   root.style.setProperty('--app-viewport-width', `${size.width}px`);
-  root.style.setProperty('--app-viewport-offset-top', `${size.offsetTop}px`);
+  lastViewportHeight = setPixelVariable('--app-viewport-height', size.height, lastViewportHeight);
+  lastViewportOffsetTop = setPixelVariable('--app-viewport-offset-top', size.offsetTop, lastViewportOffsetTop);
+  root.style.setProperty('--app-scrollbar-width', `${size.scrollbarWidth}px`);
   root.dataset.asteraViewport = viewportClass(size.width);
   root.dataset.asteraOrientation = landscape ? 'landscape' : 'portrait';
   root.classList.toggle('astera-touch', coarsePointer);
