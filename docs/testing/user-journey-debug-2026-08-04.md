@@ -71,7 +71,10 @@ CI validates all Browser helper scripts, audits the Story sources, typechecks/bu
 - Source review and fixes: committed to `main`.
 - Authored Story source: committed.
 - Story and Notion static gates: committed.
-- JavaScript/TypeScript syntax checks: must be rerun against the final HEAD after the last commercial-account changes.
+- Final Browser helper scripts and audit scripts: Node 22 syntax check passed.
+- Final changed TypeScript/TSX boundaries: TypeScript syntax/transpile checks passed; the changed Account/Commercial boundary also passed a strict temporary dependency-stub compilation.
+- Complex Account/Commercial Story source: TypeScript syntax check passed.
+- Full repository dependency install, canonical `tsc --noEmit`, Vite build and Playwright execution: not confirmed in the connected GitHub environment.
 - GitHub Actions execution: not yet confirmed through an accessible repository-wide Run listing.
 - Playwright pass/fail artifacts: not yet confirmed.
 - Cloudflare, backend sandbox, Square, OAuth, Storage, Vault, MCP endpoint, emulator/simulator and physical-device execution: not confirmed.
