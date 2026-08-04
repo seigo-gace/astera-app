@@ -32,6 +32,10 @@ jobs:
         run: npm run device:audit
       - name: Audit native source boundaries
         run: npm run mobile:audit
+      - name: Typecheck Notion-derived contracts and service boundaries
+        run: npm run contract:check
+      - name: Typecheck and build frontend
+        run: npm run build
       - name: Audit Notion claims against repository reality
         run: npm run notion:audit:strict
       - name: Upload Notion repository audit
@@ -42,8 +46,6 @@ jobs:
           path: audit-results/notion-repository-audit.json
           if-no-files-found: warn
           retention-days: 30
-      - name: Typecheck and build
-        run: npm run build
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
       - name: Run iOS Android tablet foldable browser matrix
