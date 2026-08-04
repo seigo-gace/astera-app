@@ -22,7 +22,14 @@ type UploadRow = {
   expires_at: string | null;
 };
 
-type PagesContext = { request: Request; env: AsteraFunctionEnv };
+type Env = AsteraFunctionEnv & { PRIVATE_UPLOAD_TTL_SECONDS?: string };
+type PagesContext = { request: Request; env: Env };
+
+function privateUploadTtl(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 300) return 3600;
+  return Math.min(24 * 60 * 60, parsed);
+}
 
 async function loadUploads(
   context: PagesContext,
@@ -46,8 +53,18 @@ async function loadUploads(
   for (const row of ordered) {
     if (row.status !== 'ready') throw new FunctionHttpError(409, 'UPLOAD_NOT_READY', 'File UploadがReady状態ではありません。', { upload_id: row.id, status: row.status });
     if (row.expires_at && Date.parse(row.expires_at) <= now) throw new FunctionHttpError(409, 'UPLOAD_EXPIRED', 'Private Fileの有効期限が切れています。', { upload_id: row.id });
-    if (Boolean(row.private_mode) !== privateMode) {
-      throw new FunctionHttpError(409, 'UPLOAD_PRIVACY_MODE_MISMATCH', 'Fileの保存ModeとComposerのPrivate Modeが一致しません。', { upload_id: row.id });
+    if (privateMode && !Boolean(row.private_mode)) {
+      const expiresAt = new Date(now + privateUploadTtl(context.env.PRIVATE_UPLOAD_TTL_SECONDS) * 1000).toISOString();
+      const updated = await context.env.ASTERA_DB.prepare(
+        `UPDATE upload_objects
+         SET private_mode = 1, expires_at = ?1, updated_at = ?2
+         WHERE id = ?3 AND tenant_id = ?4 AND user_id = ?5 AND status = 'ready' AND private_mode = 0`,
+      ).bind(expiresAt, new Date(now).toISOString(), row.id, tenantId, userId).run();
+      if (updated.success === false) throw new FunctionHttpError(409, 'UPLOAD_PRIVATE_PROMOTION_FAILED', 'FileをPrivate Modeへ切り替えられませんでした。', { upload_id: row.id });
+      row.private_mode = 1;
+      row.expires_at = expiresAt;
+    } else if (!privateMode && Boolean(row.private_mode)) {
+      throw new FunctionHttpError(409, 'PRIVATE_UPLOAD_NORMAL_JOB_FORBIDDEN', 'Private Fileを通常保存Jobへ戻すことはできません。', { upload_id: row.id });
     }
   }
   return ordered;
