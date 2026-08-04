@@ -120,6 +120,8 @@ export function safeReturnPath(rawValue: string | null | undefined, fallback = '
     ) return fallback;
     const url = new URL(candidate, window.location.origin);
     if (url.origin !== window.location.origin) return fallback;
+    const route = matchCanonicalRoute(url.pathname);
+    if (route.group === 'auth') return fallback;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return fallback;
