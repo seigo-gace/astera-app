@@ -31,19 +31,20 @@ export function safeNavigate(path: string): void {
   window.location.assign(safeReturnPath(path, '/app/new'));
 }
 
-export function Field({ label, name, type = 'text', autoComplete, required = false, minLength, placeholder, inputMode, value, onChange }: {
+export function Field({ label, name, type = 'text', autoComplete, required = false, minLength, maxLength, placeholder, inputMode, value, onChange }: {
   label: string;
   name: string;
   type?: string;
   autoComplete?: string;
   required?: boolean;
   minLength?: number;
+  maxLength?: number;
   placeholder?: string;
   inputMode?: 'none' | 'text' | 'tel' | 'url' | 'email' | 'numeric' | 'decimal' | 'search';
   value?: string;
   onChange?: (value: string) => void;
 }) {
-  return <label className="platform-field"><span>{label}</span><input name={name} type={type} autoComplete={autoComplete} required={required} minLength={minLength} placeholder={placeholder} inputMode={inputMode} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} /></label>;
+  return <label className="platform-field"><span>{label}</span><input name={name} type={type} autoComplete={autoComplete} required={required} minLength={minLength} maxLength={maxLength} placeholder={placeholder} inputMode={inputMode} value={value} onChange={onChange ? (event) => onChange(event.target.value) : undefined} /></label>;
 }
 
 export function SelectField({ label, name, options, value, onChange }: {
@@ -64,16 +65,70 @@ export function FormResult({ state }: { state: { type: 'idle' | 'working' | 'suc
 
 export type SubmitState = { type: 'idle' | 'working' | 'success' | 'error'; message?: string; code?: string };
 
-export async function submitForm(endpoint: string, body: JsonObject, setState: (state: SubmitState) => void, options: { method?: 'POST' | 'PATCH' | 'DELETE'; success?: string; navigateTo?: string; idempotent?: boolean } = {}): Promise<unknown | null> {
+type SubmitOptions = {
+  method?: 'POST' | 'PATCH' | 'DELETE';
+  success?: string;
+  navigateTo?: string;
+  idempotent?: boolean;
+  idempotencyKey?: string;
+  dedupeKey?: string;
+  timeoutMs?: number;
+};
+
+const inFlightIdempotentSubmissions = new Map<string, Promise<unknown>>();
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+export async function submitForm(endpoint: string, body: JsonObject, setState: (state: SubmitState) => void, options: SubmitOptions = {}): Promise<unknown | null> {
   setState({ type: 'working' });
+  const method = options.method ?? 'POST';
+  const requestKey = options.idempotent
+    ? options.dedupeKey ?? `${method}:${endpoint}:${stableSerialize(body)}`
+    : null;
+
+  let request: Promise<unknown>;
+  if (requestKey) {
+    const existing = inFlightIdempotentSubmissions.get(requestKey);
+    if (existing) {
+      request = existing;
+    } else {
+      request = apiRequest(endpoint, {
+        method,
+        body,
+        idempotent: true,
+        idempotencyKey: options.idempotencyKey,
+        timeoutMs: options.timeoutMs,
+      });
+      inFlightIdempotentSubmissions.set(requestKey, request);
+    }
+  } else {
+    request = apiRequest(endpoint, {
+      method,
+      body,
+      idempotencyKey: options.idempotencyKey,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
   try {
-    const payload = await apiRequest(endpoint, { method: options.method ?? 'POST', body, idempotent: options.idempotent });
+    const payload = await request;
     setState({ type: 'success', message: options.success ?? '完了しました。' });
     if (options.navigateTo) window.setTimeout(() => safeNavigate(options.navigateTo as string), 250);
     return payload;
   } catch (error) {
     setState({ type: 'error', message: error instanceof Error ? error.message : '処理に失敗しました。', code: error instanceof ApiError ? error.code : 'UNKNOWN_ERROR' });
     return null;
+  } finally {
+    if (requestKey && inFlightIdempotentSubmissions.get(requestKey) === request) {
+      inFlightIdempotentSubmissions.delete(requestKey);
+    }
   }
 }
 
