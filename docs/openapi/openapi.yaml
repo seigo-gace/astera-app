@@ -1,0 +1,209 @@
+openapi: 3.1.0
+info:
+  title: Astera App Canonical API
+  version: 0.1.0-contract
+  description: >-
+    Contract source derived from the current Astera App Notion specification.
+    This document does not prove that endpoints are deployed or connected.
+servers:
+  - url: https://app.asterav8.jp
+    description: Production candidate; deployment not verified
+paths:
+  /api/catalog/public:
+    get:
+      operationId: getPublicCatalog
+      responses:
+        '200':
+          description: Versioned public commercial catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicCatalog'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/account:
+    get:
+      operationId: getAccountProjection
+      security:
+        - cookieSession: []
+      responses:
+        '200':
+          description: Current account and tenant projection
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/login:
+    post:
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12, maxLength: 128 }
+                return_to: { type: string }
+      responses:
+        '200': { description: Authenticated or additional authentication required }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/jobs/estimate:
+    post:
+      operationId: estimateJob
+      security:
+        - cookieSession: []
+      responses:
+        '200':
+          description: Server-owned credit estimate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobEstimate'
+        '409':
+          description: Credit insufficient before internal execution
+  /api/jobs:
+    post:
+      operationId: createJob
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { description: Credit reserved and job accepted }
+        '409': { description: Credit reservation rejected; request not executed }
+  /api/results/{resultId}:
+    get:
+      operationId: getResult
+      security:
+        - cookieSession: []
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Versioned fixed eight-section result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsteraResult'
+        '404': { description: Not found or not visible to the actor }
+  /api/billing/checkout-intents:
+    post:
+      operationId: createCheckoutIntent
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Server-validated Square checkout intent }
+        '409': { description: Account, fresh session, catalog, or security gate blocked }
+  /api/billing/status/{intentId}:
+    get:
+      operationId: getBillingStatus
+      security:
+        - cookieSession: []
+      parameters:
+        - name: intentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Verified billing and ledger projection }
+        '404': { description: Intent not found for current tenant }
+  /api/developer/keys:
+    get:
+      operationId: listDeveloperKeys
+      security:
+        - cookieSession: []
+      responses:
+        '200': { description: Account-linked key fingerprints and effective states }
+        '403': { description: Developer API entitlement missing }
+  /api/developer/targets/{targetId}/keys:
+    post:
+      operationId: createDeveloperKey
+      security:
+        - cookieSession: []
+      parameters:
+        - name: targetId
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Key secret returned once }
+        '409': { description: Target unavailable or account gate blocked }
+  /api/integrations/deterministic-japanese-mcp/status:
+    get:
+      operationId: getDeterministicJapaneseMcpStatus
+      security:
+        - cookieSession: []
+      responses:
+        '200':
+          description: App connection contract and pinned parser status; MCP source remains in its separate repository
+        '503':
+          description: Connection unavailable; fail closed
+components:
+  securitySchemes:
+    cookieSession:
+      type: apiKey
+      in: cookie
+      name: astera_session
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 200 }
+  responses:
+    Unauthorized:
+      description: Authentication required or incomplete
+    ServiceUnavailable:
+      description: Required canonical service unavailable; no mock success fallback
+  schemas:
+    PublicCatalog:
+      type: object
+      required: [catalogVersion, checksum, publishedAt, plans, creditProducts]
+      properties:
+        catalogVersion: { type: string }
+        checksum: { type: string }
+        publishedAt: { type: string, format: date-time }
+        plans: { type: array, items: { type: object } }
+        creditProducts: { type: array, items: { type: object } }
+    JobEstimate:
+      type: object
+      required: [estimateId, requiredCredits, availableCredits, reservedCredits, expiresAt, policyVersion]
+      properties:
+        estimateId: { type: string }
+        requiredCredits: { type: integer, minimum: 1 }
+        availableCredits: { type: integer, minimum: 0 }
+        reservedCredits: { type: integer, minimum: 0 }
+        expiresAt: { type: string, format: date-time }
+        policyVersion: { type: string }
+    AsteraResult:
+      type: object
+      required: [schemaVersion, runtimeVersion, purposeVersion, jobId, completionState, sections, sources, warnings, generatedAt]
+      properties:
+        schemaVersion: { type: string }
+        runtimeVersion: { type: string }
+        purposeVersion: { type: string }
+        jobId: { type: string }
+        completionState: { type: string, enum: [complete, partial, failed] }
+        sections:
+          type: object
+          required: [true_purpose, missing_assumptions, fact_check, risk_detection, counter_view, alternatives, recommendation, next_prompt]
+          additionalProperties: false
+          properties:
+            true_purpose: { type: object }
+            missing_assumptions: { type: object }
+            fact_check: { type: object }
+            risk_detection: { type: object }
+            counter_view: { type: object }
+            alternatives: { type: object }
+            recommendation: { type: object }
+            next_prompt: { type: object }
+        sources: { type: array, items: { type: object } }
+        warnings: { type: array, items: { type: string } }
+        generatedAt: { type: string, format: date-time }
