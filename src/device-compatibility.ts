@@ -24,6 +24,11 @@ const ORIENTATION_SCROLL_CONTAINERS = [
   '.platform-mobile-drawer',
 ] as const;
 
+const TRANSIENT_NAVIGATION_BACKDROPS = [
+  '.mobile-backdrop',
+  '.platform-backdrop',
+] as const;
+
 function viewportSize(): { width: number; height: number; offsetTop: number; scrollbarWidth: number } {
   const viewport = window.visualViewport;
   const documentWidth = root.clientWidth || window.innerWidth;
@@ -55,6 +60,14 @@ function setPixelVariable(name: string, value: number, previousValue: number): n
   if (value === previousValue) return previousValue;
   root.style.setProperty(name, `${value}px`);
   return value;
+}
+
+function closeTransientNavigation(): void {
+  for (const selector of TRANSIENT_NAVIGATION_BACKDROPS) {
+    for (const backdrop of document.querySelectorAll<HTMLElement>(selector)) {
+      backdrop.click();
+    }
+  }
 }
 
 function captureScrollSnapshot(): ScrollSnapshot {
@@ -119,10 +132,14 @@ function clearOrientationTimers(): void {
 }
 
 function beginOrientationTransition(nextOrientation: AsteraOrientation): void {
-  const previousOrientation = currentOrientation ?? nextOrientation;
-  if (nextOrientation === currentOrientation && root.classList.contains('astera-rotating')) return;
+  if (nextOrientation === currentOrientation) {
+    scheduleCapabilities();
+    return;
+  }
 
+  const previousOrientation = currentOrientation ?? nextOrientation;
   clearOrientationTimers();
+  closeTransientNavigation();
   orientationSnapshot = captureScrollSnapshot();
   currentOrientation = nextOrientation;
   root.classList.add('astera-rotating');
