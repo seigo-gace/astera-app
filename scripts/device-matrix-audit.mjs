@@ -9,6 +9,7 @@ const main = read('src/main.tsx');
 const runtime = read('src/device-compatibility.ts');
 const compatibilityCss = read('src/device-compatibility.css');
 const horizontalCss = read('src/horizontal-stability.css');
+const orientationCss = read('src/orientation-stability.css');
 const bootstrap = read('public/compatibility-bootstrap.js');
 const vite = read('vite.config.ts');
 const playwright = read('playwright.config.ts');
@@ -31,14 +32,21 @@ check('unsupported runtime guarded', main.includes('__ASTERA_RUNTIME_UNSUPPORTED
 
 const deviceCssIndex = main.indexOf("import './device-compatibility.css'");
 const horizontalCssIndex = main.indexOf("import './horizontal-stability.css'");
+const orientationCssIndex = main.indexOf("import './orientation-stability.css'");
 check('compatibility CSS imported after route styles', /AppRouter[^]*device-compatibility\.css/.test(main), 'device compatibility CSS must load after route styles');
-check('horizontal stability CSS imported last', deviceCssIndex >= 0 && horizontalCssIndex > deviceCssIndex, 'horizontal stability guard must load after all route and device styles');
+check('horizontal stability CSS imported after device CSS', deviceCssIndex >= 0 && horizontalCssIndex > deviceCssIndex, 'horizontal stability guard must load after device styles');
+check('orientation stability CSS imported last', horizontalCssIndex >= 0 && orientationCssIndex > horizontalCssIndex, 'rotation stability CSS must be the final style guard');
 check('compatibility runtime initialized', main.includes('initializeDeviceCompatibility();'), 'device runtime must initialize before render');
 check('visual viewport measured', runtime.includes('window.visualViewport'), 'iOS and Android visual viewport handling missing');
 check('layout width avoids visual viewport jitter', runtime.includes('root.clientWidth || window.innerWidth') && runtime.includes('--app-layout-width'), 'horizontal layout width must use the stable layout viewport');
 check('layout width updates are deduplicated', runtime.includes('setPixelVariable') && runtime.includes('value === previousValue'), 'unchanged viewport values must not churn CSS variables');
 check('pageshow recovery', runtime.includes("addEventListener('pageshow'"), 'iOS back-forward cache recovery missing');
 check('orientation recovery', runtime.includes("addEventListener('orientationchange'"), 'rotation handling missing');
+check('orientation media recovery', runtime.includes("matchMedia('(orientation: landscape)')"), 'orientation media-query fallback missing');
+check('orientation staged settling', runtime.includes('const settleDelays = [0, 80, 180, 360]'), 'iOS rotation must be recalculated across staged viewport updates');
+check('orientation scroll preservation', runtime.includes('captureScrollSnapshot') && runtime.includes('restoreScrollSnapshot'), 'rotation must preserve vertical position and force horizontal position to zero');
+check('orientation drawer closure', runtime.includes('closeTransientNavigation') && runtime.includes("'.mobile-backdrop'") && runtime.includes("'.platform-backdrop'"), 'open mobile navigation must close before rotation settles');
+check('orientation lifecycle events', runtime.includes('astera:orientationchange') && runtime.includes('astera:orientation-settled'), 'components and tests need explicit rotation lifecycle events');
 check('capability not model detection', !/iPhone\s*\d|Pixel\s*\d|Galaxy\s*S|userAgent/i.test(runtime), 'model or user-agent allowlists are forbidden');
 check('touch capability detection', runtime.includes("matchMedia('(pointer: coarse)')"), 'touch capability detection missing');
 check('hover capability detection', runtime.includes("matchMedia('(hover: hover)')"), 'hover capability detection missing');
@@ -62,6 +70,11 @@ check('long content wraps', horizontalCss.includes('overflow-wrap: anywhere') &&
 check('fixed overlays constrained', horizontalCss.includes('.dialog-content') && horizontalCss.includes('.toast') && horizontalCss.includes('max-width: calc(100% - 24px)'), 'dialogs and toasts must remain inside the viewport');
 check('tables remain inside page', horizontalCss.includes('table-layout: fixed') && horizontalCss.includes('td {'), 'table content must wrap without page overflow');
 
+check('rotation transitions disabled', orientationCss.includes('html.astera-rotating') && orientationCss.includes('transition: none !important'), 'layout transitions must not animate through intermediate rotation widths');
+check('landscape safe areas', orientationCss.includes("data-astera-orientation='landscape'") && orientationCss.includes('safe-area-inset-left') && orientationCss.includes('safe-area-inset-right'), 'landscape notch and rounded-corner safe areas missing');
+check('short landscape toolbar', orientationCss.includes('astera-short-viewport') && orientationCss.includes('height: 52px'), 'short landscape height adaptation missing');
+check('landscape composer height', orientationCss.includes('.composer textarea') && orientationCss.includes('max-height: 88px'), 'landscape keyboard and composer height constraint missing');
+
 check('feature based unsupported notice', bootstrap.includes('missingFeatures()') && bootstrap.includes('Asteraを安全に起動できません'), 'outdated WebView must show a usable notice');
 check('secure UUID fallback', bootstrap.includes('getRandomValues') && bootstrap.includes("window.crypto, 'randomUUID'"), 'randomUUID fallback missing');
 check('bootstrap avoids modern padStart', !bootstrap.includes('.padStart('), 'preflight must not rely on padStart');
@@ -83,6 +96,10 @@ check('horizontal wheel regression', horizontalTests.includes('horizontal wheel 
 check('long string regression', horizontalTests.includes('long unbroken content and many chips wrap') && horizontalTests.includes('horizontal-long-code'), 'long content overflow test missing');
 check('scrollbar layout shift regression', horizontalTests.includes('vertical scrollbar appearance and viewport restoration do not shift the page horizontally'), 'scrollbar and viewport restoration test missing');
 check('document scroll coordinates checked', horizontalTests.includes('windowScrollX') && horizontalTests.includes('documentScrollLeft') && horizontalTests.includes('bodyScrollLeft'), 'horizontal scroll coordinates must be asserted');
+check('portrait landscape round trip', horizontalTests.includes('portrait landscape round trip preserves input and scroll without horizontal movement'), 'rotation must test portrait to landscape and back');
+check('rotation input persistence', horizontalTests.includes("toHaveValue('rotation@example.test')") && horizontalTests.includes("toHaveValue('rotation-password-123')"), 'rotation must not erase in-progress form input');
+check('rotation drawer closure test', horizontalTests.includes('open compact drawer closes before landscape layout settles'), 'open mobile drawer must be tested during rotation');
+check('rotation events asserted', horizontalTests.includes('__ASTERA_ORIENTATION_EVENTS__') && horizontalTests.includes("toContain('landscape')") && horizontalTests.includes("toContain('portrait')"), 'both rotation directions must emit and be asserted');
 
 check('iPhone and iPad universal', nativeConfig.includes('TARGETED_DEVICE_FAMILY = "1,2";'), 'iOS target must include iPhone and iPad');
 check('iPhone orientations', nativeConfig.includes('UISupportedInterfaceOrientations'), 'iPhone orientation list missing');
