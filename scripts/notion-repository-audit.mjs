@@ -11,6 +11,7 @@ const readJson = (relativePath) => JSON.parse(read(relativePath));
 const requiredFrontendFiles = [
   'src/platform/route-registry.ts',
   'src/platform/app-router.tsx',
+  'src/platform/account-session.tsx',
   'src/platform/CanonicalPages.tsx',
   'src/platform/ResponsivePageShell.tsx',
   'src/platform/pages/AuthPages.tsx',
@@ -21,7 +22,11 @@ const requiredFrontendFiles = [
   'src/features/checkout/CheckoutPage.tsx',
   'src/platform/api-client.ts',
   'src/platform/deterministic-japanese-mcp-client.ts',
+  'public/app-interactions.js',
   'tests/device-matrix.spec.ts',
+  'tests/user-journey-stories.spec.ts',
+  'tests/composer-user-stories.spec.ts',
+  'scripts/user-story-audit.mjs',
 ];
 
 const requiredContractAndEvidenceFiles = [
@@ -45,6 +50,7 @@ const requiredContractAndEvidenceFiles = [
   'docs/evidence/README.md',
   'docs/brand/asset-recovery-manifest.md',
   'docs/integrations/deterministic-japanese-parser-mcp.md',
+  'docs/testing/user-journey-debug-2026-08-04.md',
   'docs/audit/notion-traceability-2026-08-04.json',
   'docs/audit/notion-page-traceability-2026-08-04.md',
   'tsconfig.contracts.json',
