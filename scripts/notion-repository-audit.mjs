@@ -41,7 +41,7 @@ const notionDeclaredImplementationPaths = [
 
 // Astera's deterministic Japanese MCP was developed as a separate product and
 // release unit. Its source belongs to seigo-gace/Deterministic-Japanese-Parser-MCP,
-// not to asterа-app. The app audit verifies only the future connection contract;
+// not to astera-app. The app audit verifies only the future connection contract;
 // it must never report the separate MCP source as an app repository gap.
 const scopeExclusions = [
   {
