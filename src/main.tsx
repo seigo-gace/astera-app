@@ -5,6 +5,7 @@ import './styles.css';
 import AppRouter from './platform/app-router';
 import './device-compatibility.css';
 import './horizontal-stability.css';
+import './orientation-stability.css';
 import { initializeDeviceCompatibility } from './device-compatibility';
 import { initializeNativeShell } from './native-shell';
 
