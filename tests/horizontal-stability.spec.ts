@@ -94,8 +94,8 @@ test('horizontal wheel and drawer interactions cannot move the document sideways
     await menu.click();
     await expect(page.locator('#platform-mobile-drawer')).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page, 'drawer open');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(50);
+    await page.getByRole('button', { name: 'Menuを閉じる' }).click();
+    await expect(page.locator('#platform-mobile-drawer')).toHaveCount(0);
     await expectNoDocumentHorizontalOverflow(page, 'drawer closed');
   }
 });
