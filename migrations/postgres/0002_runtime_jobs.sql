@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS runtime_jobs (
   id UUID PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -47,5 +45,3 @@ CREATE TABLE IF NOT EXISTS runtime_job_events (
 
 CREATE INDEX IF NOT EXISTS runtime_job_events_job_created
   ON runtime_job_events(job_id, created_at ASC);
-
-COMMIT;
