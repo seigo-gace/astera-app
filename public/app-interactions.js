@@ -7,7 +7,17 @@
   const USER_MESSAGE_SELECTOR = '.user-message';
   const RUN_BUTTON_SELECTOR = '.run-button:not(.is-stop)';
   const PREVIEW_LIMIT = 96;
-  const REQUIRED_RESULT_SECTION_COUNT = 8;
+  const CANONICAL_RESULT_SECTION_KEYS = [
+    'true_purpose',
+    'missing_assumptions',
+    'fact_check',
+    'risk_detection',
+    'counter_view',
+    'alternatives',
+    'recommendation',
+    'next_prompt',
+  ];
+  const REQUIRED_RESULT_SECTION_COUNT = CANONICAL_RESULT_SECTION_KEYS.length;
   const originalFetch = window.fetch.bind(window);
   let processInFlight = false;
   let launchLocked = false;
@@ -94,33 +104,79 @@
     }
   }
 
+  function isRecord(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
   function nonEmptyValue(value) {
     if (typeof value === 'string') return value.trim().length > 0;
     if (Array.isArray(value)) return value.length > 0;
     return false;
   }
 
-  function resultSectionCount(payload) {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 0;
-    const root = payload;
-    const candidate = root.result && typeof root.result === 'object' && !Array.isArray(root.result)
-      ? root.result
-      : root;
-    const sections = Array.isArray(root.sections)
-      ? root.sections
-      : Array.isArray(candidate.sections)
-        ? candidate.sections
-        : null;
+  function sectionBody(section) {
+    if (!isRecord(section)) return '';
+    if (typeof section.body === 'string') return section.body.trim();
+    if (typeof section.content === 'string') return section.content.trim();
+    return '';
+  }
 
-    if (sections) {
+  function canonicalSectionsFromObject(value) {
+    if (!isRecord(value)) return null;
+    const sections = [];
+    for (const key of CANONICAL_RESULT_SECTION_KEYS) {
+      const source = value[key];
+      const body = sectionBody(source);
+      if (!body) return null;
+      sections.push({
+        key,
+        title: typeof source.title === 'string' && source.title.trim() ? source.title.trim() : key.replace(/_/g, ' '),
+        body,
+        sourceIds: Array.isArray(source.sourceIds) ? source.sourceIds : Array.isArray(source.source_ids) ? source.source_ids : [],
+      });
+    }
+    return sections;
+  }
+
+  function normalizeProcessPayload(payload) {
+    if (!isRecord(payload)) return { payload, sectionCount: 0, changed: false };
+    const result = isRecord(payload.result) ? payload.result : null;
+    const candidate = result ?? payload;
+    const sectionValue = candidate.sections ?? payload.sections;
+
+    if (Array.isArray(sectionValue)) {
       const keys = new Set();
-      for (const [index, item] of sections.entries()) {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-        const body = typeof item.body === 'string' ? item.body : item.content;
-        if (!nonEmptyValue(body)) continue;
-        keys.add(String(item.key ?? index));
+      const normalized = [];
+      for (const [index, item] of sectionValue.entries()) {
+        const body = sectionBody(item);
+        if (!body) continue;
+        const key = String(isRecord(item) && item.key != null ? item.key : index);
+        if (keys.has(key)) continue;
+        keys.add(key);
+        normalized.push({
+          ...(isRecord(item) ? item : {}),
+          key,
+          title: isRecord(item) && typeof item.title === 'string' ? item.title : `Section ${index + 1}`,
+          body,
+        });
       }
-      return keys.size;
+      return { payload, sectionCount: normalized.length, changed: false };
+    }
+
+    const canonical = canonicalSectionsFromObject(sectionValue);
+    if (canonical) {
+      if (result) {
+        return {
+          payload: { ...payload, result: { ...result, sections: canonical }, sections: canonical },
+          sectionCount: canonical.length,
+          changed: true,
+        };
+      }
+      return {
+        payload: { ...payload, sections: canonical },
+        sectionCount: canonical.length,
+        changed: true,
+      };
     }
 
     const aliases = [
@@ -133,13 +189,25 @@
       ['recommendation'],
       ['next_prompt', 'instruction_for_primary_ai'],
     ];
-    return aliases.filter((keys) => keys.some((key) => nonEmptyValue(candidate[key]))).length;
+    const sectionCount = aliases.filter((keys) => keys.some((key) => nonEmptyValue(candidate[key]))).length;
+    return { payload, sectionCount, changed: false };
   }
 
   function processErrorResponse(code, message, status = 502) {
     return new Response(JSON.stringify({ error: { code, message } }), {
       status,
       headers: { 'content-type': 'application/json; charset=utf-8' },
+    });
+  }
+
+  function normalizedJsonResponse(response, payload) {
+    const headers = new Headers(response.headers);
+    headers.set('content-type', 'application/json; charset=utf-8');
+    headers.delete('content-length');
+    return new Response(JSON.stringify(payload), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
     });
   }
 
@@ -164,14 +232,14 @@
         return processErrorResponse('ASTERA_RESPONSE_JSON_REQUIRED', 'AsteraのResult形式を確認できませんでした。');
       }
       const payload = await response.clone().json().catch(() => null);
-      const sectionCount = resultSectionCount(payload);
-      if (sectionCount !== REQUIRED_RESULT_SECTION_COUNT) {
+      const normalized = normalizeProcessPayload(payload);
+      if (normalized.sectionCount !== REQUIRED_RESULT_SECTION_COUNT) {
         return processErrorResponse(
           'ASTERA_RESPONSE_SECTIONS_INCOMPLETE',
-          `AsteraのResultが固定8項目を満たしていません。受信項目数: ${sectionCount}`,
+          `AsteraのResultが固定8項目を満たしていません。受信項目数: ${normalized.sectionCount}`,
         );
       }
-      return response;
+      return normalized.changed ? normalizedJsonResponse(response, normalized.payload) : response;
     } finally {
       processInFlight = false;
       launchLocked = false;
