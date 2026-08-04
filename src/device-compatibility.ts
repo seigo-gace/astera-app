@@ -4,6 +4,7 @@ let initialized = false;
 let lastLayoutWidth = 0;
 let lastViewportHeight = 0;
 let lastViewportOffsetTop = 0;
+let lastScrollbarWidth = -1;
 
 function viewportSize(): { width: number; height: number; offsetTop: number; scrollbarWidth: number } {
   const viewport = window.visualViewport;
@@ -41,11 +42,13 @@ function applyCapabilities(): void {
   const hoverAvailable = window.matchMedia('(hover: hover)').matches;
   const landscape = size.width > size.height;
 
-  lastLayoutWidth = setPixelVariable('--app-layout-width', size.width, lastLayoutWidth);
-  root.style.setProperty('--app-viewport-width', `${size.width}px`);
+  if (size.width !== lastLayoutWidth) {
+    lastLayoutWidth = setPixelVariable('--app-layout-width', size.width, lastLayoutWidth);
+    root.style.setProperty('--app-viewport-width', `${size.width}px`);
+  }
   lastViewportHeight = setPixelVariable('--app-viewport-height', size.height, lastViewportHeight);
   lastViewportOffsetTop = setPixelVariable('--app-viewport-offset-top', size.offsetTop, lastViewportOffsetTop);
-  root.style.setProperty('--app-scrollbar-width', `${size.scrollbarWidth}px`);
+  lastScrollbarWidth = setPixelVariable('--app-scrollbar-width', size.scrollbarWidth, lastScrollbarWidth);
   root.dataset.asteraViewport = viewportClass(size.width);
   root.dataset.asteraOrientation = landscape ? 'landscape' : 'portrait';
   root.classList.toggle('astera-touch', coarsePointer);
