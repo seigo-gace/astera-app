@@ -23,14 +23,16 @@
     "platform:audit": "npm run route:audit && npm run responsive:audit && npm run device:audit && npm run mobile:audit",
     "e2e:devices": "playwright test",
     "e2e:stories": "playwright test tests/user-journey-stories.spec.ts",
-    "verify": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run notion:audit:strict",
+    "verify": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run cloudflare:functions:build && npm run notion:audit:strict",
     "mobile:bootstrap": "node scripts/mobile-bootstrap.mjs",
     "mobile:sync": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run notion:audit:strict && cap sync && node scripts/configure-native-platforms.mjs && npm run mobile:audit -- --native",
     "mobile:doctor": "cap doctor",
     "android:open": "npm run mobile:sync && cap open android",
     "android:run": "npm run mobile:sync && cap run android",
     "ios:open": "npm run mobile:sync && cap open ios",
-    "ios:run": "npm run mobile:sync && cap run ios"
+    "ios:run": "npm run mobile:sync && cap run ios",
+    "cloudflare:functions:build": "wrangler pages functions build functions --outdir=.wrangler/functions-build",
+    "cloudflare:dev": "npm run build && wrangler pages dev dist"
   },
   "dependencies": {
     "@capacitor/android": "8.4.2",
@@ -54,7 +56,9 @@
     "lucide-react": "1.25.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "react-i18next": "17.0.10"
+    "react-i18next": "17.0.10",
+    "@better-auth/passkey": "1.6.25",
+    "better-auth": "1.6.25"
   },
   "devDependencies": {
     "@capacitor/cli": "8.4.2",
@@ -63,6 +67,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "typescript": "7.0.2",
-    "vite": "8.1.5"
+    "vite": "8.1.5",
+    "wrangler": "4.114.0"
   }
 }
