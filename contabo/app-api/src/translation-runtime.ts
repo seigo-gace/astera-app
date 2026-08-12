@@ -81,14 +81,14 @@ function extractCandidate(payload: unknown): { output: string; usage: Usage } {
   const output = parts.map((part) => text(record(part).text)).join('').trimEnd();
   if (!output) throw codedError('TRANSLATION_PROVIDER_EMPTY', 'Gemini returned no translation text.', true);
   const usageRoot = record(root.usageMetadata ?? root.usage_metadata);
-  return {
-    output,
-    usage: {
-      promptTokenCount: Number(usageRoot.promptTokenCount ?? usageRoot.prompt_token_count) || undefined,
-      candidatesTokenCount: Number(usageRoot.candidatesTokenCount ?? usageRoot.candidates_token_count) || undefined,
-      totalTokenCount: Number(usageRoot.totalTokenCount ?? usageRoot.total_token_count) || undefined,
-    },
-  };
+  const usage: Usage = {};
+  const promptTokenCount = Number(usageRoot.promptTokenCount ?? usageRoot.prompt_token_count);
+  const candidatesTokenCount = Number(usageRoot.candidatesTokenCount ?? usageRoot.candidates_token_count);
+  const totalTokenCount = Number(usageRoot.totalTokenCount ?? usageRoot.total_token_count);
+  if (Number.isFinite(promptTokenCount) && promptTokenCount > 0) usage.promptTokenCount = promptTokenCount;
+  if (Number.isFinite(candidatesTokenCount) && candidatesTokenCount > 0) usage.candidatesTokenCount = candidatesTokenCount;
+  if (Number.isFinite(totalTokenCount) && totalTokenCount > 0) usage.totalTokenCount = totalTokenCount;
+  return { output, usage };
 }
 
 async function translateText(source: string, targetLanguage: string, vault: VaultClient, config: TranslationRuntimeConfig): Promise<{ text: string; usage: Usage; calls: number }> {
