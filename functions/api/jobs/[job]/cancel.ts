@@ -45,7 +45,8 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       });
     }
 
-    if (!job.runtime_job_id) {
+    const runtimeJobId = job.runtime_job_id;
+    if (!runtimeJobId) {
       job = await releaseFailedJob(context.env, job, 'cancelled', 'JOB_CANCELLED_BEFORE_RUNTIME', 'Runtime開始前に取消しました。', correlationId);
       return Response.json({ job: publicJob(job) }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId } });
     }
@@ -64,7 +65,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       job = { ...job, state: 'cancel_requested', updated_at: now };
     }
 
-    const runtime = await cancelRuntimeJob(context.env, job.runtime_job_id, correlationId);
+    const runtime = await cancelRuntimeJob(context.env, runtimeJobId, correlationId);
     if (runtime.state === 'cancelled') {
       job = await releaseFailedJob(context.env, job, 'cancelled', 'JOB_CANCELLED_BY_USER', '利用者の操作でJobを取り消しました。', correlationId);
     } else if (runtime.state === 'failed') {
