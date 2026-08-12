@@ -38,16 +38,17 @@ export class VaultClient {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort('vault_timeout'), this.timeoutMs);
     try {
-      const response = await this.fetchImpl(`${this.origin}${path}`, {
+      const init: RequestInit = {
         method,
         headers: {
           Authorization: `Bearer ${this.serviceToken}`,
           Accept: 'application/json',
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
-      });
+      };
+      if (body !== undefined) init.body = JSON.stringify(body);
+      const response = await this.fetchImpl(`${this.origin}${path}`, init);
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
         const source = asRecord(asRecord(payload).error ?? payload);
