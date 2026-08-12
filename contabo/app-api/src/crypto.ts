@@ -5,8 +5,14 @@ export type EncryptedPayload = {
   iv: string;
 };
 
+function keyBuffer(rawKey: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(rawKey.byteLength);
+  copy.set(rawKey);
+  return copy.buffer;
+}
+
 export async function encryptJson(value: unknown, rawKey: Uint8Array): Promise<EncryptedPayload> {
-  const key = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt']);
+  const key = await crypto.subtle.importKey('raw', keyBuffer(rawKey), { name: 'AES-GCM' }, false, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(value));
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
@@ -18,7 +24,7 @@ export async function encryptJson(value: unknown, rawKey: Uint8Array): Promise<E
 
 export async function decryptJson<T>(payload: EncryptedPayload, rawKey: Uint8Array): Promise<T> {
   if (!payload.ciphertext || !payload.iv) throw new Error('ENCRYPTED_JOB_PAYLOAD_MISSING');
-  const key = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['decrypt']);
+  const key = await crypto.subtle.importKey('raw', keyBuffer(rawKey), { name: 'AES-GCM' }, false, ['decrypt']);
   const iv = Uint8Array.from(Buffer.from(payload.iv, 'base64'));
   if (iv.byteLength !== 12) throw new Error('ENCRYPTED_JOB_IV_INVALID');
   const ciphertext = Uint8Array.from(Buffer.from(payload.ciphertext, 'base64'));
