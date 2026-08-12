@@ -77,8 +77,8 @@ check('Square checkout uses external bridge', checkoutPage.includes('await openE
 check('Square direct WebView redirect removed', !checkoutPage.includes('window.location.assign(destination)'), 'Square direct redirect is forbidden');
 check('Square Native callback', checkoutPage.includes("nativeCallback('/account/billing/status')"), 'Square Native callback missing');
 
-check('OAuth uses absolute API URL', authPages.includes('apiUrl(`/api/auth/oauth/'), 'OAuth must not target localhost Native origin');
-check('OAuth uses external bridge', authPages.includes('await openExternalUrl(apiUrl('), 'OAuth must use system browser on Native');
+check('OAuth uses canonical social API', authPages.includes("submitForm('/api/auth/sign-in/social'"), 'OAuth must request the redirect URL through the canonical Better Auth social endpoint');
+check('OAuth uses external bridge', authPages.includes('await openExternalUrl(redirectUrl)'), 'OAuth redirect must use the verified system-browser bridge on Native');
 check('OAuth Native callback', authPages.includes("nativeCallback('/login')"), 'OAuth Native callback must return to registered Login route');
 check('OAuth Native session exchange', authPages.includes('/api/auth/native/session-exchange'), 'Native OAuth one-time exchange is required');
 
