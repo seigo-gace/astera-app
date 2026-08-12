@@ -22,7 +22,7 @@ check('dynamic viewport', css.includes('100dvh'), 'dynamic viewport unit missing
 check('mobile input zoom guard', /font-size:\s*16px/.test(css), 'mobile form inputs must be at least 16px');
 check('mobile drawer', shell.includes('platform-mobile-drawer'), 'mobile drawer missing');
 check('desktop sidebar', shell.includes('platform-sidebar'), 'desktop/tablet sidebar missing');
-check('authenticated app gate', router.includes('AuthenticatedAppGate'), 'main execution route must be guarded');
+check('authenticated app gate', router.includes('AccountSessionGate'), 'main execution route must be guarded by current AccountSessionGate');
 check('root canonical redirect', router.includes("window.location.replace('/app/new')"), 'root must resolve to canonical app route');
 
 for (const item of checks) console.log(`${item.ok ? 'PASS' : 'FAIL'} ${item.name}`);

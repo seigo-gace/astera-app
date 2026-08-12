@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
-import { decryptJson, encryptJson } from './crypto.js';
-import { RuntimeDatabase, type RuntimeJobRow, type RuntimeState } from './database.js';
+import { RuntimeDatabase, type RuntimeJobRow } from './database.js';
+import { translateAsteraResult } from './translation-runtime.js';
+import { VaultClient } from './vault-client.js';
 
 const PURPOSES = ['auto', 'review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
 const OPTIONS = ['translation', 'agent-mode', 'document', 'external-storage-transfer'] as const;
@@ -187,10 +188,12 @@ export class AsteraRuntimeService {
   readonly database: RuntimeDatabase;
   readonly config: RuntimeConfig;
   readonly active = new Map<string, AbortController>();
+  readonly vault: VaultClient;
 
-  constructor(config: RuntimeConfig, database = new RuntimeDatabase(config.databaseUrl)) {
+  constructor(config: RuntimeConfig, database = new RuntimeDatabase(config.databaseUrl), vault = new VaultClient(config)) {
     this.config = config;
     this.database = database;
+    this.vault = vault;
   }
 
   private async processRequest(input: RuntimeCreateRequest, signal: AbortSignal): Promise<ProcessResponse> {
@@ -273,9 +276,21 @@ export class AsteraRuntimeService {
         return;
       }
       const response = await this.processRequest(input, controller.signal);
-      const checked = validateResult(response.result ?? response);
+      let resultPayload = response.result ?? response;
+      const usage: Record<string, unknown> = { ...(response.resourceUsage ?? response.resource_usage ?? response.usage ?? {}) };
+      const translation = input.options.find((option) => option.key === 'translation');
+      if (translation) {
+        const targetLanguage = text(translation.config.targetLanguage);
+        const translated = await translateAsteraResult(resultPayload, targetLanguage, this.vault, {
+          modelId: this.config.translationModelId,
+          apiKeyRef: this.config.translationGeminiKeyRef,
+          timeoutMs: this.config.translationTimeoutMs,
+        });
+        resultPayload = translated.result;
+        usage.translation = translated.usage;
+      }
+      const checked = validateResult(resultPayload);
       await this.database.transition(input.job_id, ['running'], 'assembling_result', input.correlation_id);
-      const usage = response.resourceUsage ?? response.resource_usage ?? response.usage ?? {};
       await this.database.finish(input.job_id, {
         state: checked.partial ? 'partially_completed' : 'completed',
         result: checked.result,
@@ -329,7 +344,7 @@ export class AsteraRuntimeService {
         continue;
       }
       try {
-        const input = await decryptJson<RuntimeCreateRequest>({ ciphertext: job.request_ciphertext, iv: job.request_iv }, this.config.encryptionKey);
+        const input = await this.vault.unsealJson<RuntimeCreateRequest>({ ciphertext: job.request_ciphertext, iv: job.request_iv });
         void this.execute(input);
       } catch (error) {
         await this.database.finish(job.id, {
@@ -379,9 +394,10 @@ export function createApp(config: RuntimeConfig, service = new AsteraRuntimeServ
   app.get('/ready', async (context) => {
     try {
       await service.database.ready();
-      return context.json({ status: 'ready', database: true, process_origin: new URL(config.processOrigin).origin });
+      await service.vault.health();
+      return context.json({ status: 'ready', database: true, vault: true, process_origin: new URL(config.processOrigin).origin });
     } catch (error) {
-      return context.json({ status: 'not_ready', database: false, error: error instanceof Error ? error.message : String(error) }, 503);
+      return context.json({ status: 'not_ready', database: false, vault: false, error: error instanceof Error ? error.message : String(error) }, 503);
     }
   });
 
@@ -396,7 +412,7 @@ export function createApp(config: RuntimeConfig, service = new AsteraRuntimeServ
   app.post('/internal/v1/jobs', async (context) => {
     try {
       const input = validateCreateRequest(await context.req.json().catch(() => null));
-      const encrypted = input.private_mode ? null : await encryptJson(input, config.encryptionKey);
+      const encrypted = input.private_mode ? null : await service.vault.sealJson(input);
       const { job, created } = await service.database.insertOrGet({
         id: input.job_id,
         tenantId: input.tenant_id,
@@ -444,6 +460,7 @@ export const contaboAppApiReadiness = {
   status: 'runtime_source_implemented',
   deployed: false,
   postgresMigrationApplied: false,
+  vaultAdapterSourceIntegrated: true,
   vaultConnected: false,
   privateDataBrokerVerified: false,
   deterministicJapaneseMcpConnected: false,

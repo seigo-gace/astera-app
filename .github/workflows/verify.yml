@@ -61,6 +61,8 @@ jobs:
         run: npm run cloudflare:functions:build
       - name: Build Contabo runtime
         run: npm run contabo:build
+      - name: Run Contabo provider unit tests
+        run: npm run contabo:test
       - name: Apply PostgreSQL migrations
         run: npm --prefix contabo/app-api run migrate
       - name: Run PostgreSQL-backed Contabo runtime smoke

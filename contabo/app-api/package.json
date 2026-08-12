@@ -12,7 +12,9 @@
     "migrate": "node dist/migrate.js",
     "smoke": "node dist/smoke.js",
     "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test --test-concurrency=1 dist/*.test.js",
+    "verify": "npm run check && npm test"
   },
   "dependencies": {
     "@hono/node-server": "2.0.12",
