@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVerifiedAccountSession } from './account-session';
 import { ApiError, apiRequest, asRecord, recordText } from './api-client';
 import type { RouteMatch } from './route-registry';
@@ -45,6 +45,130 @@ type SessionState =
   | { status: 'loading' }
   | { status: 'ready'; displayName: string }
   | { status: 'error'; error: unknown };
+
+type CreditProjection =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | {
+      status: 'ready';
+      usable: number;
+      reserved: number;
+      state: 'healthy' | 'low' | 'critical' | 'depleted';
+      capacity: number;
+    };
+
+function numeric(value: unknown, fallback = 0): number {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function normalizeCreditState(value: unknown, usable: number): 'healthy' | 'low' | 'critical' | 'depleted' {
+  const state = typeof value === 'string' ? value.toLowerCase() : '';
+  if (usable <= 0 || state === 'depleted') return 'depleted';
+  if (state === 'critical') return 'critical';
+  if (state === 'low') return 'low';
+  return 'healthy';
+}
+
+function useCreditProjection(enabled: boolean): CreditProjection {
+  const [projection, setProjection] = useState<CreditProjection>(enabled ? { status: 'loading' } : { status: 'error' });
+
+  const load = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const [balancePayload, catalogPayload] = await Promise.all([
+        apiRequest('/api/credit/balance'),
+        apiRequest('/api/account/catalog'),
+      ]);
+      const balance = asRecord(balancePayload);
+      const policy = asRecord(balance.policy);
+      const usable = numeric(balance.usable_balance ?? balance.usableBalance);
+      const reserved = numeric(balance.reserved_balance ?? balance.reservedBalance);
+      const lowThreshold = numeric(policy.low_threshold ?? policy.lowThreshold);
+
+      const catalog = asRecord(catalogPayload);
+      const account = asRecord(catalog.account);
+      const subscription = asRecord(catalog.subscription ?? account.subscription);
+      const planId = recordText(subscription, ['plan_id', 'planId']);
+      const plans = Array.isArray(catalog.plans) ? catalog.plans : [];
+      let includedCredits = 0;
+      for (const item of plans) {
+        const plan = asRecord(item);
+        if (recordText(plan, ['plan_id', 'id']) === planId) {
+          includedCredits = numeric(plan.included_credits ?? plan.monthly_credits ?? plan.includedCredits);
+          break;
+        }
+      }
+
+      const capacity = Math.max(1, includedCredits, lowThreshold > 0 ? lowThreshold * 5 : 0, usable > 0 && includedCredits === 0 && lowThreshold === 0 ? usable : 0);
+      setProjection({
+        status: 'ready',
+        usable,
+        reserved,
+        state: normalizeCreditState(balance.state, usable),
+        capacity,
+      });
+    } catch {
+      setProjection({ status: 'error' });
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    void load();
+    const refresh = () => { if (document.visibilityState === 'visible') void load(); };
+    const timer = window.setInterval(refresh, 5_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [enabled, load]);
+
+  return projection;
+}
+
+function CreditMeter({ enabled }: { enabled: boolean }) {
+  const credit = useCreditProjection(enabled);
+  if (!enabled) return null;
+
+  if (credit.status !== 'ready') {
+    return (
+      <div className="platform-credit-layer" aria-live="polite">
+        <div className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? 'Credit残高を確認中' : 'Credit残高を取得できません'}>
+          <span className="platform-credit-mark" aria-hidden="true" />
+          <span className="platform-credit-title">CREDIT</span>
+          <span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span>
+          <strong className="platform-credit-number">{credit.status === 'loading' ? '…' : '—'}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  const fill = credit.state === 'depleted' ? 0 : Math.max(3, Math.min(100, (credit.usable / credit.capacity) * 100));
+  const meterStyle = { '--credit-fill': `${fill}%` } as CSSProperties;
+  return (
+    <div className="platform-credit-layer" aria-live="polite">
+      <div
+        className={`platform-credit-meter is-${credit.state}`}
+        style={meterStyle}
+        role="meter"
+        aria-label={`利用可能Credit ${credit.usable.toLocaleString('ja-JP')}`}
+        aria-valuemin={0}
+        aria-valuemax={credit.capacity}
+        aria-valuenow={credit.usable}
+        title={credit.reserved > 0 ? `予約中 ${credit.reserved.toLocaleString('ja-JP')}` : '利用可能Credit'}
+      >
+        <span className="platform-credit-mark" aria-hidden="true" />
+        <span className="platform-credit-title">CREDIT</span>
+        <span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span>
+        <strong className="platform-credit-number">{Math.trunc(credit.usable).toLocaleString('ja-JP')}</strong>
+      </div>
+    </div>
+  );
+}
 
 function useSession(required: boolean): SessionState {
   const verified = useVerifiedAccountSession();
@@ -128,6 +252,7 @@ export function ResponsivePageShell({
 
   return (
     <div className={`platform-shell${fullWidth ? ' is-full-width' : ''}`}>
+      <CreditMeter enabled={route.access === 'authenticated'} />
       <header className="platform-mobile-header">
         <button
           type="button"
@@ -138,7 +263,7 @@ export function ResponsivePageShell({
         >
           <span aria-hidden="true">☰</span><span className="sr-only">Menu</span>
         </button>
-        <Brand />
+        <span className="platform-mobile-header-center" aria-hidden="true" />
         <a className="platform-header-account" href="/account" aria-label="Account">◎</a>
       </header>
 
