@@ -48,15 +48,58 @@ processServer.listen(0, '127.0.0.1');
 await once(processServer, 'listening');
 const processPort = (processServer.address() as AddressInfo).port;
 
+let vaultCalls = 0;
+const vaultServer = createServer(async (request, response) => {
+  assert.equal(request.headers.authorization, 'Bearer vault-test-token');
+  if (request.method === 'GET' && request.url === '/internal/v1/health') {
+    vaultCalls += 1;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+  if (request.method === 'POST' && request.url === '/internal/v1/crypto/seal') {
+    const plaintext = typeof body.plaintext_base64 === 'string' ? body.plaintext_base64 : '';
+    assert.ok(plaintext);
+    assert.equal(body.key_ref, 'smoke-job-key');
+    vaultCalls += 1;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ ciphertext: plaintext, iv: 'smoke-iv' }));
+    return;
+  }
+  if (request.method === 'POST' && request.url === '/internal/v1/crypto/unseal') {
+    const ciphertext = typeof body.ciphertext === 'string' ? body.ciphertext : '';
+    assert.ok(ciphertext);
+    assert.equal(body.key_ref, 'smoke-job-key');
+    vaultCalls += 1;
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ plaintext_base64: ciphertext }));
+    return;
+  }
+  response.writeHead(404, { 'content-type': 'application/json' });
+  response.end(JSON.stringify({ error: { code: 'SMOKE_VAULT_ROUTE_NOT_FOUND' } }));
+});
+vaultServer.listen(0, '127.0.0.1');
+await once(vaultServer, 'listening');
+const vaultPort = (vaultServer.address() as AddressInfo).port;
+
 const config: RuntimeConfig = {
   port: 0,
   databaseUrl,
   internalServiceToken: 'internal-test-token',
   processOrigin: `http://127.0.0.1:${processPort}`,
   processToken: 'process-test-token',
-  encryptionKey: crypto.getRandomValues(new Uint8Array(32)),
   processTimeoutMs: 5_000,
   shutdownTimeoutMs: 5_000,
+  vaultOrigin: `http://127.0.0.1:${vaultPort}`,
+  vaultServiceToken: 'vault-test-token',
+  vaultJobKeyRef: 'smoke-job-key',
+  vaultTimeoutMs: 5_000,
+  translationModelId: '',
+  translationGeminiKeyRef: '',
+  translationTimeoutMs: 5_000,
 };
 const { app, service } = createFullApp(config);
 
@@ -64,6 +107,9 @@ try {
   await service.database.ready();
   const unauthorized = await app.request('/internal/v1/jobs/test');
   assert.equal(unauthorized.status, 401);
+
+  const ready = await app.request('/ready');
+  assert.equal(ready.status, 200);
 
   const jobId = crypto.randomUUID();
   const requestId = crypto.randomUUID();
@@ -116,6 +162,7 @@ try {
   assert.equal(duplicatePayload.created, false);
   assert.equal(duplicatePayload.job.state, 'completed');
   assert.equal(processCalls, 1);
+  assert.ok(vaultCalls >= 2);
 
   const workspaceHeaders = {
     Authorization: 'Bearer internal-test-token',
@@ -139,10 +186,12 @@ try {
   const resultPayload = await resultResponse.json() as { result: { sections?: unknown } };
   assert.ok(resultPayload.result.sections);
 
-  console.log(JSON.stringify({ event: 'contabo_runtime_smoke_passed', job_id: jobId, process_calls: processCalls, history_items: historyPayload.history.length }));
+  console.log(JSON.stringify({ event: 'contabo_runtime_smoke_passed', job_id: jobId, process_calls: processCalls, vault_calls: vaultCalls, history_items: historyPayload.history.length }));
 } finally {
   for (const controller of service.active.values()) controller.abort('smoke_shutdown');
   await service.database.close();
   processServer.close();
+  vaultServer.close();
   await once(processServer, 'close').catch(() => undefined);
+  await once(vaultServer, 'close').catch(() => undefined);
 }
