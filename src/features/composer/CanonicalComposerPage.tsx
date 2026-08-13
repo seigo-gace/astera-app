@@ -205,7 +205,7 @@ function normalizeResult(payload: unknown): ResultSection[] {
       body,
       sourceIds: asArray(record.sourceIds ?? record.source_ids).map(String),
     } satisfies ResultSection;
-  }).filter((value): value is ResultSection => Boolean(value));
+  }).filter((value): value is NonNullable<typeof value> => value !== null);
 
   if (normalized.length !== RESULT_KEYS.length) {
     throw new ApiError(`固定8項目Resultが不足しています。受信: ${normalized.length}`, 502, 'ASTERA_RESPONSE_SECTIONS_INCOMPLETE', payload);
@@ -525,7 +525,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
   };
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && !event.isComposing) {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void estimateJob();
     }
