@@ -277,7 +277,7 @@ export class AsteraRuntimeService {
       }
       const response = await this.processRequest(input, controller.signal);
       let resultPayload = response.result ?? response;
-      const usage: Record<string, unknown> = { ...(response.resourceUsage ?? response.resource_usage ?? response.usage ?? {}) };
+      const usage: Record<string, unknown> = { ...record(response.resourceUsage ?? response.resource_usage ?? response.usage) };
       const translation = input.options.find((option) => option.key === 'translation');
       if (translation) {
         const targetLanguage = text(translation.config.targetLanguage);
