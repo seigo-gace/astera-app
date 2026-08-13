@@ -9,7 +9,7 @@ const read = (relativePath) => fs.readFileSync(resolve(relativePath), 'utf8');
 const readJson = (relativePath) => JSON.parse(read(relativePath));
 
 const storyFiles = fs.readdirSync(resolve('tests'))
-  .filter((name) => name.endsWith('user-stories.spec.ts'))
+  .filter((name) => name === 'user-journey-stories.spec.ts' || name.endsWith('-user-stories.spec.ts'))
   .sort()
   .map((name) => `tests/${name}`);
 
@@ -63,13 +63,9 @@ const requiredContractAndEvidenceFiles = [
   'tsconfig.contracts.json',
 ];
 
-const requiredOfficialBrandAssets = [
-  'public/logo-mark.svg',
-  'public/favicon.ico',
-  'public/favicon.png',
-  'public/apple-touch-icon.png',
-  'public/site.webmanifest',
-];
+// Web App公開に必要なManifestだけをSource Gateにする。
+// Favicon / Apple Touch Icon / OGP / Logo Markは共通正本で「別途確認・採用」が必要なため、未承認AssetをGate目的で生成しない。
+const requiredLaunchAssets = ['public/site.webmanifest'];
 
 const sourceMarkers = [
   ['src/platform/app-router.tsx', 'AccountSessionProvider'],
@@ -85,10 +81,11 @@ const sourceMarkers = [
   ['scripts/user-story-audit.mjs', 'STORY_ID_COUNT_TOO_LOW'],
 ];
 
+// Source GateはSource実装を確認する。Deploy済みかどうかはRelease/Runtime Evidenceへ分離する。
 const readinessChecks = [
-  ['cloudflare/functions/src/index.ts', ["status: 'contract_source_only'", 'deployed: false']],
-  ['contabo/app-api/src/index.ts', ["status: 'contract_source_only'", 'deployed: false', 'deterministicJapaneseMcpConnected: false']],
-  ['contabo/workers/src/index.ts', ["status: 'contract_source_only'", 'deployed: false']],
+  ['cloudflare/functions/src/index.ts', ['cloudflareFunctionsReadiness', "status: 'contract_source_only'", 'deployed: false']],
+  ['contabo/app-api/src/index.ts', ['export class AsteraRuntimeService', 'validateCreateRequest', 'validateResult']],
+  ['contabo/workers/src/index.ts', ['contaboWorkersReadiness', "status: 'contract_source_only'", 'deployed: false']],
 ];
 
 const scopeExclusions = [
@@ -114,9 +111,10 @@ const routeEntries = [...routeSource.matchAll(/\{\s*id:\s*'[^']+'\s*,\s*pattern:
 
 const indexHtml = read('index.html');
 const absoluteAssetReferences = [...indexHtml.matchAll(/(?:href|src)="\/(?!\/)([^"?#]+)(?:[?#][^"]*)?"/g)]
-  .map((match) => `public/${match[1]}`)
+  .map((match) => match[1])
   .filter((value, index, array) => array.indexOf(value) === index);
-const brokenIndexAssetReferences = absoluteAssetReferences.filter((relativePath) => !exists(relativePath));
+const resolvedIndexAssetReferences = absoluteAssetReferences.map((item) => item.startsWith('src/') ? item : `public/${item}`);
+const brokenIndexAssetReferences = resolvedIndexAssetReferences.filter((relativePath) => !exists(relativePath));
 
 const traceabilityPath = 'docs/audit/notion-traceability-2026-08-04.json';
 const traceability = exists(traceabilityPath) ? readJson(traceabilityPath) : null;
@@ -126,7 +124,7 @@ const traceabilityGroupTotal = traceability?.notionHierarchy?.groups
 const sourceGaps = [];
 for (const file of requiredFrontendFiles) if (!exists(file)) sourceGaps.push(`MISSING_FRONTEND_FILE:${file}`);
 for (const file of requiredContractAndEvidenceFiles) if (!exists(file)) sourceGaps.push(`MISSING_CONTRACT_OR_EVIDENCE_FILE:${file}`);
-for (const file of requiredOfficialBrandAssets) if (!exists(file)) sourceGaps.push(`MISSING_OFFICIAL_BRAND_ASSET:${file}`);
+for (const file of requiredLaunchAssets) if (!exists(file)) sourceGaps.push(`MISSING_LAUNCH_ASSET:${file}`);
 for (const file of brokenIndexAssetReferences) sourceGaps.push(`BROKEN_INDEX_ASSET_REFERENCE:${file}`);
 
 if (storyFiles.length < 7) sourceGaps.push(`USER_STORY_FILE_COUNT_TOO_LOW:${storyFiles.length}`);
@@ -178,8 +176,8 @@ const report = {
   currentMain: {
     frontendFiles: Object.fromEntries(requiredFrontendFiles.map((item) => [item, exists(item)])),
     contractAndEvidenceFiles: Object.fromEntries(requiredContractAndEvidenceFiles.map((item) => [item, exists(item)])),
-    officialBrandAssets: Object.fromEntries(requiredOfficialBrandAssets.map((item) => [item, exists(item)])),
-    indexAssetReferences: Object.fromEntries(absoluteAssetReferences.map((item) => [item, exists(item)])),
+    launchAssets: Object.fromEntries(requiredLaunchAssets.map((item) => [item, exists(item)])),
+    indexAssetReferences: Object.fromEntries(resolvedIndexAssetReferences.map((item) => [item, exists(item)])),
   },
   evidenceBoundary: {
     githubActionsRun: 'not confirmed by current repository evidence',
