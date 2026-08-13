@@ -63,9 +63,9 @@ const requiredContractAndEvidenceFiles = [
   'tsconfig.contracts.json',
 ];
 
-// Web App公開に必要なManifestだけをSource Gateにする。
-// Favicon / Apple Touch Icon / OGP / Logo Markは共通正本で「別途確認・採用」が必要なため、未承認AssetをGate目的で生成しない。
-const requiredLaunchAssets = ['public/site.webmanifest'];
+// Favicon / Apple Touch Icon / OGP / Web App iconは共通正本で別途確認・採用が必要。
+// 未承認AssetをCI通過目的で生成・必須化しない。
+const requiredLaunchAssets = [];
 
 const sourceMarkers = [
   ['src/platform/app-router.tsx', 'AccountSessionProvider'],
