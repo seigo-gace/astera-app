@@ -8,6 +8,16 @@ import type { RuntimeConfig } from './config.js';
 const databaseUrl = process.env.DATABASE_URL?.trim();
 if (!databaseUrl) throw new Error('DATABASE_URL_NOT_CONFIGURED');
 
+function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 let processCalls = 0;
 const processServer = createServer(async (request, response) => {
   if (request.method !== 'POST' || request.url !== '/process') {
@@ -190,8 +200,8 @@ try {
 } finally {
   for (const controller of service.active.values()) controller.abort('smoke_shutdown');
   await service.database.close();
-  processServer.close();
-  vaultServer.close();
-  await once(processServer, 'close').catch(() => undefined);
-  await once(vaultServer, 'close').catch(() => undefined);
+  await Promise.all([
+    closeServer(processServer),
+    closeServer(vaultServer),
+  ]);
 }
