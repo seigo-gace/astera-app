@@ -1,0 +1,78 @@
+name: Staging Gate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/staging-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  staging-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: astera
+          POSTGRES_PASSWORD: astera_test_password
+          POSTGRES_DB: astera_app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U astera -d astera_app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://astera:astera_test_password@127.0.0.1:5432/astera_app_test?sslmode=disable
+      MIGRATIONS_DIR: ${{ github.workspace }}/migrations/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Validate browser scripts
+        run: |
+          node --check public/app-interactions.js
+          node --check public/process-user-errors.js
+          node --check public/ui-honesty.js
+          node --check public/customer-ai-transport.js
+          node --check public/customer-ai-bubble.js
+      - name: Audit canonical routes
+        run: npm run route:audit
+      - name: Audit responsive behavior
+        run: npm run responsive:audit
+      - name: Audit device compatibility
+        run: npm run device:audit
+      - name: Audit mobile boundaries
+        run: npm run mobile:audit
+      - name: Audit user journeys
+        run: npm run story:audit:strict
+      - name: Typecheck contracts and Contabo runtime
+        run: npm run contract:check
+      - name: Build frontend
+        run: npm run build
+      - name: Build Cloudflare Pages Functions
+        run: npm run cloudflare:functions:build
+      - name: Build Contabo runtime
+        run: npm run contabo:build
+      - name: Test Contabo runtime
+        run: npm run contabo:test
+      - name: Apply PostgreSQL migrations
+        run: npm --prefix contabo/app-api run migrate
+      - name: Run PostgreSQL-backed runtime smoke
+        run: npm --prefix contabo/app-api run smoke
+      - name: Build non-root Contabo container
+        run: docker build -f contabo/app-api/Dockerfile .
+      - name: Enforce source gate
+        run: npm run notion:audit:strict
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run browser device and user journey matrix
+        run: npm run e2e:devices
