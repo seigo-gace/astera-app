@@ -8,6 +8,7 @@ import './horizontal-stability.css';
 import './orientation-stability.css';
 import { initializeDeviceCompatibility } from './device-compatibility';
 import { initializeNativeShell } from './native-shell';
+import { initializeRevisionCreditBridge } from './revision-credit-bridge';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found');
@@ -16,6 +17,7 @@ const runtimeUnsupported = (window as Window & { __ASTERA_RUNTIME_UNSUPPORTED__?
   .__ASTERA_RUNTIME_UNSUPPORTED__ === true;
 
 if (!runtimeUnsupported) {
+  initializeRevisionCreditBridge();
   initializeDeviceCompatibility();
   void initializeNativeShell();
 
