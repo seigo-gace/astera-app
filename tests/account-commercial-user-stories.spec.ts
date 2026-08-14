@@ -28,7 +28,7 @@ test.beforeEach(async ({}, testInfo: TestInfo) => {
 test('STORY-LOGIN-005 authentication routes cannot become post-Login return targets', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/login') return json(route, { authenticated: true, account: { account_status: 'active' } });
+    if (path === '/api/auth/sign-in/email') return json(route, { authenticated: true, account: { account_status: 'active' } });
     if (path === '/api/account') return json(route, activeAccount());
     return json(route, { ok: true });
   });
