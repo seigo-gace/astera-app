@@ -270,6 +270,7 @@ export async function persistWorkspaceResult(
   job: RuntimeJobRow,
   resultValue: unknown,
 ): Promise<void> {
+  if (job.private_mode) return;
   if (!['completed', 'partially_completed'].includes(job.state)) return;
   await assertProjectAccess(pool, job.tenant_id, job.user_id, job.project_id, 'editor');
   const root = record(resultValue);

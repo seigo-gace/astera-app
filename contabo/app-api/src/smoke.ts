@@ -196,7 +196,84 @@ try {
   const resultPayload = await resultResponse.json() as { result: { sections?: unknown } };
   assert.ok(resultPayload.result.sections);
 
-  console.log(JSON.stringify({ event: 'contabo_runtime_smoke_passed', job_id: jobId, process_calls: processCalls, vault_calls: vaultCalls, history_items: historyPayload.history.length }));
+  const privateJobId = crypto.randomUUID();
+  const privateRequestId = crypto.randomUUID();
+  const privateBody = {
+    ...body,
+    job_id: privateJobId,
+    request_id: privateRequestId,
+    prompt: 'PRIVATE_SMOKE_CANARY_DO_NOT_PERSIST',
+    private_mode: true,
+    correlation_id: crypto.randomUUID(),
+  };
+  const privateCreated = await app.request('/internal/v1/jobs', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer internal-test-token', 'Content-Type': 'application/json' },
+    body: JSON.stringify(privateBody),
+  });
+  if (privateCreated.status !== 201) throw new Error(`PRIVATE_RUNTIME_JOB_CREATE_FAILED:${privateCreated.status}:${await privateCreated.text()}`);
+
+  let privateCompleted: Record<string, unknown> | null = null;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await app.request(`/internal/v1/jobs/${privateJobId}`, {
+      headers: { Authorization: 'Bearer internal-test-token' },
+    });
+    if (response.status !== 200) throw new Error(`PRIVATE_RUNTIME_JOB_POLL_FAILED:${response.status}:${await response.text()}`);
+    const payload = await response.json() as { job: Record<string, unknown> };
+    if (payload.job.state === 'completed') {
+      privateCompleted = payload.job;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.ok(privateCompleted, 'Private Runtime Job did not complete');
+  assert.ok(privateCompleted.result, 'Private Result must be delivered from memory');
+  assert.equal(processCalls, 2);
+
+  const privateDb = await service.database.pool.query<{
+    result_json: unknown | null;
+    request_ciphertext: string | null;
+    request_iv: string | null;
+  }>('SELECT result_json, request_ciphertext, request_iv FROM runtime_jobs WHERE id = $1', [privateJobId]);
+  assert.equal(privateDb.rows[0]?.result_json, null);
+  assert.equal(privateDb.rows[0]?.request_ciphertext, null);
+  assert.equal(privateDb.rows[0]?.request_iv, null);
+
+  const privateWorkspaceCount = await service.database.pool.query<{ count: string }>(
+    'SELECT COUNT(*)::text AS count FROM results WHERE job_id = $1',
+    [privateJobId],
+  );
+  assert.equal(Number(privateWorkspaceCount.rows[0]?.count ?? 0), 0);
+
+  const privateRetryRead = await app.request(`/internal/v1/jobs/${privateJobId}`, {
+    headers: { Authorization: 'Bearer internal-test-token' },
+  });
+  assert.equal(privateRetryRead.status, 200);
+  const privateRetryPayload = await privateRetryRead.json() as { job: { state: string; result?: unknown } };
+  assert.equal(privateRetryPayload.job.state, 'completed');
+  assert.ok(privateRetryPayload.job.result, 'Private Result must remain retryable in memory during the 60 minute output TTL');
+
+  const privateCanarySearch = await service.database.pool.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM runtime_jobs
+     WHERE id = $1 AND (
+       COALESCE(result_json::text, '') ILIKE '%PRIVATE_SMOKE_CANARY_DO_NOT_PERSIST%'
+       OR COALESCE(request_ciphertext, '') ILIKE '%PRIVATE_SMOKE_CANARY_DO_NOT_PERSIST%'
+     )`,
+    [privateJobId],
+  );
+  assert.equal(Number(privateCanarySearch.rows[0]?.count ?? 0), 0);
+
+  console.log(JSON.stringify({
+    event: 'contabo_runtime_smoke_passed',
+    job_id: jobId,
+    private_job_id: privateJobId,
+    process_calls: processCalls,
+    vault_calls: vaultCalls,
+    history_items: historyPayload.history.length,
+    private_result_persisted: false,
+    private_result_retryable_in_memory: true,
+  }));
 } finally {
   for (const controller of service.active.values()) controller.abort('smoke_shutdown');
   await service.database.close();

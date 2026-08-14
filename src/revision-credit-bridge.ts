@@ -12,10 +12,12 @@ type RevisionEstimate = RevisionBaseline & {
 type PendingJob = RevisionBaseline;
 
 const REVISION_ESTIMATE_MARK = 'data-astera-revision-credit';
+const PRIVATE_CONTEXT_TTL_MS = 60 * 60 * 1000;
 let initialized = false;
 let revisionArmed = false;
 let baseline: RevisionBaseline | null = null;
 let lastEstimate: RevisionEstimate | null = null;
+let privateContextTimer: number | null = null;
 const estimateContexts = new Map<string, RevisionBaseline>();
 const pendingJobs = new Map<string, PendingJob>();
 
@@ -137,20 +139,38 @@ function attachRevision(payload: Record<string, unknown>, context: RevisionBasel
   payload.revision_base_prompt = context.prompt;
 }
 
-function commitBaseline(candidate: PendingJob | undefined): void {
-  if (!candidate) return;
-  baseline = candidate;
-  revisionArmed = false;
-  lastEstimate = null;
+function clearPrivateContextTimer(): void {
+  if (privateContextTimer !== null) {
+    window.clearTimeout(privateContextTimer);
+    privateContextTimer = null;
+  }
 }
 
 function clearSession(): void {
+  clearPrivateContextTimer();
   revisionArmed = false;
   baseline = null;
   lastEstimate = null;
   estimateContexts.clear();
   pendingJobs.clear();
   removeEstimateMarker();
+}
+
+function armPrivateContextExpiry(privateMode: boolean): void {
+  clearPrivateContextTimer();
+  if (!privateMode) return;
+  privateContextTimer = window.setTimeout(() => {
+    privateContextTimer = null;
+    clearSession();
+  }, PRIVATE_CONTEXT_TTL_MS);
+}
+
+function commitBaseline(candidate: PendingJob | undefined): void {
+  if (!candidate) return;
+  baseline = candidate;
+  revisionArmed = false;
+  lastEstimate = null;
+  armPrivateContextExpiry(candidate.privateMode);
 }
 
 function removeEstimateMarker(): void {
@@ -262,6 +282,7 @@ export function initializeRevisionCreditBridge(): void {
       if (info.id && submitted) {
         const pending = { ...submitted, jobId: info.id };
         pendingJobs.set(info.id, pending);
+        armPrivateContextExpiry(pending.privateMode);
         if (info.state === 'completed' || info.state === 'complete') {
           commitBaseline(pending);
           pendingJobs.delete(info.id);
@@ -290,6 +311,7 @@ export function initializeRevisionCreditBridge(): void {
 
   document.addEventListener('input', handleComposerInput, true);
   document.addEventListener('click', handleComposerClick, true);
+  window.addEventListener('pagehide', clearSession);
   const observer = new MutationObserver(scheduleMarker);
   observer.observe(document.documentElement, { subtree: true, childList: true });
 }

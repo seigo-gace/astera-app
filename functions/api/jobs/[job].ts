@@ -6,6 +6,7 @@ import {
   type AsteraFunctionEnv,
 } from '../../_account-projection';
 import {
+  normalizeRuntimeResult,
   publicJob,
   releaseFailedJob,
   settleCompletedJob,
@@ -38,6 +39,29 @@ function localState(runtime: RuntimeJobState): string {
   return runtime;
 }
 
+async function privateTerminalResponse(
+  context: PagesContext,
+  job: JobRow,
+  correlationId: string,
+): Promise<JobRow> {
+  if (!Boolean(job.private_mode) || job.result_payload || !job.runtime_job_id) return job;
+  if (!['completed', 'partially_completed'].includes(job.state)) return job;
+  const runtime = await getRuntimeJob(context.env, job.runtime_job_id, correlationId);
+  if (!['completed', 'partially_completed'].includes(runtime.state) || !runtime.result) {
+    throw new FunctionHttpError(
+      410,
+      'PRIVATE_RESULT_EXPIRED',
+      'Private Mode Outputは永続保存されず、一時Output TTL終了またはRuntime再起動により取得できなくなりました。',
+    );
+  }
+  const transient = normalizeRuntimeResult(runtime.result, job.id);
+  return {
+    ...job,
+    result_schema_version: transient.schema_version,
+    result_payload: JSON.stringify(transient),
+  };
+}
+
 export async function onRequestGet(context: PagesContext): Promise<Response> {
   const correlationId = requestCorrelationId(context.request);
   try {
@@ -45,7 +69,14 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
     const jobId = context.params.job?.trim();
     if (!jobId) throw new FunctionHttpError(400, 'JOB_ID_REQUIRED', 'Job IDが必要です。');
     let job = await loadJob(context, actor.profile.tenant_id, actor.user.id, jobId);
-    if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(job.state) || !job.runtime_job_id) {
+
+    if (['completed', 'partially_completed'].includes(job.state)) {
+      job = await privateTerminalResponse(context, job, correlationId);
+      return Response.json({ job: publicJob(job) }, {
+        headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId },
+      });
+    }
+    if (['failed', 'cancelled'].includes(job.state) || !job.runtime_job_id) {
       return Response.json({ job: publicJob(job) }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId } });
     }
 

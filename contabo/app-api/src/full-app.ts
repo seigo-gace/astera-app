@@ -13,7 +13,7 @@ class FullAsteraRuntimeService extends AsteraRuntimeService {
   override async execute(input: RuntimeCreateRequest): Promise<void> {
     await super.execute(input);
     const job = await this.database.get(input.job_id).catch(() => null);
-    if (!job || !['completed', 'partially_completed'].includes(job.state) || !job.result_json) return;
+    if (!job || job.private_mode || !['completed', 'partially_completed'].includes(job.state) || !job.result_json) return;
     try {
       await persistWorkspaceResult(this.database.pool, job, job.result_json);
     } catch (error) {
@@ -31,7 +31,7 @@ class FullAsteraRuntimeService extends AsteraRuntimeService {
   }
 
   async persistExistingTerminal(job: RuntimeJobRow): Promise<void> {
-    if (!['completed', 'partially_completed'].includes(job.state) || !job.result_json) return;
+    if (job.private_mode || !['completed', 'partially_completed'].includes(job.state) || !job.result_json) return;
     await persistWorkspaceResult(this.database.pool, job, job.result_json);
   }
 }

@@ -16,6 +16,7 @@ const RESULT_KEYS = [
   'recommendation',
   'next_prompt',
 ] as const;
+const PRIVATE_OUTPUT_TTL_MS = 60 * 60 * 1000;
 
 type Purpose = (typeof PURPOSES)[number];
 type OptionKey = (typeof OPTIONS)[number];
@@ -55,6 +56,15 @@ type ProcessResponse = {
   usage?: Record<string, unknown>;
   error?: { code?: string; message?: string; retryable?: boolean };
 };
+
+type PrivateResultEnvelope = {
+  result: unknown;
+  usage: Record<string, unknown>;
+  expiresAt: number;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+type TransientResult = Pick<PrivateResultEnvelope, 'result' | 'usage'>;
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -166,15 +176,15 @@ function validateResult(payload: unknown): { result: unknown; partial: boolean }
   return { result: payload, partial: completion === 'partial' };
 }
 
-function publicJob(job: RuntimeJobRow): Record<string, unknown> {
+function publicJob(job: RuntimeJobRow, transient: TransientResult | null = null): Record<string, unknown> {
   return {
     runtime_job_id: job.id,
     job_id: job.id,
     id: job.id,
     state: job.state,
     status: job.state,
-    result: job.result_json,
-    usage: job.usage_json,
+    result: transient?.result ?? job.result_json,
+    usage: transient?.usage ?? job.usage_json,
     error: job.error_code ? { code: job.error_code, message: job.error_message, retryable: job.retryable } : null,
     created_at: job.created_at.toISOString(),
     updated_at: job.updated_at.toISOString(),
@@ -189,11 +199,39 @@ export class AsteraRuntimeService {
   readonly config: RuntimeConfig;
   readonly active = new Map<string, AbortController>();
   readonly vault: VaultClient;
+  private readonly privateResults = new Map<string, PrivateResultEnvelope>();
 
   constructor(config: RuntimeConfig, database = new RuntimeDatabase(config.databaseUrl), vault = new VaultClient(config)) {
     this.config = config;
     this.database = database;
     this.vault = vault;
+  }
+
+  private discardPrivateResult(jobId: string): void {
+    const existing = this.privateResults.get(jobId);
+    if (existing) clearTimeout(existing.timer);
+    this.privateResults.delete(jobId);
+  }
+
+  private storePrivateResult(jobId: string, result: unknown, usage: Record<string, unknown>): void {
+    this.discardPrivateResult(jobId);
+    const expiresAt = Date.now() + PRIVATE_OUTPUT_TTL_MS;
+    const timer = setTimeout(() => {
+      const current = this.privateResults.get(jobId);
+      if (current?.expiresAt === expiresAt) this.privateResults.delete(jobId);
+    }, PRIVATE_OUTPUT_TTL_MS);
+    timer.unref?.();
+    this.privateResults.set(jobId, { result, usage, expiresAt, timer });
+  }
+
+  getPrivateResult(jobId: string): TransientResult | null {
+    const value = this.privateResults.get(jobId);
+    if (!value) return null;
+    if (value.expiresAt <= Date.now()) {
+      this.discardPrivateResult(jobId);
+      return null;
+    }
+    return { result: value.result, usage: value.usage };
   }
 
   private async processRequest(input: RuntimeCreateRequest, signal: AbortSignal): Promise<ProcessResponse> {
@@ -291,12 +329,14 @@ export class AsteraRuntimeService {
       }
       const checked = validateResult(resultPayload);
       await this.database.transition(input.job_id, ['running'], 'assembling_result', input.correlation_id);
+      if (input.private_mode) this.storePrivateResult(input.job_id, checked.result, usage);
       await this.database.finish(input.job_id, {
         state: checked.partial ? 'partially_completed' : 'completed',
-        result: checked.result,
+        result: input.private_mode ? undefined : checked.result,
         usage,
       }, input.correlation_id);
     } catch (caught) {
+      this.discardPrivateResult(input.job_id);
       const error = caught as ProcessError;
       const code = error.code || 'ASTERA_RUNTIME_EXECUTION_FAILED';
       const cancelled = code === 'JOB_CANCELLED' || controller.signal.aborted;
@@ -318,6 +358,7 @@ export class AsteraRuntimeService {
     const jobs = await this.database.recoverable();
     for (const job of jobs) {
       if (job.private_mode) {
+        this.discardPrivateResult(job.id);
         await this.database.finish(job.id, {
           state: 'failed',
           errorCode: 'PRIVATE_JOB_CONTEXT_LOST',
@@ -362,6 +403,7 @@ export class AsteraRuntimeService {
     if (!job) throw Object.assign(new Error('Runtime Jobが見つかりません。'), { code: 'RUNTIME_JOB_NOT_FOUND' });
     if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(job.state)) return job;
     const updated = await this.database.transition(jobId, ['queued', 'running', 'assembling_result'], 'cancel_requested', correlationId);
+    this.discardPrivateResult(jobId);
     this.active.get(jobId)?.abort('user_cancelled');
     if (!this.active.has(jobId)) {
       return this.database.finish(jobId, {
@@ -385,6 +427,11 @@ function httpStatus(error: unknown): number {
   if (code === 'RUNTIME_JOB_NOT_FOUND') return 404;
   if (code.includes('OWNERSHIP') || code.includes('TOKEN')) return 403;
   return 500;
+}
+
+function terminalPrivateResult(service: AsteraRuntimeService, job: RuntimeJobRow): TransientResult | null {
+  if (!job.private_mode || !['completed', 'partially_completed'].includes(job.state)) return null;
+  return service.getPrivateResult(job.id);
 }
 
 export function createApp(config: RuntimeConfig, service = new AsteraRuntimeService(config)) {
@@ -428,7 +475,8 @@ export function createApp(config: RuntimeConfig, service = new AsteraRuntimeServ
         correlationId: input.correlation_id,
       });
       if (created || (!service.active.has(job.id) && ['queued', 'running'].includes(job.state))) void service.execute(input);
-      return context.json({ job: publicJob(job), created }, created ? 201 : 200);
+      const transient = created ? null : terminalPrivateResult(service, job);
+      return context.json({ job: publicJob(job, transient), created }, created ? 201 : 200);
     } catch (error) {
       const status = httpStatus(error);
       return context.json({ error: { code: (error as ProcessError).code || 'RUNTIME_JOB_CREATE_FAILED', message: error instanceof Error ? error.message : 'Runtime Jobを作成できません。', retryable: status >= 500 } }, status as 400 | 401 | 403 | 404 | 422 | 500);
@@ -438,7 +486,7 @@ export function createApp(config: RuntimeConfig, service = new AsteraRuntimeServ
   app.get('/internal/v1/jobs/:job', async (context) => {
     const job = await service.database.get(context.req.param('job'));
     if (!job) return context.json({ error: { code: 'RUNTIME_JOB_NOT_FOUND', message: 'Runtime Jobが見つかりません。' } }, 404);
-    return context.json({ job: publicJob(job) });
+    return context.json({ job: publicJob(job, terminalPrivateResult(service, job)) });
   });
 
   app.post('/internal/v1/jobs/:job/cancel', async (context) => {

@@ -171,6 +171,8 @@ export async function settleCompletedJob(
   if (exceeded) normalized.warnings.push('Runtime usage exceeded the reservation. Billing was capped at the confirmed reservation.');
   const now = new Date().toISOString();
   const releaseDifference = Number(job.reserved_credits) - committed;
+  const transientResult = JSON.stringify(normalized);
+  const persistedResult = Boolean(job.private_mode) ? null : transientResult;
 
   const statements = [
     env.ASTERA_DB.prepare(
@@ -205,7 +207,7 @@ export async function settleCompletedJob(
       completionState,
       committed,
       normalized.schema_version,
-      JSON.stringify(normalized),
+      persistedResult,
       exceeded ? 'CREDIT_USAGE_EXCEEDED_RESERVATION' : null,
       exceeded ? '実使用量が予約量を超えたため、請求を予約量で上限固定しました。' : null,
       now,
@@ -218,7 +220,18 @@ export async function settleCompletedJob(
     ).bind(`event:settle:${job.id}`, job.id, job.state, completionState, correlationId, JSON.stringify({ committed, reserved: job.reserved_credits, exceeded }), now),
   );
   await env.ASTERA_DB.batch(statements);
-  return { ...job, state: completionState, committed_credits: committed, result_schema_version: normalized.schema_version, result_payload: JSON.stringify(normalized), updated_at: now, completed_at: now };
+
+  // For Private Mode the returned row carries the Result only in this response
+  // object. D1 receives NULL, so subsequent reads cannot recover the content.
+  return {
+    ...job,
+    state: completionState,
+    committed_credits: committed,
+    result_schema_version: normalized.schema_version,
+    result_payload: transientResult,
+    updated_at: now,
+    completed_at: now,
+  };
 }
 
 export async function releaseFailedJob(

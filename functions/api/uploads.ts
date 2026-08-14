@@ -51,6 +51,18 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     if (value.size <= 0) throw new FunctionHttpError(422, 'UPLOAD_FILE_EMPTY', '空のFileはUploadできません。');
     if (value.size > directLimit) throw new FunctionHttpError(413, 'MULTIPART_UPLOAD_REQUIRED', 'このFile SizeはMultipart Uploadが必要です。', { direct_limit_bytes: directLimit });
     const privateMode = form.get('private_mode') === 'true';
+
+    // Private Mode must never fall back to the normal R2 path. The canonical
+    // encrypted temporary-object broker (Vault grant + per-object DEK + cleanup)
+    // is a separate runtime boundary and is not yet connected here.
+    if (privateMode) {
+      throw new FunctionHttpError(
+        503,
+        'PRIVATE_UPLOAD_BROKER_NOT_READY',
+        'Private Modeの暗号化一時Object Brokerが未接続のため、Fileを通常R2へ保存せず安全停止しました。',
+      );
+    }
+
     const bytes = await value.arrayBuffer();
     const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
     const uploadId = crypto.randomUUID();

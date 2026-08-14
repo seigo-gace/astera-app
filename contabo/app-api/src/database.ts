@@ -185,6 +185,7 @@ export class RuntimeDatabase {
       const job = current.rows[0];
       if (!job) throw new Error('RUNTIME_JOB_NOT_FOUND');
       if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(job.state)) return job;
+      const persistedResult = job.private_mode || update.result === undefined ? null : JSON.stringify(update.result);
       const result = await client.query<RuntimeJobRow>(
         `UPDATE runtime_jobs
          SET state = $1,
@@ -202,7 +203,7 @@ export class RuntimeDatabase {
          RETURNING *`,
         [
           update.state,
-          update.result === undefined ? null : JSON.stringify(update.result),
+          persistedResult,
           update.usage === undefined ? null : JSON.stringify(update.usage),
           update.errorCode ?? null,
           update.errorMessage ?? null,

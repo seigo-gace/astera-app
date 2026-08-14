@@ -58,6 +58,7 @@ type DraftSnapshot = {
 
 const DRAFT_STORAGE_KEY = 'astera-canonical-composer-draft-v1';
 const MAX_INPUT_CHARACTERS = 200_000;
+const PRIVATE_OUTPUT_TTL_MS = 60 * 60 * 1000;
 const RESULT_KEYS = [
   'true_purpose',
   'missing_assumptions',
@@ -114,6 +115,10 @@ function readDraft(): DraftSnapshot {
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<DraftSnapshot>;
+    if (parsed.privateMode === true) {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      return fallback;
+    }
     const purpose = PURPOSES.some((item) => item.key === parsed.purpose) ? parsed.purpose as PurposeKey : 'auto';
     const selectedOptions = Array.isArray(parsed.selectedOptions)
       ? parsed.selectedOptions.filter((value): value is ExecutionOptionKey => typeof value === 'string' && value in OPTION_LABELS)
@@ -266,6 +271,29 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
   const executionLock = useRef(false);
   const pollController = useRef<AbortController | null>(null);
   const estimateFingerprint = useRef('');
+  const privateOutputTimer = useRef<number | null>(null);
+
+  const clearPrivateOutputTimer = useCallback(() => {
+    if (privateOutputTimer.current !== null) {
+      window.clearTimeout(privateOutputTimer.current);
+      privateOutputTimer.current = null;
+    }
+  }, []);
+
+  const armPrivateOutputExpiry = useCallback(() => {
+    clearPrivateOutputTimer();
+    if (!privateMode) return;
+    privateOutputTimer.current = window.setTimeout(() => {
+      privateOutputTimer.current = null;
+      setResultSections([]);
+      setPrompt('');
+      setCurrentJobId('');
+      setPromptExpanded(false);
+      setEstimate(null);
+      setPhase('draft');
+      setNotice('Private Mode Outputの60分TTLが終了したため、この端末の表示用Memoryから破棄しました。');
+    }, PRIVATE_OUTPUT_TTL_MS);
+  }, [clearPrivateOutputTimer, privateMode]);
 
   const draftSnapshot = useMemo<DraftSnapshot>(() => ({
     prompt,
@@ -280,10 +308,17 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
   }), [agentMode, documentTemplateId, privateMode, projectId, prompt, purpose, selectedOptions, storageDestinationId, targetLanguage]);
 
   useEffect(() => {
+    if (privateMode) {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      return;
+    }
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftSnapshot));
-  }, [draftSnapshot]);
+  }, [draftSnapshot, privateMode]);
 
-  useEffect(() => () => pollController.current?.abort(), []);
+  useEffect(() => () => {
+    pollController.current?.abort();
+    clearPrivateOutputTimer();
+  }, [clearPrivateOutputTimer]);
 
   useEffect(() => {
     setEstimate(null);
@@ -329,6 +364,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
     try {
       const form = new FormData();
       form.append('file', file, file.name);
+      form.append('private_mode', privateMode ? 'true' : 'false');
       const response = await fetch(apiUrl('/api/uploads'), {
         method: 'POST',
         credentials: 'include',
@@ -348,7 +384,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
       const uploadError = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : 'Uploadに失敗しました。', 0, 'FILE_UPLOAD_FAILED');
       setFiles((current) => current.map((item) => item.localId === localId ? { ...item, status: 'error', error: `${uploadError.message} (${uploadError.code})` } : item));
     }
-  }, []);
+  }, [privateMode]);
 
   const onFilesSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const chosen = Array.from(event.target.files ?? []);
@@ -366,6 +402,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
 
   const estimateJob = useCallback(async () => {
     if (executionLock.current) return;
+    clearPrivateOutputTimer();
     const validationError = validate();
     if (validationError) {
       setError(validationError);
@@ -400,7 +437,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
     } finally {
       executionLock.current = false;
     }
-  }, [executionOptions, privateMode, projectId, prompt, purpose, readyFileIds, requestFingerprint, validate]);
+  }, [clearPrivateOutputTimer, executionOptions, privateMode, projectId, prompt, purpose, readyFileIds, requestFingerprint, validate]);
 
   const pollJob = useCallback(async (id: string) => {
     pollController.current?.abort();
@@ -416,20 +453,25 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
       else if (state === 'completed' || state === 'complete') {
         setResultSections(normalizeResult(payload));
         setPhase('completed');
-        setNotice('Resultを保存しました。HistoryとProjectから再確認できます。');
+        setNotice(privateMode
+          ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
+          : 'Resultを保存しました。HistoryとProjectから再確認できます。');
         localStorage.removeItem(DRAFT_STORAGE_KEY);
+        armPrivateOutputExpiry();
         return;
       } else if (state === 'cancelled' || state === 'canceled') {
         setPhase('cancelled');
-        setNotice('Jobを取り消しました。入力内容は保持しています。');
+        setNotice(privateMode ? 'Jobを取り消しました。Private入力はこの画面を離れると保持されません。' : 'Jobを取り消しました。入力内容は保持しています。');
         return;
       } else if (state === 'failed' || state === 'partially_completed' || state === 'partial') {
         throw new ApiError(recordText(jobSource(payload), ['message', 'error_message'], 'Jobを完了できませんでした。'), 502, recordText(jobSource(payload), ['error_code', 'code'], 'JOB_FAILED'), payload);
       }
       await new Promise((resolve) => window.setTimeout(resolve, Math.min(800 + attempt * 100, 2_500)));
     }
-    throw new ApiError('Job状態の確認期限を超えました。Historyから状態を再確認してください。', 504, 'JOB_POLL_TIMEOUT');
-  }, []);
+    throw new ApiError(privateMode
+      ? 'Job状態の確認期限を超えました。Private Mode ResultはHistoryへ保存されないため、この画面で再確認できません。'
+      : 'Job状態の確認期限を超えました。Historyから状態を再確認してください。', 504, 'JOB_POLL_TIMEOUT');
+  }, [armPrivateOutputExpiry, privateMode]);
 
   const submitJob = useCallback(async () => {
     if (executionLock.current || !estimate) return;
@@ -477,7 +519,11 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
       if (immediateState === 'completed' || immediateState === 'complete') {
         setResultSections(normalizeResult(payload));
         setPhase('completed');
+        setNotice(privateMode
+          ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
+          : 'Resultを保存しました。HistoryとProjectから再確認できます。');
         localStorage.removeItem(DRAFT_STORAGE_KEY);
+        armPrivateOutputExpiry();
         return;
       }
       setPhase('queued');
@@ -489,15 +535,16 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
     } finally {
       executionLock.current = false;
     }
-  }, [estimate, executionOptions, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, requestFingerprint]);
+  }, [armPrivateOutputExpiry, estimate, executionOptions, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, requestFingerprint]);
 
   const cancelJob = async () => {
     if (!currentJobId) return;
     try {
       await apiRequest(`/api/jobs/${encodeURIComponent(currentJobId)}/cancel`, { method: 'POST', idempotent: true });
       pollController.current?.abort();
+      clearPrivateOutputTimer();
       setPhase('cancelled');
-      setNotice('取消Requestを送信しました。入力内容は保持しています。');
+      setNotice(privateMode ? '取消Requestを送信しました。Private入力はこの画面を離れると保持されません。' : '取消Requestを送信しました。入力内容は保持しています。');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError('取消Requestに失敗しました。'));
     }
@@ -505,6 +552,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
 
   const resetComposer = () => {
     pollController.current?.abort();
+    clearPrivateOutputTimer();
     localStorage.removeItem(DRAFT_STORAGE_KEY);
     setPrompt('');
     setPurpose('auto');
@@ -586,7 +634,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
 
         <div className="canonical-two-column">
           <label className="canonical-field"><span>Project ID（任意）</span><input value={projectId} onChange={(event) => setProjectId(event.target.value)} /></label>
-          <label className="canonical-private-toggle"><input type="checkbox" checked={privateMode} onChange={(event) => { setPrivateMode(event.target.checked); if (event.target.checked) setSelectedOptions((current) => current.filter((key) => key !== 'external-storage-transfer')); }} /><span><strong>Private Mode</strong><small>本文・Fileを通常保存対象から除外</small></span></label>
+          <label className="canonical-private-toggle"><input type="checkbox" checked={privateMode} disabled={activeWork || files.length > 0 || resultSections.length > 0} onChange={(event) => { setPrivateMode(event.target.checked); if (event.target.checked) setSelectedOptions((current) => current.filter((key) => key !== 'external-storage-transfer')); }} /><span><strong>Private Mode</strong><small>本文・File・ResultをAstera側へ永続保存しない</small></span></label>
         </div>
 
         <section className="canonical-files">
@@ -599,7 +647,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
 
         <div className="canonical-primary-actions">
           <button type="button" className="platform-button is-primary" onClick={() => void estimateJob()} disabled={activeWork || !prompt.trim()}>予定Creditを確認</button>
-          {currentJobId && <a className="platform-button" href={`/app/results/${encodeURIComponent(currentJobId)}`}>保存Resultを開く</a>}
+          {currentJobId && !privateMode && <a className="platform-button" href={`/app/results/${encodeURIComponent(currentJobId)}`}>保存Resultを開く</a>}
           {['queued', 'running', 'assembling_result'].includes(phase) && <button type="button" className="platform-button" onClick={() => void cancelJob()}>取消</button>}
         </div>
       </section>
@@ -617,7 +665,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
           {estimate.creditState === 'low' && <p className="canonical-warning">残高が少なくなっています。今回の実行後にCredit追加を検討してください。</p>}
           {estimate.creditState === 'critical' && <p className="canonical-warning">次回以降の実行が停止する可能性があります。</p>}
           {estimate.creditState === 'insufficient' || estimate.availableCredits < estimate.requiredCredits ? (
-            <div className="canonical-insufficient-actions"><p>Credit不足のためAstera本体へ送信せず、入力内容を保持しています。</p><a className="platform-button is-primary" href={`/account/credit?return_to=${encodeURIComponent(window.location.pathname)}`}>Creditを追加</a><button type="button" className="platform-button" onClick={() => { setEstimate(null); setPhase('draft'); }}>内容を修正</button><button type="button" className="platform-button" onClick={() => setNotice('下書きをこの端末へ保存しました。')}>下書きを保存</button></div>
+            <div className="canonical-insufficient-actions"><p>Credit不足のためAstera本体へ送信せず、入力内容を保持しています。</p><a className="platform-button is-primary" href={`/account/credit?return_to=${encodeURIComponent(window.location.pathname)}`}>Creditを追加</a><button type="button" className="platform-button" onClick={() => { setEstimate(null); setPhase('draft'); }}>内容を修正</button>{privateMode ? <p>Private Modeでは本文をLocalStorageへ保存しません。</p> : <button type="button" className="platform-button" onClick={() => setNotice('下書きをこの端末へ保存しました。')}>下書きを保存</button>}</div>
           ) : <button type="button" className="platform-button is-primary" onClick={() => void submitJob()} disabled={activeWork}>Creditを予約して実行</button>}
         </section>
       )}
