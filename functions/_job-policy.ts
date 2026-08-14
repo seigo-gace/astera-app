@@ -2,6 +2,8 @@ import { FunctionHttpError, type D1Database } from './_account-projection';
 
 export const PURPOSE_KEYS = ['auto', 'review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
 export const OPTION_KEYS = ['translation', 'agent-mode', 'document', 'external-storage-transfer'] as const;
+const MAX_INPUT_CHARACTERS = 200_000;
+const MAX_REVISION_DIFF_CELLS = 4_000_000;
 
 export type PurposeKey = (typeof PURPOSE_KEYS)[number];
 export type OptionKey = (typeof OPTION_KEYS)[number];
@@ -37,6 +39,11 @@ export type NormalizedExecutionOption = {
   config: Record<string, string>;
 };
 
+export type RevisionContext = {
+  parentJobId: string;
+  basePrompt: string;
+};
+
 export type EstimateInput = {
   prompt: string;
   purpose: PurposeKey;
@@ -44,6 +51,7 @@ export type EstimateInput = {
   fileIds: string[];
   privateMode: boolean;
   projectId: string | null;
+  revision: RevisionContext | null;
 };
 
 function integer(value: unknown, name: string, min = 0): number {
@@ -149,7 +157,7 @@ export function normalizeEstimateInput(value: unknown): EstimateInput {
   const source = value as Record<string, unknown>;
   const prompt = text(source.prompt ?? source.input);
   if (!prompt) throw new FunctionHttpError(422, 'ASTERA_INPUT_REQUIRED', '実行する本文がありません。');
-  if ([...prompt].length > 200_000) throw new FunctionHttpError(413, 'ASTERA_INPUT_TOO_LARGE', '入力は200,000文字以内です。');
+  if ([...prompt].length > MAX_INPUT_CHARACTERS) throw new FunctionHttpError(413, 'ASTERA_INPUT_TOO_LARGE', '入力は200,000文字以内です。');
   const purpose = text(source.purpose) as PurposeKey;
   if (!PURPOSE_KEYS.includes(purpose)) throw new FunctionHttpError(422, 'PURPOSE_INVALID', 'Purposeは8種から一つだけ指定してください。');
   const rawOptions = Array.isArray(source.options) ? source.options : [];
@@ -163,11 +171,33 @@ export function normalizeEstimateInput(value: unknown): EstimateInput {
     throw new FunctionHttpError(422, 'PRIVATE_MODE_TRANSFER_FORBIDDEN', 'Private Modeでは外部Storage転送を実行できません。');
   }
   const projectId = text(source.project_id ?? source.projectId) || null;
-  return { prompt, purpose, options, fileIds, privateMode, projectId };
+  const parentJobId = text(source.revision_of_job_id ?? source.revisionOfJobId);
+  const basePrompt = text(source.revision_base_prompt ?? source.revisionBasePrompt);
+  if ((parentJobId && !basePrompt) || (!parentJobId && basePrompt)) {
+    throw new FunctionHttpError(422, 'REVISION_CONTEXT_INCOMPLETE', '修整再投稿には親Jobと修整前本文の両方が必要です。');
+  }
+  if ([...basePrompt].length > MAX_INPUT_CHARACTERS) {
+    throw new FunctionHttpError(413, 'REVISION_BASE_INPUT_TOO_LARGE', '修整前本文は200,000文字以内です。');
+  }
+  const revision = parentJobId ? { parentJobId, basePrompt } : null;
+  return { prompt, purpose, options, fileIds, privateMode, projectId, revision };
 }
 
-export function calculateRequiredCredits(policy: CreditPolicy, input: EstimateInput, totalFileBytes: number): number {
-  const promptCost = Math.ceil([...input.prompt].length / policy.charactersPerCredit);
+function assertBillableCharacters(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_INPUT_CHARACTERS) {
+    throw new FunctionHttpError(422, 'REVISION_BILLABLE_CHARACTERS_INVALID', '修整文字数を安全に計算できません。', { value });
+  }
+  return value;
+}
+
+export function calculateRequiredCredits(
+  policy: CreditPolicy,
+  input: EstimateInput,
+  totalFileBytes: number,
+  billableCharacters = [...input.prompt].length,
+): number {
+  const promptCharacters = assertBillableCharacters(billableCharacters);
+  const promptCost = promptCharacters > 0 ? Math.ceil(promptCharacters / policy.charactersPerCredit) : 0;
   const fileCost = totalFileBytes > 0 ? Math.ceil(totalFileBytes / policy.fileBytesPerCredit) : 0;
   const optionCost = input.options.reduce((sum, option) => sum + policy.optionCosts[option.key], 0);
   const required = policy.baseCredits + promptCost + fileCost + optionCost;
@@ -185,12 +215,64 @@ function stableInput(input: EstimateInput, uploadFingerprints: string[]): string
     files: uploadFingerprints,
     privateMode: input.privateMode,
     projectId: input.projectId,
+    revision: input.revision ? { parentJobId: input.revision.parentJobId, basePrompt: input.revision.basePrompt } : null,
   });
 }
 
-export async function requestFingerprint(input: EstimateInput, uploadFingerprints: string[]): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stableInput(input, uploadFingerprints)));
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function promptFingerprint(prompt: string): Promise<string> {
+  return sha256(prompt);
+}
+
+export async function requestFingerprint(input: EstimateInput, uploadFingerprints: string[]): Promise<string> {
+  return sha256(stableInput(input, uploadFingerprints));
+}
+
+export function revisedCharacterCount(basePrompt: string, revisedPrompt: string): number {
+  const before = [...basePrompt];
+  const after = [...revisedPrompt];
+  let prefix = 0;
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1;
+
+  let beforeEnd = before.length;
+  let afterEnd = after.length;
+  while (beforeEnd > prefix && afterEnd > prefix && before[beforeEnd - 1] === after[afterEnd - 1]) {
+    beforeEnd -= 1;
+    afterEnd -= 1;
+  }
+
+  let left = before.slice(prefix, beforeEnd);
+  let right = after.slice(prefix, afterEnd);
+  if (left.length === 0) return assertBillableCharacters(right.length);
+  if (right.length === 0) return assertBillableCharacters(left.length);
+
+  if (left.length * right.length > MAX_REVISION_DIFF_CELLS) {
+    throw new FunctionHttpError(
+      422,
+      'REVISION_DIFF_TOO_COMPLEX',
+      '修整範囲が大きく、正確な修整文字数を安全な計算量で確定できません。修整範囲を分けて再試行してください。',
+      { before_changed_window: left.length, after_changed_window: right.length },
+    );
+  }
+
+  if (left.length < right.length) [left, right] = [right, left];
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  let current = new Array<number>(right.length + 1);
+  for (let row = 1; row <= left.length; row += 1) {
+    current[0] = row;
+    for (let column = 1; column <= right.length; column += 1) {
+      const substitution = previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1);
+      const insertion = current[column - 1] + 1;
+      const deletion = previous[column] + 1;
+      current[column] = Math.min(substitution, insertion, deletion);
+    }
+    [previous, current] = [current, previous];
+  }
+  return assertBillableCharacters(previous[right.length]);
 }
 
 export function creditState(usable: number, required: number, policy: CreditPolicy): 'normal' | 'low' | 'critical' | 'insufficient' {

@@ -10,7 +10,10 @@ import {
   creditState,
   loadActiveCreditPolicy,
   normalizeEstimateInput,
+  promptFingerprint,
   requestFingerprint,
+  revisedCharacterCount,
+  type EstimateInput,
 } from '../../_job-policy';
 
 type UploadRow = {
@@ -20,6 +23,13 @@ type UploadRow = {
   private_mode: number;
   status: string;
   expires_at: string | null;
+};
+
+type RevisionParentRow = {
+  id: string;
+  state: string;
+  private_mode: number;
+  prompt_sha256: string | null;
 };
 
 type Env = AsteraFunctionEnv & { PRIVATE_UPLOAD_TTL_SECONDS?: string };
@@ -70,6 +80,37 @@ async function loadUploads(
   return ordered;
 }
 
+async function revisionBillableCharacters(
+  context: PagesContext,
+  tenantId: string,
+  userId: string,
+  input: EstimateInput,
+): Promise<number | null> {
+  if (!input.revision) return null;
+  const parent = await context.env.ASTERA_DB.prepare(
+    `SELECT j.id, j.state, j.private_mode, e.prompt_sha256
+     FROM app_jobs j
+     JOIN job_estimates e ON e.id = j.estimate_id
+     WHERE j.id = ?1 AND j.tenant_id = ?2 AND j.user_id = ?3
+     LIMIT 1`,
+  ).bind(input.revision.parentJobId, tenantId, userId).first<RevisionParentRow>();
+  if (!parent) throw new FunctionHttpError(404, 'REVISION_PARENT_JOB_NOT_FOUND', '修整元Jobを確認できません。');
+  if (!['completed', 'partially_completed'].includes(parent.state)) {
+    throw new FunctionHttpError(409, 'REVISION_PARENT_JOB_NOT_COMPLETE', '完了済みJobだけを修整元として使用できます。', { state: parent.state });
+  }
+  if (Boolean(parent.private_mode) !== input.privateMode) {
+    throw new FunctionHttpError(409, 'REVISION_PRIVACY_MODE_MISMATCH', '修整元Jobと再投稿JobのPrivate Modeが一致しません。');
+  }
+  if (!parent.prompt_sha256) {
+    throw new FunctionHttpError(409, 'REVISION_PROVENANCE_UNAVAILABLE', '修整元本文をServer検証できないため差分Creditを適用できません。');
+  }
+  const suppliedBaseHash = await promptFingerprint(input.revision.basePrompt);
+  if (suppliedBaseHash !== parent.prompt_sha256) {
+    throw new FunctionHttpError(409, 'REVISION_BASE_PROMPT_MISMATCH', '修整前本文が修整元Jobと一致しません。');
+  }
+  return revisedCharacterCount(input.revision.basePrompt, input.prompt);
+}
+
 export async function onRequestPost(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
@@ -83,8 +124,13 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     if (!Number.isSafeInteger(totalFileBytes) || totalFileBytes < 0) {
       throw new FunctionHttpError(422, 'UPLOAD_SIZE_TOTAL_INVALID', 'File Size合計を計算できません。');
     }
+    const [promptSha256, revisionCharacters] = await Promise.all([
+      promptFingerprint(input.prompt),
+      revisionBillableCharacters(context, actor.profile.tenant_id, actor.user.id, input),
+    ]);
+    const billableCharacters = revisionCharacters ?? [...input.prompt].length;
     const fingerprint = await requestFingerprint(input, uploads.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
-    const requiredCredits = calculateRequiredCredits(policy, input, totalFileBytes);
+    const requiredCredits = calculateRequiredCredits(policy, input, totalFileBytes, billableCharacters);
     const availableCredits = Number(actor.credit.available_balance);
     const reservedCredits = Number(actor.credit.reserved_balance);
     const usableCredits = Math.max(0, availableCredits - reservedCredits);
@@ -97,8 +143,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       `INSERT INTO job_estimates
         (id, tenant_id, user_id, request_fingerprint, policy_version, required_credits,
          available_credits_snapshot, reserved_credits_snapshot, credit_account_version,
-         credit_state, status, expires_at, created_at, consumed_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, NULL)`,
+         credit_state, status, expires_at, created_at, consumed_at,
+         prompt_sha256, revision_parent_job_id, revision_billable_characters)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, NULL, ?13, ?14, ?15)`,
     ).bind(
       estimateId,
       actor.profile.tenant_id,
@@ -112,6 +159,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       state,
       expiresAt,
       createdAt.toISOString(),
+      promptSha256,
+      input.revision?.parentJobId ?? null,
+      revisionCharacters,
     ).run();
 
     return Response.json({
@@ -133,6 +183,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         expires_at: expiresAt,
         expiresAt,
         request_fingerprint: fingerprint,
+        billing_mode: input.revision ? 'revision' : 'full',
+        billable_characters: billableCharacters,
+        revision_parent_job_id: input.revision?.parentJobId ?? null,
       },
     }, { status: 201, headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
   } catch (error) {
