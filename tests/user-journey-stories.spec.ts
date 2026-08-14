@@ -221,7 +221,7 @@ test('STORY-CHECKOUT-002 an untrusted checkout URL is rejected before navigation
 test('STORY-LOGIN-001 normal Login returns to the requested protected page', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/login') return json(route, { authenticated: true, account: { account_status: 'active' } });
+    if (path === '/api/auth/sign-in/email') return json(route, { authenticated: true, account: { account_status: 'active' } });
     return defaultApi(route);
   });
 
@@ -235,7 +235,7 @@ test('STORY-LOGIN-001 normal Login returns to the requested protected page', asy
 test('STORY-LOGIN-002 Email Login respects a required Password setup stage', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/login') return json(route, { data: { requires_password_setup: true } });
+    if (path === '/api/auth/sign-in/email') return json(route, { data: { requires_password_setup: true } });
     return defaultApi(route);
   });
 
@@ -247,10 +247,10 @@ test('STORY-LOGIN-002 Email Login respects a required Password setup stage', asy
   expect(new URL(page.url()).searchParams.get('return_to')).toBe('/account/credit');
 });
 
-test('STORY-LOGIN-003 Email Login respects a required 2FA stage and challenge', async ({ page }) => {
+test('STORY-LOGIN-003 Email Login respects the current session-based 2FA stage', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/login') return json(route, { data: { requires_2fa: true, challenge_id: 'challenge-story' } });
+    if (path === '/api/auth/sign-in/email') return json(route, { data: { twoFactorRedirect: true } });
     return defaultApi(route);
   });
 
@@ -260,14 +260,14 @@ test('STORY-LOGIN-003 Email Login respects a required 2FA stage and challenge', 
   await page.getByRole('button', { name: 'Login', exact: true }).click();
   await expect(page).toHaveURL(/\/auth\/2fa\?/);
   const url = new URL(page.url());
-  expect(url.searchParams.get('challenge')).toBe('challenge-story');
+  expect(url.searchParams.has('challenge')).toBe(false);
   expect(url.searchParams.get('return_to')).toBe('/app/history');
 });
 
 test('STORY-LOGIN-004 external return targets are discarded', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/login') return json(route, { authenticated: true });
+    if (path === '/api/auth/sign-in/email') return json(route, { authenticated: true });
     return defaultApi(route);
   });
 
@@ -282,7 +282,7 @@ test('STORY-REGISTER-001 mismatched Passwords never reach the API', async ({ pag
   let registerRequests = 0;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/register') registerRequests += 1;
+    if (path === '/api/auth/sign-up/email') registerRequests += 1;
     return defaultApi(route);
   });
 
@@ -301,7 +301,7 @@ test('STORY-REGISTER-002 rapid duplicate registration becomes one request and ke
   let idempotencyKey = '';
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/register') {
+    if (path === '/api/auth/sign-up/email') {
       registerRequests += 1;
       idempotencyKey = route.request().headers()['idempotency-key'] ?? '';
       await new Promise((resolve) => setTimeout(resolve, 120));
@@ -331,9 +331,14 @@ test('STORY-VERIFY-001 Email verification preserves the original destination thr
   let verifyRequests = 0;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/email/verify') {
+    if (path === '/api/auth/verify-email') {
       verifyRequests += 1;
-      return json(route, { verified: true });
+      await route.fulfill({
+        status: 302,
+        headers: { location: '/login?return_to=%2Faccount%2Fcredit' },
+        body: '',
+      });
+      return;
     }
     return defaultApi(route);
   });
@@ -348,7 +353,7 @@ test('STORY-PASSWORD-001 reset without a Token fails locally and keeps both Pass
   let resetRequests = 0;
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/account/password/reset') resetRequests += 1;
+    if (path === '/api/auth/reset-password') resetRequests += 1;
     return defaultApi(route);
   });
 
@@ -361,44 +366,50 @@ test('STORY-PASSWORD-001 reset without a Token fails locally and keeps both Pass
   expect(resetRequests).toBe(0);
 });
 
-test('STORY-2FA-001 missing Challenge fails locally without consuming a Code', async ({ page }) => {
-  let verifyRequests = 0;
-  await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/2fa/verify') verifyRequests += 1;
-    return defaultApi(route);
-  });
-
-  await page.goto('/auth/2fa');
-  await page.getByLabel('認証Code').fill('123456');
-  await page.getByRole('button', { name: '認証' }).click();
-  await expect(page.getByRole('alert')).toContainText('TWO_FACTOR_CHALLENGE_REQUIRED');
-  expect(verifyRequests).toBe(0);
-});
-
-test('STORY-2FA-002 spaces are removed from the Code and the return path is restored', async ({ page }) => {
+test('STORY-2FA-001 session-based 2FA submits a Code without a legacy Challenge', async ({ page }) => {
   let requestBody: Record<string, unknown> = {};
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/2fa/verify') {
+    if (path === '/api/auth/two-factor/verify-totp') {
       requestBody = route.request().postDataJSON() as Record<string, unknown>;
       return json(route, { authenticated: true });
     }
     return defaultApi(route);
   });
 
-  await page.goto('/auth/2fa?challenge=challenge-story&return_to=%2Fapp%2Fprojects');
+  await page.goto('/auth/2fa');
+  await page.getByLabel('認証Code').fill('123456');
+  await page.getByRole('button', { name: '認証' }).click();
+  await expect(page).toHaveURL(/\/app\/new$/);
+  expect(requestBody.code).toBe('123456');
+  expect(requestBody.trustDevice).toBe(true);
+  expect(requestBody.challenge_id).toBeUndefined();
+});
+
+test('STORY-2FA-002 spaces are removed from the Code and the return path is restored', async ({ page }) => {
+  let requestBody: Record<string, unknown> = {};
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/auth/two-factor/verify-totp') {
+      requestBody = route.request().postDataJSON() as Record<string, unknown>;
+      return json(route, { authenticated: true });
+    }
+    return defaultApi(route);
+  });
+
+  await page.goto('/auth/2fa?return_to=%2Fapp%2Fprojects');
   await page.getByLabel('認証Code').fill('123 456');
   await page.getByRole('button', { name: '認証' }).click();
   await expect(page).toHaveURL(/\/app\/projects$/);
   expect(requestBody.code).toBe('123456');
-  expect(requestBody.challenge_id).toBe('challenge-story');
+  expect(requestBody.trustDevice).toBe(true);
+  expect(requestBody.challenge_id).toBeUndefined();
 });
 
 test('STORY-ERROR-001 nested API errors show the actionable message and code', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/register') {
+    if (path === '/api/auth/sign-up/email') {
       return json(route, { error: { code: 'EMAIL_ALREADY_REGISTERED', message: 'このEmailは登録済みです。' } }, 409);
     }
     return defaultApi(route);
@@ -418,7 +429,7 @@ test('STORY-ERROR-001 nested API errors show the actionable message and code', a
 test('STORY-ERROR-002 a network failure keeps Login input and exposes a retryable error', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/auth/login') return route.abort('connectionfailed');
+    if (path === '/api/auth/sign-in/email') return route.abort('connectionfailed');
     return defaultApi(route);
   });
 
