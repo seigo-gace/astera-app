@@ -9,7 +9,7 @@ const canonicalPaths = [
   '/forgot-password',
   '/reset-password?token=reset-token',
   '/account/password/setup',
-  '/auth/2fa?challenge=challenge-1',
+  '/auth/2fa?return_to=%2Fapp%2Fnew',
   '/app',
   '/app/new',
   '/app/results/result-1',
@@ -182,8 +182,8 @@ async function mockApi(page: Page): Promise<void> {
       return;
     }
 
-    if (path === '/api/auth/login') {
-      await json(route, { account: { id: 'account-1' }, authenticated: true });
+    if (path === '/api/auth/sign-in/email') {
+      await json(route, { account: { id: 'account-1', account_status: 'active' }, authenticated: true });
       return;
     }
 
