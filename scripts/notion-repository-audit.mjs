@@ -28,6 +28,7 @@ const requiredFrontendFiles = [
   'src/platform/api-client.ts',
   'src/platform/external-navigation.ts',
   'src/platform/deterministic-japanese-mcp-client.ts',
+  'src/revision-credit-bridge.ts',
   'public/app-interactions.js',
   'public/process-user-errors.js',
   'public/ui-honesty.js',
@@ -46,11 +47,15 @@ const requiredContractAndEvidenceFiles = [
   'packages/contracts/src/index.ts',
   'packages/commercial-contracts/src/index.ts',
   'packages/config-schema/src/index.ts',
-  'cloudflare/functions/src/index.ts',
+  'functions/_account-projection.ts',
+  'functions/api/[[path]].ts',
+  'functions/api/jobs/estimate.ts',
+  'functions/api/jobs/index.ts',
   'contabo/app-api/src/index.ts',
   'contabo/workers/src/index.ts',
   'migrations/d1/0001_identity_billing_credit.sql',
   'migrations/d1/0002_developer_notifications.sql',
+  'migrations/d1/0005_revision_credit_provenance.sql',
   'migrations/postgres/0001_results_projects_shares.sql',
   'docs/openapi/openapi.yaml',
   'docs/release-manifest/schema.json',
@@ -74,6 +79,8 @@ const sourceMarkers = [
   ['src/features/pricing/PricingPage.tsx', 'CATALOG_TIMEOUT'],
   ['src/features/checkout/CheckoutPage.tsx', 'CHECKOUT_INTENT_TIMEOUT'],
   ['src/platform/pages/AccountPages.tsx', 'API_KEY_SECRET_MISSING'],
+  ['src/revision-credit-bridge.ts', 'initializeRevisionCreditBridge'],
+  ['src/revision-credit-bridge.ts', 'revision_of_job_id'],
   ['public/app-interactions.js', 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED'],
   ['public/app-interactions.js', 'canonicalSectionsFromObject'],
   ['public/process-user-errors.js', 'AsteraProcessError'],
@@ -81,9 +88,13 @@ const sourceMarkers = [
   ['scripts/user-story-audit.mjs', 'STORY_ID_COUNT_TOO_LOW'],
 ];
 
-// Source GateはSource実装を確認する。Deploy済みかどうかはRelease/Runtime Evidenceへ分離する。
+// Source Gateは現行Build対象のSource実装を確認する。
+// Deploy済みかどうかはSource Markerへ混ぜず、Release/Runtime Evidenceへ分離する。
 const readinessChecks = [
-  ['cloudflare/functions/src/index.ts', ['cloudflareFunctionsReadiness', "status: 'contract_source_only'", 'deployed: false']],
+  ['functions/_account-projection.ts', ['requireAsteraActor', 'ASTERA_DB']],
+  ['functions/api/jobs/estimate.ts', ['revisionBillableCharacters', 'promptFingerprint', 'billable_characters']],
+  ['functions/api/jobs/index.ts', ['createRuntimeJob', 'credit_reservations', 'requestFingerprint']],
+  ['functions/api/[[path]].ts', ['APP_API_ORIGIN', 'APP_API_SERVICE_TOKEN', 'X-Astera-Internal-Authenticated']],
   ['contabo/app-api/src/index.ts', ['export class AsteraRuntimeService', 'validateCreateRequest', 'validateResult']],
   ['contabo/workers/src/index.ts', ['contaboWorkersReadiness', "status: 'contract_source_only'", 'deployed: false']],
 ];
