@@ -1,2 +1,26 @@
 @import './styles-core.css';
 @import './styles-responsive.css';
+
+/* Keep the live Credit balance visually centered over the header gauge without
+   changing the server-backed balance projection used by CreditMeter. */
+.platform-credit-meter > .platform-credit-number {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  min-width: 0;
+  max-width: calc(100% - 112px);
+  padding: 0 6px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, .9), 0 0 8px currentColor;
+}
+
+@media (max-width: 760px) {
+  .platform-credit-meter > .platform-credit-number {
+    max-width: calc(100% - 36px);
+  }
+}
