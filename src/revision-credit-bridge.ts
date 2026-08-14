@@ -158,16 +158,26 @@ function removeEstimateMarker(): void {
 }
 
 function renderEstimateMarker(): void {
-  removeEstimateMarker();
-  if (!lastEstimate || lastEstimate.billableCharacters === null) return;
+  const existing = document.querySelector(`[${REVISION_ESTIMATE_MARK}]`);
+  if (!lastEstimate || lastEstimate.billableCharacters === null) {
+    existing?.remove();
+    return;
+  }
   const list = document.querySelector('.canonical-confirmation dl');
   if (!(list instanceof HTMLElement)) return;
+  const value = lastEstimate.billableCharacters.toLocaleString('ja-JP');
+  if (existing instanceof HTMLElement) {
+    const dd = existing.querySelector('dd');
+    if (dd?.textContent !== value && dd) dd.textContent = value;
+    if (existing.parentElement !== list) list.append(existing);
+    return;
+  }
   const row = document.createElement('div');
   row.setAttribute(REVISION_ESTIMATE_MARK, 'true');
   const dt = document.createElement('dt');
   dt.textContent = '修整Credit対象文字数';
   const dd = document.createElement('dd');
-  dd.textContent = lastEstimate.billableCharacters.toLocaleString('ja-JP');
+  dd.textContent = value;
   row.append(dt, dd);
   list.append(row);
 }
