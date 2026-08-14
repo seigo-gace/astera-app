@@ -45,8 +45,8 @@ function viewportSize(): { width: number; height: number; offsetTop: number; scr
   };
 }
 
-function orientationFromViewport(width: number, height: number): AsteraOrientation {
-  return width > height ? 'landscape' : 'portrait';
+function orientationFromMedia(): AsteraOrientation {
+  return window.matchMedia('(orientation: landscape)').matches ? 'landscape' : 'portrait';
 }
 
 function viewportClass(width: number): 'compact' | 'mobile' | 'tablet' | 'desktop' {
@@ -105,7 +105,7 @@ function applyCapabilities(forcedOrientation?: AsteraOrientation): void {
   const size = viewportSize();
   const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
   const hoverAvailable = window.matchMedia('(hover: hover)').matches;
-  const orientation = forcedOrientation ?? orientationFromViewport(size.width, size.height);
+  const orientation = forcedOrientation ?? currentOrientation ?? orientationFromMedia();
 
   if (size.width !== lastLayoutWidth) {
     lastLayoutWidth = setPixelVariable('--app-layout-width', size.width, lastLayoutWidth);
@@ -193,8 +193,7 @@ export function initializeDeviceCompatibility(): void {
   initialized = true;
   root.dataset.asteraDeviceCompatibility = 'ready';
 
-  const initialSize = viewportSize();
-  currentOrientation = orientationFromViewport(initialSize.width, initialSize.height);
+  currentOrientation = orientationFromMedia();
   applyCapabilities(currentOrientation);
 
   window.addEventListener('resize', scheduleCapabilities, { passive: true });
@@ -209,7 +208,6 @@ export function initializeDeviceCompatibility(): void {
     beginOrientationTransition(event.matches ? 'landscape' : 'portrait');
   });
   window.addEventListener('orientationchange', () => {
-    const landscape = window.matchMedia('(orientation: landscape)').matches;
-    beginOrientationTransition(landscape ? 'landscape' : 'portrait');
+    beginOrientationTransition(orientationFromMedia());
   }, { passive: true });
 }
