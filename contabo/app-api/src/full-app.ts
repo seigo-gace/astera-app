@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp } from './index.js';
-import { registerWorkspaceApi } from './workspace-api.js';
 import { registerStorageBinaryApi } from './storage-binary-api.js';
 
 function bearerToken(value: string | undefined): string {
@@ -20,9 +19,8 @@ export function createFullApp(config: RuntimeConfig, service = new AsteraRuntime
     await next();
   });
 
-  // Remaining non-Storage Workspace compatibility routes stay registered until
-  // their D1 consumers are migrated. Astera Storage itself is binary-only here.
-  registerWorkspaceApi(app, { database: service.database, config });
+  // Account/Workspace persistent routes terminate in Cloudflare D1.
+  // Contabo exposes runtime execution and internal Storage Binary routes only.
   registerStorageBinaryApi(app, config);
 
   const runtime = createApp(config, service);
