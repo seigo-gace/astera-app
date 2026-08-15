@@ -25,7 +25,12 @@ export type SessionUser = {
 
 export type SessionPayload = {
   user?: SessionUser;
-  session?: { id?: string; expiresAt?: Date | string };
+  session?: {
+    id?: string;
+    expiresAt?: Date | string;
+    createdAt?: Date | string;
+    updatedAt?: Date | string;
+  };
 };
 
 export type UserProfileRow = {
@@ -67,6 +72,8 @@ export class FunctionHttpError extends Error {
     this.details = details;
   }
 }
+
+const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 
 function desiredAccountStatus(user: SessionUser, credentialAccountExists: boolean): string {
   if (user.emailVerified === false) return 'pending_email_verification';
@@ -150,6 +157,26 @@ export async function requireAsteraActor(request: Request, env: AsteraFunctionEn
     }
     throw new FunctionHttpError(500, 'ACCOUNT_SESSION_PROJECTION_FAILED', 'Account状態を取得できませんでした。', message);
   }
+}
+
+export async function requireFreshAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
+  const actor = await requireAsteraActor(request, env);
+  const rawCreatedAt = actor.session?.createdAt;
+  const createdAtMs = rawCreatedAt instanceof Date
+    ? rawCreatedAt.getTime()
+    : typeof rawCreatedAt === 'string'
+      ? Date.parse(rawCreatedAt)
+      : Number.NaN;
+  const ageMs = Date.now() - createdAtMs;
+  if (!Number.isFinite(createdAtMs) || ageMs < 0 || ageMs > FRESH_SESSION_MAX_AGE_MS) {
+    throw new FunctionHttpError(
+      403,
+      'FRESH_SESSION_REQUIRED',
+      'この操作には15分以内に開始されたFresh Sessionが必要です。再認証してください。',
+      { max_age_seconds: FRESH_SESSION_MAX_AGE_MS / 1000 },
+    );
+  }
+  return actor;
 }
 
 export function requestCorrelationId(request: Request): string {
