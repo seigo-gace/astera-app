@@ -1,0 +1,5 @@
+import { FunctionHttpError,functionErrorResponse,requestCorrelationId,requireAsteraActor,type AsteraFunctionEnv } from '../_account-projection';
+import { listHistory,WorkspaceStoreError } from '../_workspace-store';
+type C={request:Request;env:AsteraFunctionEnv};
+export async function onRequestGet(c:C){const id=requestCorrelationId(c.request);try{const a=await requireAsteraActor(c.request,c.env),u=new URL(c.request.url),limit=Number(u.searchParams.get('limit')||50);return Response.json(await listHistory(c.env.ASTERA_DB,{userId:a.user.id,tenantId:a.profile.tenant_id},u.searchParams.get('q')||'',Number.isInteger(limit)?limit:50),{headers:{'Cache-Control':'no-store','X-Correlation-ID':id}});}catch(e){const x=e instanceof WorkspaceStoreError?new FunctionHttpError(e.status,e.code,e.message,e.details):e;return functionErrorResponse(x,id);}}
+export function onRequest(c:C){return c.request.method==='GET'?onRequestGet(c):Promise.resolve(Response.json({error:{code:'METHOD_NOT_ALLOWED',message:'GETのみ対応しています。'}},{status:405}));}
