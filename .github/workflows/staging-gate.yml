@@ -97,7 +97,7 @@ jobs:
       - name: Verify frontend-to-backend endpoint reachability
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          node <<'NODE'
+          node --input-type=module <<'NODE'
           const base = process.env.STAGING_BASE_URL;
           const probes = [
             { path: '/api/catalog/public', allowed: new Set([200]) },
