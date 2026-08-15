@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 export type RuntimeState =
   | 'queued'
@@ -60,8 +60,59 @@ export type TerminalUpdate = {
   retryable?: boolean;
 };
 
+const TERMINAL_STATES = new Set<RuntimeState>(['completed', 'partially_completed', 'failed', 'cancelled']);
+const TERMINAL_RETENTION_MS = 2 * 60 * 60 * 1000;
+
+function cloneJob(job: RuntimeJobRow): RuntimeJobRow {
+  return {
+    ...job,
+    created_at: new Date(job.created_at),
+    updated_at: new Date(job.updated_at),
+    started_at: job.started_at ? new Date(job.started_at) : null,
+    completed_at: job.completed_at ? new Date(job.completed_at) : null,
+    cancelled_at: job.cancelled_at ? new Date(job.cancelled_at) : null,
+  };
+}
+
+function lostRuntimeJob(id: string): RuntimeJobRow {
+  const now = new Date();
+  return {
+    id,
+    tenant_id: '',
+    user_id: '',
+    request_id: '',
+    state: 'failed',
+    purpose: 'auto',
+    private_mode: false,
+    project_id: null,
+    policy_version: '',
+    reserved_credits: '0',
+    request_ciphertext: null,
+    request_iv: null,
+    result_json: null,
+    usage_json: null,
+    error_code: 'RUNTIME_STATE_LOST_AFTER_RESTART',
+    error_message: 'Runtime Memory Stateが失われました。Cloudflare D1側でJobを失敗確定し、予約CreditをReleaseしてください。',
+    retryable: false,
+    correlation_id: '',
+    created_at: now,
+    updated_at: now,
+    started_at: null,
+    completed_at: now,
+    cancelled_at: null,
+  };
+}
+
+/**
+ * Runtime execution state is intentionally process-local.
+ * Cloudflare D1 `app_jobs` is the only persistent App Job authority.
+ * `pool` remains temporarily exposed only for legacy Workspace/Storage routes
+ * and must not be used by Runtime state methods.
+ */
 export class RuntimeDatabase {
   readonly pool: Pool;
+  private readonly jobs = new Map<string, RuntimeJobRow>();
+  private readonly requestIndex = new Map<string, string>();
 
   constructor(databaseUrl: string) {
     this.pool = new Pool({
@@ -69,83 +120,92 @@ export class RuntimeDatabase {
       max: 12,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
-      application_name: 'astera-app-api',
+      application_name: 'astera-app-api-legacy-storage',
       ssl: databaseUrl.includes('sslmode=disable') ? false : { rejectUnauthorized: false },
     });
   }
 
   async ready(): Promise<void> {
-    const result = await this.pool.query<{ table_name: string | null }>(
-      `SELECT to_regclass('public.runtime_jobs')::text AS table_name`,
-    );
-    if (!result.rows[0]?.table_name) throw new Error('RUNTIME_JOBS_MIGRATION_NOT_APPLIED');
+    // Runtime Job state does not depend on PostgreSQL. Legacy Storage/Workspace
+    // routes validate their own database access when invoked during migration.
   }
 
   async close(): Promise<void> {
+    this.jobs.clear();
+    this.requestIndex.clear();
     await this.pool.end();
   }
 
-  private async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const value = await work(client);
-      await client.query('COMMIT');
-      return value;
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
+  private requestKey(tenantId: string, requestId: string): string {
+    return `${tenantId}\u0000${requestId}`;
+  }
+
+  private prune(now = Date.now()): void {
+    for (const [id, job] of this.jobs) {
+      if (!TERMINAL_STATES.has(job.state)) continue;
+      if (now - job.updated_at.getTime() <= TERMINAL_RETENTION_MS) continue;
+      this.jobs.delete(id);
+      this.requestIndex.delete(this.requestKey(job.tenant_id, job.request_id));
     }
   }
 
   async insertOrGet(input: InsertRuntimeJob): Promise<{ job: RuntimeJobRow; created: boolean }> {
-    return this.transaction(async (client) => {
-      const inserted = await client.query<RuntimeJobRow>(
-        `INSERT INTO runtime_jobs
-          (id, tenant_id, user_id, request_id, state, purpose, private_mode, project_id,
-           policy_version, reserved_credits, request_ciphertext, request_iv, correlation_id)
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10, $11, $12)
-         ON CONFLICT (tenant_id, request_id) DO NOTHING
-         RETURNING *`,
-        [
-          input.id,
-          input.tenantId,
-          input.userId,
-          input.requestId,
-          input.purpose,
-          input.privateMode,
-          input.projectId,
-          input.policyVersion,
-          input.reservedCredits,
-          input.requestCiphertext,
-          input.requestIv,
-          input.correlationId,
-        ],
-      );
-      if (inserted.rows[0]) {
-        await client.query(
-          `INSERT INTO runtime_job_events (id, job_id, from_state, to_state, correlation_id, metadata)
-           VALUES ($1, $2, NULL, 'queued', $3, $4::jsonb)`,
-          [crypto.randomUUID(), input.id, input.correlationId, JSON.stringify({ private_mode: input.privateMode })],
-        );
-        return { job: inserted.rows[0], created: true };
+    this.prune();
+    const key = this.requestKey(input.tenantId, input.requestId);
+    const existingId = this.requestIndex.get(key);
+    if (existingId) {
+      const existing = this.jobs.get(existingId);
+      if (existing) {
+        if (existing.user_id !== input.userId) throw new Error('RUNTIME_JOB_IDEMPOTENCY_OWNERSHIP_MISMATCH');
+        return { job: cloneJob(existing), created: false };
       }
-      const existing = await client.query<RuntimeJobRow>(
-        `SELECT * FROM runtime_jobs WHERE tenant_id = $1 AND request_id = $2 LIMIT 1`,
-        [input.tenantId, input.requestId],
-      );
-      const job = existing.rows[0];
-      if (!job) throw new Error('RUNTIME_JOB_IDEMPOTENCY_LOOKUP_FAILED');
-      if (job.user_id !== input.userId) throw new Error('RUNTIME_JOB_IDEMPOTENCY_OWNERSHIP_MISMATCH');
-      return { job, created: false };
-    });
+      this.requestIndex.delete(key);
+    }
+    if (this.jobs.has(input.id)) {
+      const existing = this.jobs.get(input.id)!;
+      if (existing.tenant_id !== input.tenantId || existing.user_id !== input.userId || existing.request_id !== input.requestId) {
+        throw new Error('RUNTIME_JOB_ID_COLLISION');
+      }
+      return { job: cloneJob(existing), created: false };
+    }
+    const now = new Date();
+    const job: RuntimeJobRow = {
+      id: input.id,
+      tenant_id: input.tenantId,
+      user_id: input.userId,
+      request_id: input.requestId,
+      state: 'queued',
+      purpose: input.purpose,
+      private_mode: input.privateMode,
+      project_id: input.projectId,
+      policy_version: input.policyVersion,
+      reserved_credits: String(input.reservedCredits),
+      request_ciphertext: input.requestCiphertext,
+      request_iv: input.requestIv,
+      result_json: null,
+      usage_json: null,
+      error_code: null,
+      error_message: null,
+      retryable: false,
+      correlation_id: input.correlationId,
+      created_at: now,
+      updated_at: now,
+      started_at: null,
+      completed_at: null,
+      cancelled_at: null,
+    };
+    this.jobs.set(job.id, job);
+    this.requestIndex.set(key, job.id);
+    return { job: cloneJob(job), created: true };
   }
 
   async get(id: string): Promise<RuntimeJobRow | null> {
-    const result = await this.pool.query<RuntimeJobRow>(`SELECT * FROM runtime_jobs WHERE id = $1 LIMIT 1`, [id]);
-    return result.rows[0] ?? null;
+    this.prune();
+    const job = this.jobs.get(id);
+    // A known D1 Job may outlive the process-local Runtime state after restart.
+    // Returning a terminal loss envelope lets existing Cloudflare settlement
+    // release reserved Credit instead of leaving the Job stuck indefinitely.
+    return job ? cloneJob(job) : lostRuntimeJob(id);
   }
 
   async transition(
@@ -153,79 +213,47 @@ export class RuntimeDatabase {
     expectedStates: RuntimeState[],
     nextState: RuntimeState,
     correlationId: string,
-    metadata: Record<string, unknown> = {},
+    _metadata: Record<string, unknown> = {},
   ): Promise<RuntimeJobRow | null> {
-    return this.transaction(async (client) => {
-      const current = await client.query<RuntimeJobRow>(`SELECT * FROM runtime_jobs WHERE id = $1 FOR UPDATE`, [id]);
-      const job = current.rows[0];
-      if (!job) return null;
-      if (!expectedStates.includes(job.state)) return job;
-      const result = await client.query<RuntimeJobRow>(
-        `UPDATE runtime_jobs
-         SET state = $1,
-             updated_at = NOW(),
-             started_at = CASE WHEN $1 = 'running' AND started_at IS NULL THEN NOW() ELSE started_at END,
-             cancelled_at = CASE WHEN $1 = 'cancelled' THEN NOW() ELSE cancelled_at END
-         WHERE id = $2
-         RETURNING *`,
-        [nextState, id],
-      );
-      await client.query(
-        `INSERT INTO runtime_job_events (id, job_id, from_state, to_state, correlation_id, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-        [crypto.randomUUID(), id, job.state, nextState, correlationId, JSON.stringify(metadata)],
-      );
-      return result.rows[0] ?? job;
-    });
+    const job = this.jobs.get(id);
+    if (!job) return null;
+    if (!expectedStates.includes(job.state)) return cloneJob(job);
+    const now = new Date();
+    const previous = job.state;
+    job.state = nextState;
+    job.correlation_id = correlationId || job.correlation_id;
+    job.updated_at = now;
+    if (nextState === 'running' && !job.started_at) job.started_at = now;
+    if (nextState === 'cancelled') job.cancelled_at = now;
+    if (previous !== nextState) this.jobs.set(id, job);
+    return cloneJob(job);
   }
 
   async finish(id: string, update: TerminalUpdate, correlationId: string): Promise<RuntimeJobRow> {
-    return this.transaction(async (client) => {
-      const current = await client.query<RuntimeJobRow>(`SELECT * FROM runtime_jobs WHERE id = $1 FOR UPDATE`, [id]);
-      const job = current.rows[0];
-      if (!job) throw new Error('RUNTIME_JOB_NOT_FOUND');
-      if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(job.state)) return job;
-      const persistedResult = job.private_mode || update.result === undefined ? null : JSON.stringify(update.result);
-      const result = await client.query<RuntimeJobRow>(
-        `UPDATE runtime_jobs
-         SET state = $1,
-             result_json = $2::jsonb,
-             usage_json = $3::jsonb,
-             error_code = $4,
-             error_message = $5,
-             retryable = $6,
-             request_ciphertext = NULL,
-             request_iv = NULL,
-             updated_at = NOW(),
-             completed_at = CASE WHEN $1 IN ('completed', 'partially_completed', 'failed') THEN NOW() ELSE completed_at END,
-             cancelled_at = CASE WHEN $1 = 'cancelled' THEN NOW() ELSE cancelled_at END
-         WHERE id = $7
-         RETURNING *`,
-        [
-          update.state,
-          persistedResult,
-          update.usage === undefined ? null : JSON.stringify(update.usage),
-          update.errorCode ?? null,
-          update.errorMessage ?? null,
-          update.retryable ?? false,
-          id,
-        ],
-      );
-      await client.query(
-        `INSERT INTO runtime_job_events (id, job_id, from_state, to_state, correlation_id, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-        [crypto.randomUUID(), id, job.state, update.state, correlationId, JSON.stringify({ error_code: update.errorCode ?? null })],
-      );
-      return result.rows[0] as RuntimeJobRow;
-    });
+    const job = this.jobs.get(id);
+    if (!job) throw new Error('RUNTIME_JOB_NOT_FOUND');
+    if (TERMINAL_STATES.has(job.state)) return cloneJob(job);
+    const now = new Date();
+    job.state = update.state;
+    job.result_json = job.private_mode || update.result === undefined ? null : structuredClone(update.result);
+    job.usage_json = update.usage === undefined ? null : structuredClone(update.usage);
+    job.error_code = update.errorCode ?? null;
+    job.error_message = update.errorMessage ?? null;
+    job.retryable = update.retryable ?? false;
+    job.request_ciphertext = null;
+    job.request_iv = null;
+    job.correlation_id = correlationId || job.correlation_id;
+    job.updated_at = now;
+    if (['completed', 'partially_completed', 'failed'].includes(update.state)) job.completed_at = now;
+    if (update.state === 'cancelled') job.cancelled_at = now;
+    this.jobs.set(id, job);
+    return cloneJob(job);
   }
 
   async recoverable(): Promise<RuntimeJobRow[]> {
-    const result = await this.pool.query<RuntimeJobRow>(
-      `SELECT * FROM runtime_jobs
-       WHERE state IN ('queued', 'running', 'assembling_result', 'cancel_requested')
-       ORDER BY created_at ASC`,
-    );
-    return result.rows;
+    // No Runtime request payload is persisted on Contabo. After a process
+    // restart, D1 polling receives RUNTIME_STATE_LOST_AFTER_RESTART and closes
+    // the Job/credit reservation safely instead of auto-replaying user input.
+    return [];
   }
 }
