@@ -63,6 +63,11 @@ export function createAuth(env: AuthEnv) {
     secret: required(env.BETTER_AUTH_SECRET, 'BETTER_AUTH_SECRET'),
     database: env.ASTERA_DB as never,
     trustedOrigins: [new URL(baseURL).origin],
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      freshAge: 60 * 15,
+    },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 12,
