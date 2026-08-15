@@ -2,7 +2,7 @@ import {
   FunctionHttpError,
   functionErrorResponse,
   requestCorrelationId,
-  requireAsteraActor,
+  requireFreshAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
 import { loadActiveCatalog } from '../../_catalog';
@@ -55,7 +55,7 @@ function bodyFingerprint(value: { catalogVersion: string; productKind: string; p
 export async function onRequestPost(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
-    const actor = await requireAsteraActor(context.request, context.env);
+    const actor = await requireFreshAsteraActor(context.request, context.env);
     const key = idempotencyKey(context.request);
     const body = await context.request.json().catch(() => null) as CheckoutBody | null;
     if (!body) throw new FunctionHttpError(400, 'CHECKOUT_BODY_INVALID', 'Checkout RequestのJSONを確認できません。');
