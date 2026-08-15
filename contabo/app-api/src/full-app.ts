@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp, type RuntimeCreateRequest } from './index.js';
-import type { RuntimeJobRow } from './database.js';
-import { assertProjectAccess, persistWorkspaceResult, registerWorkspaceApi } from './workspace-api.js';
+import { assertProjectAccess, registerWorkspaceApi } from './workspace-api.js';
 import { registerAsteraStorageApi } from './astera-storage-api.js';
 
 function bearerToken(value: string | undefined): string {
@@ -10,34 +9,7 @@ function bearerToken(value: string | undefined): string {
   return value.slice('Bearer '.length).trim();
 }
 
-class FullAsteraRuntimeService extends AsteraRuntimeService {
-  override async execute(input: RuntimeCreateRequest): Promise<void> {
-    await super.execute(input);
-    const job = await this.database.get(input.job_id).catch(() => null);
-    if (!job || job.private_mode || !['completed', 'partially_completed'].includes(job.state) || !job.result_json) return;
-    try {
-      await persistWorkspaceResult(this.database.pool, job, job.result_json);
-    } catch (error) {
-      await this.database.pool.query(
-        `UPDATE runtime_jobs
-         SET state = 'partially_completed',
-             error_code = 'RESULT_PERSISTENCE_FAILED',
-             error_message = $1,
-             retryable = TRUE,
-             updated_at = NOW()
-         WHERE id = $2 AND state IN ('completed', 'partially_completed')`,
-        [error instanceof Error ? error.message : String(error), job.id],
-      ).catch(() => undefined);
-    }
-  }
-
-  async persistExistingTerminal(job: RuntimeJobRow): Promise<void> {
-    if (job.private_mode || !['completed', 'partially_completed'].includes(job.state) || !job.result_json) return;
-    await persistWorkspaceResult(this.database.pool, job, job.result_json);
-  }
-}
-
-export function createFullApp(config: RuntimeConfig, service = new FullAsteraRuntimeService(config)) {
+export function createFullApp(config: RuntimeConfig, service = new AsteraRuntimeService(config)) {
   const app = new Hono();
 
   app.use('/api/*', async (context, next) => {
@@ -48,7 +20,8 @@ export function createFullApp(config: RuntimeConfig, service = new FullAsteraRun
     await next();
   });
 
-  // Validate a requested Project before the runtime persists or processes the job.
+  // Temporary compatibility gate while remaining Workspace/Storage consumers are
+  // migrated to Account/Tenant-owned Cloudflare D1. This must not persist Result data.
   app.use('/internal/v1/jobs', async (context, next) => {
     if (context.req.method !== 'POST') {
       await next();
