@@ -20,11 +20,13 @@ export class TgserverStorageClient {
   constructor(private readonly config: RuntimeConfig) {}
 
   get configured(): boolean {
-    return Boolean(this.config.tgserverStorageOrigin);
+    return Boolean(this.config.tgserverStorageOrigin && this.config.tgserverStorageToken);
   }
 
   private url(path: string): string {
-    if (!this.config.tgserverStorageOrigin) throw new TgserverStorageError('TGS_STORAGE_NOT_CONFIGURED', 503);
+    if (!this.config.tgserverStorageOrigin || !this.config.tgserverStorageToken) {
+      throw new TgserverStorageError('TGS_STORAGE_NOT_CONFIGURED', 503);
+    }
     return new URL(path, `${this.config.tgserverStorageOrigin}/`).toString();
   }
 
@@ -34,7 +36,9 @@ export class TgserverStorageClient {
     const onAbort = () => controller.abort(signal?.reason || 'client_cancelled');
     signal?.addEventListener('abort', onAbort, { once: true });
     try {
-      const response = await fetch(this.url(path), { ...init, signal: controller.signal });
+      const headers = new Headers(init.headers);
+      headers.set('authorization', `Bearer ${this.config.tgserverStorageToken}`);
+      const response = await fetch(this.url(path), { ...init, headers, signal: controller.signal });
       if (!response.ok) {
         const payload = await response.clone().json().catch(() => null) as { code?: string } | null;
         throw new TgserverStorageError(payload?.code || `TGS_STORAGE_HTTP_${response.status}`, response.status);

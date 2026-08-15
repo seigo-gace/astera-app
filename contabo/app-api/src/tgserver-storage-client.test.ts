@@ -5,10 +5,11 @@ import { TgserverStorageClient, TgserverStorageError } from './tgserver-storage-
 
 const config = {
   tgserverStorageOrigin: 'http://127.0.0.1:3000',
+  tgserverStorageToken: 'storage-secret',
   tgserverStorageTimeoutMs: 1_000,
 } as RuntimeConfig;
 
-test('upload forwards only technical storage metadata and private=false', async () => {
+test('upload adds service auth and forwards only technical storage metadata', async () => {
   const originalFetch = globalThis.fetch;
   let captured: { input: string; init?: RequestInit & { duplex?: string } } | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -22,6 +23,7 @@ test('upload forwards only technical storage metadata and private=false', async 
     assert.equal(result.topic_id, 10);
     assert.ok(captured);
     const headers = new Headers(captured!.init?.headers);
+    assert.equal(headers.get('authorization'), 'Bearer storage-secret');
     assert.equal(headers.get('x-astera-user-id'), 'user-1');
     assert.equal(headers.get('x-astera-private-mode'), '0');
     assert.equal(headers.get('x-astera-file-size'), '3');
@@ -30,14 +32,37 @@ test('upload forwards only technical storage metadata and private=false', async 
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('upstream error code is preserved without response body leakage', async () => {
+test('service auth is attached to download and delete', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => Response.json({ status: 'error', code: 'USER_TOPIC_OWNERSHIP_MISMATCH', secret: 'do-not-copy' }, { status: 409 })) as typeof fetch;
+  const auth: string[] = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    auth.push(new Headers(init?.headers).get('authorization') || '');
+    return new Response(new Uint8Array([1]), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const client = new TgserverStorageClient(config);
+    await client.download({ userId: 'u', topicId: 1, messageId: 2, fileName: 'x' });
+    await client.delete({ userId: 'u', topicId: 1, messageId: 2 });
+    assert.deepEqual(auth, ['Bearer storage-secret', 'Bearer storage-secret']);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('origin without token fails closed', () => {
+  const client = new TgserverStorageClient({ ...config, tgserverStorageToken: '' });
+  assert.equal(client.configured, false);
+});
+
+test('upstream error code is preserved without response body or token leakage', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => Response.json({ status: 'error', code: 'STORAGE_AUTHENTICATION_FAILED', secret: 'do-not-copy' }, { status: 401 })) as typeof fetch;
   try {
     const client = new TgserverStorageClient(config);
     await assert.rejects(
       () => client.delete({ userId: 'u', topicId: 1, messageId: 2 }),
-      (error: unknown) => error instanceof TgserverStorageError && error.code === 'USER_TOPIC_OWNERSHIP_MISMATCH' && error.message === 'USER_TOPIC_OWNERSHIP_MISMATCH',
+      (error: unknown) => error instanceof TgserverStorageError
+        && error.code === 'STORAGE_AUTHENTICATION_FAILED'
+        && error.message === 'STORAGE_AUTHENTICATION_FAILED'
+        && !error.message.includes('storage-secret'),
     );
   } finally { globalThis.fetch = originalFetch; }
 });

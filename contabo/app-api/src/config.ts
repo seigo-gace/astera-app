@@ -14,6 +14,7 @@ export type RuntimeConfig = {
   translationGeminiKeyRef: string;
   translationTimeoutMs: number;
   tgserverStorageOrigin: string;
+  tgserverStorageToken: string;
   tgserverStorageTimeoutMs: number;
 };
 
@@ -46,6 +47,7 @@ function optionalSecureOrigin(value: string | undefined): string {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
+  const tgserverStorageOrigin = optionalSecureOrigin(env.TGS_STORAGE_INTERNAL_ORIGIN);
   return {
     port: integer(env.PORT, 8788, 1, 65_535),
     databaseUrl: required(env.DATABASE_URL, 'DATABASE_URL'),
@@ -61,7 +63,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     translationModelId: env.ASTERA_TRANSLATION_MODEL_ID?.trim() || '',
     translationGeminiKeyRef: env.LIBRAL_VAULT_GEMINI_KEY_REF?.trim() || '',
     translationTimeoutMs: integer(env.ASTERA_TRANSLATION_TIMEOUT_MS, 90_000, 3_000, 180_000),
-    tgserverStorageOrigin: optionalSecureOrigin(env.TGS_STORAGE_INTERNAL_ORIGIN),
+    tgserverStorageOrigin,
+    tgserverStorageToken: tgserverStorageOrigin ? required(env.TGS_STORAGE_INTERNAL_TOKEN, 'TGS_STORAGE_INTERNAL_TOKEN') : '',
     tgserverStorageTimeoutMs: integer(env.TGS_STORAGE_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
   };
 }
