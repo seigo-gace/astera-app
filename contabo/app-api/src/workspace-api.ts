@@ -6,7 +6,6 @@ import type { RuntimeDatabase, RuntimeJobRow } from './database.js';
 type Actor = {
   userId: string;
   tenantId: string;
-  email: string;
   language: string;
   sessionId: string;
 };
@@ -87,7 +86,6 @@ function actorFromHeaders(headers: Headers): Actor {
   return {
     userId,
     tenantId,
-    email: headers.get('x-astera-email')?.trim() || '',
     language: headers.get('x-astera-ui-language')?.trim() || 'ja-JP',
     sessionId: headers.get('x-astera-session-id')?.trim() || '',
   };
