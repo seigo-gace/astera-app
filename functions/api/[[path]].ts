@@ -182,7 +182,6 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   headers.set('X-Astera-Tenant-ID', actor.profile.tenant_id);
   headers.set('X-Astera-Account-Status', actor.profile.account_status);
   headers.set('X-Astera-UI-Language', actor.profile.ui_language);
-  headers.set('X-Astera-Email', actor.user.email);
   if (actor.session?.id) headers.set('X-Astera-Session-ID', actor.session.id);
 
   const upstreamUrl = new URL(`${upstreamOrigin.pathname}${requestUrl.pathname}`, upstreamOrigin.origin);
