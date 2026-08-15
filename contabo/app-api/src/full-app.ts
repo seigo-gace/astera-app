@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
-import { AsteraRuntimeService, createApp, type RuntimeCreateRequest } from './index.js';
-import { assertProjectAccess, registerWorkspaceApi } from './workspace-api.js';
+import { AsteraRuntimeService, createApp } from './index.js';
+import { registerWorkspaceApi } from './workspace-api.js';
 import { registerAsteraStorageApi } from './astera-storage-api.js';
 
 function bearerToken(value: string | undefined): string {
@@ -20,31 +20,8 @@ export function createFullApp(config: RuntimeConfig, service = new AsteraRuntime
     await next();
   });
 
-  // Temporary compatibility gate while remaining Workspace/Storage consumers are
-  // migrated to Account/Tenant-owned Cloudflare D1. This must not persist Result data.
-  app.use('/internal/v1/jobs', async (context, next) => {
-    if (context.req.method !== 'POST') {
-      await next();
-      return;
-    }
-    const token = bearerToken(context.req.header('authorization'));
-    if (!token || !constantTimeTokenEqual(token, config.internalServiceToken)) {
-      return context.json({ error: { code: 'INTERNAL_AUTHENTICATION_FAILED', message: 'Internal Service Tokenを確認できません。' } }, 401);
-    }
-    const payload = await context.req.raw.clone().json().catch(() => null) as Partial<RuntimeCreateRequest> | null;
-    if (payload?.project_id) {
-      if (!payload.tenant_id || !payload.user_id) {
-        return context.json({ error: { code: 'PROJECT_ACTOR_CONTEXT_REQUIRED', message: 'Project検証にTenant／Userが必要です。' } }, 422);
-      }
-      try {
-        await assertProjectAccess(service.database.pool, payload.tenant_id, payload.user_id, payload.project_id, 'editor');
-      } catch (error) {
-        return context.json({ error: { code: 'PROJECT_ACCESS_DENIED', message: error instanceof Error ? error.message : 'ProjectへのAccess権がありません。' } }, 403);
-      }
-    }
-    await next();
-  });
-
+  // Remaining Workspace/Storage compatibility routes stay registered until each
+  // consumer is migrated. Project authorization for new Jobs is owned by D1.
   registerWorkspaceApi(app, { database: service.database, config });
   registerAsteraStorageApi(app, service.database.pool, config);
 
