@@ -10,6 +10,15 @@ type PublicShareState =
   | { status: 'password-required'; message: string }
   | { status: 'error'; error: Error };
 
+async function openShareDownload(endpoint: string, body?: Record<string, unknown>) {
+  const response = await fetch(apiUrl(endpoint), { method: 'POST', credentials: 'include', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(recordText(asRecord(asRecord(payload).error), ['message'], `SHARE_DOWNLOAD_HTTP_${response.status}`));
+  const url = recordText(asRecord(payload), ['download_url']);
+  if (!url) throw new Error('Download URLを確認できませんでした。');
+  window.location.assign(apiUrl(url));
+}
+
 function PublicShareViewerPage({ route }: { route: RouteMatch }) {
   const token = route.params.token;
   const [state, setState] = useState<PublicShareState>({ status: 'loading' });
@@ -45,15 +54,17 @@ function PublicShareViewerPage({ route }: { route: RouteMatch }) {
     {state.status === 'loading' && <BusyState />}
     {state.status === 'error' && <ErrorState error={state.error} onRetry={() => void load()} />}
     {state.status === 'password-required' && <Panel title="Password保護Share"><form className="platform-inline-form" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void load(password); }}><Field label="Password" name="password" type="password" value={password} onChange={setPassword} required /><button className="platform-button is-primary" type="submit">表示</button></form><p>{state.message}</p></Panel>}
-    {state.status === 'ready' && <><Panel title="共有Result"><KeyValueGrid value={asRecord(asRecord(state.data).share ?? asRecord(state.data).data ?? state.data)} /></Panel><RecordList items={asArray(asRecord(state.data).sections ?? asRecord(state.data).result, ['sections'])} titleKeys={['title', 'key']} subtitleKeys={['body', 'content']} /></>}
+    {state.status === 'ready' && (() => { const share = asRecord(asRecord(state.data).share ?? asRecord(state.data).data ?? state.data); return <><Panel title="共有Result"><KeyValueGrid value={share} />{share.download_allowed === true && <button className="platform-button" type="button" onClick={() => void openShareDownload(`/api/shares/public/${encodeURIComponent(token)}/download-token`, password ? { password } : {})}>Download</button>}</Panel><RecordList items={asArray(asRecord(state.data).sections ?? asRecord(state.data).result, ['sections'])} titleKeys={['title', 'key']} subtitleKeys={['body', 'content']} /></>; })()}
   </PublicPageFrame>;
 }
 
 function PrivateShareViewerPage({ route }: { route: RouteMatch }) {
   const identifier = route.params.id;
   const [resource, reload] = useResource(`/api/shares/${encodeURIComponent(identifier)}`);
-  return <ResponsivePageShell route={route} description="指定AccountだけがPrivate Snapshotを閲覧できます。">{resource.status === 'loading' ? <BusyState /> : resource.status === 'error' ? <ErrorState error={resource.error} onRetry={reload} /> : <><Panel title="共有Result"><KeyValueGrid value={asRecord(resource.data).share ?? asRecord(resource.data).data ?? resource.data} /></Panel><RecordList items={asArray(asRecord(resource.data).sections ?? asRecord(resource.data).result, ['sections'])} titleKeys={['title', 'key']} subtitleKeys={['body', 'content']} /></>}</ResponsivePageShell>;
+  const share = resource.status === 'ready' ? asRecord(asRecord(resource.data).share ?? asRecord(resource.data).data ?? resource.data) : {};
+  return <ResponsivePageShell route={route} description="指定AccountだけがPrivate Snapshotを閲覧できます。">{resource.status === 'loading' ? <BusyState /> : resource.status === 'error' ? <ErrorState error={resource.error} onRetry={reload} /> : <><Panel title="共有Result"><KeyValueGrid value={share} />{share.download_allowed === true && <button className="platform-button" type="button" onClick={() => void openShareDownload(`/api/shares/${encodeURIComponent(identifier)}/download-token`)}>Download</button>}</Panel><RecordList items={asArray(asRecord(resource.data).sections ?? asRecord(resource.data).result, ['sections'])} titleKeys={['title', 'key']} subtitleKeys={['body', 'content']} /></>}</ResponsivePageShell>;
 }
+
 
 function SharesPage({ route }: { route: RouteMatch }) {
   const [resource, reload] = useResource('/api/shares');
