@@ -5,6 +5,7 @@ import { assertProjectAccess } from './workspace-api.js';
 import { TgserverStorageClient, TgserverStorageError } from './tgserver-storage-client.js';
 
 const MAX_FILE_BYTES = 4 * 1024 * 1024 * 1024;
+const STORAGE_STATES = new Set(['active', 'save_suspended', 'grace_period', 'ending']);
 
 type StorageActor = { userId: string; tenantId: string };
 type StorageObjectRow = {
@@ -44,10 +45,16 @@ function responseError(error: unknown, requestId: string): Response {
   });
 }
 
-function storageCapacity(headers: Headers): number {
+function storageCapacity(headers: Headers, write = false): number {
   if (headers.get('x-astera-storage-entitled') !== '1') throw new StorageApiError(403, 'ASTERA_STORAGE_ENTITLEMENT_REQUIRED', 'Astera Storage contract is required.');
   const value = Number(headers.get('x-astera-storage-capacity-bytes'));
   if (!Number.isSafeInteger(value) || value <= 0) throw new StorageApiError(403, 'ASTERA_STORAGE_CAPACITY_REQUIRED', 'Astera Storage capacity is not active.');
+  const state = headers.get('x-astera-storage-state')?.trim() || '';
+  if (!STORAGE_STATES.has(state)) throw new StorageApiError(403, 'ASTERA_STORAGE_STATE_INVALID', 'Astera Storage state is invalid.');
+  const writeAllowed = headers.get('x-astera-storage-write-allowed') === '1';
+  if (write && (state !== 'active' || !writeAllowed)) {
+    throw new StorageApiError(409, 'ASTERA_STORAGE_SAVE_SUSPENDED', 'Astera Storage is read-only for the current contract state.');
+  }
   return value;
 }
 
@@ -113,6 +120,38 @@ function internalAuthorized(headers: Headers, config: RuntimeConfig): boolean {
 }
 
 export function registerAsteraStorageApi(app: Hono, pool: Pool, config: RuntimeConfig, tgs = new TgserverStorageClient(config)): void {
+  app.get('/api/storage/usage', async (context) => {
+    const requestId = correlationId(context.req.raw.headers);
+    try {
+      const actor = actorFromHeaders(context.req.raw.headers);
+      const capacityBytes = storageCapacity(context.req.raw.headers);
+      const result = await pool.query<{ used: string; reserved: string; pending_deletion: string }>(
+        `SELECT
+           COALESCE(SUM(CASE WHEN status='stored' THEN file_size ELSE 0 END),0)::text AS used,
+           COALESCE(SUM(CASE WHEN status='pending' THEN file_size ELSE 0 END),0)::text AS reserved,
+           COALESCE(SUM(CASE WHEN status IN ('soft_deleted','deleting') THEN file_size ELSE 0 END),0)::text AS pending_deletion
+         FROM astera_storage_objects WHERE tenant_id=$1 AND user_id=$2`,
+        [actor.tenantId, actor.userId],
+      );
+      const usedBytes = Number(result.rows[0]?.used || 0);
+      const reservedBytes = Number(result.rows[0]?.reserved || 0);
+      const pendingDeletionBytes = Number(result.rows[0]?.pending_deletion || 0);
+      const occupiedBytes = usedBytes + reservedBytes + pendingDeletionBytes;
+      if (![usedBytes, reservedBytes, pendingDeletionBytes, occupiedBytes].every(Number.isSafeInteger)) {
+        throw new StorageApiError(500, 'ASTERA_STORAGE_USAGE_OVERFLOW', 'Storage usage cannot be represented safely.');
+      }
+      return context.json({
+        capacity_bytes: capacityBytes,
+        used_bytes: usedBytes,
+        reserved_bytes: reservedBytes,
+        pending_deletion_bytes: pendingDeletionBytes,
+        remaining_bytes: Math.max(0, capacityBytes - occupiedBytes),
+        state: context.req.header('x-astera-storage-state'),
+        write_allowed: context.req.header('x-astera-storage-write-allowed') === '1',
+      }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
+    } catch (error) { return responseError(error, requestId); }
+  });
+
   app.get('/api/storage/objects', async (context) => {
     const requestId = correlationId(context.req.raw.headers);
     try {
@@ -136,7 +175,7 @@ export function registerAsteraStorageApi(app: Hono, pool: Pool, config: RuntimeC
     let objectId = '';
     try {
       const actor = actorFromHeaders(context.req.raw.headers);
-      const capacityBytes = storageCapacity(context.req.raw.headers);
+      const capacityBytes = storageCapacity(context.req.raw.headers, true);
       if (context.req.header('x-astera-private-mode') === '1') throw new StorageApiError(409, 'PRIVATE_MODE_STORAGE_FORBIDDEN', 'Private Mode cannot use Astera Storage.');
       if (!tgs.configured) throw new StorageApiError(503, 'TGS_STORAGE_NOT_CONFIGURED', 'TGserver Storage is not configured.');
       const fileSize = Number(context.req.header('x-astera-file-size') || context.req.header('content-length'));

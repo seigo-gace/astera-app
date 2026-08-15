@@ -4,6 +4,7 @@ import {
   requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../_account-projection';
+import { loadStorageContractProjection } from '../_storage-contract';
 
 type Env = AsteraFunctionEnv & {
   APP_API_ORIGIN?: string;
@@ -67,6 +68,10 @@ const SPOOFABLE_INTERNAL_HEADERS = new Set([
   'x-astera-email',
   'x-astera-session-id',
   'x-astera-internal-authenticated',
+  'x-astera-storage-entitled',
+  'x-astera-storage-capacity-bytes',
+  'x-astera-storage-state',
+  'x-astera-storage-write-allowed',
 ]);
 
 function jsonError(status: number, code: string, message: string, correlationId: string, details?: unknown): Response {
@@ -138,9 +143,6 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     return jsonError(404, 'API_ROUTE_NOT_FOUND', 'Astera App API Routeが定義されていません。', correlationId);
   }
 
-  // A concrete Pages Function must own Auth, Account, Billing, Credit, Job and Upload routes.
-  // If Cloudflare reaches this catch-all for one of them, deployment routing is incomplete and
-  // proxying would bypass its D1/R2/Square invariants.
   if (isLocallyOwnedPath(requestUrl.pathname)) {
     return jsonError(
       503,
@@ -166,6 +168,15 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     return functionErrorResponse(error, correlationId);
   }
 
+  let storageProjection = null;
+  if (requestUrl.pathname.startsWith('/api/storage/')) {
+    try {
+      storageProjection = await loadStorageContractProjection(env.ASTERA_DB, actor.profile.tenant_id);
+    } catch (error) {
+      return functionErrorResponse(error, correlationId);
+    }
+  }
+
   const headers = new Headers();
   for (const [key, value] of request.headers) {
     const lower = key.toLowerCase();
@@ -183,6 +194,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   headers.set('X-Astera-Account-Status', actor.profile.account_status);
   headers.set('X-Astera-UI-Language', actor.profile.ui_language);
   if (actor.session?.id) headers.set('X-Astera-Session-ID', actor.session.id);
+  if (storageProjection) {
+    headers.set('X-Astera-Storage-Entitled', storageProjection.entitled ? '1' : '0');
+    headers.set('X-Astera-Storage-Capacity-Bytes', String(storageProjection.capacityBytes));
+    headers.set('X-Astera-Storage-State', storageProjection.state);
+    headers.set('X-Astera-Storage-Write-Allowed', storageProjection.writeAllowed ? '1' : '0');
+  }
 
   const upstreamUrl = new URL(`${upstreamOrigin.pathname}${requestUrl.pathname}`, upstreamOrigin.origin);
   upstreamUrl.search = requestUrl.search;
