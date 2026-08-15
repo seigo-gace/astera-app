@@ -2,23 +2,6 @@ name: Staging Gate
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/staging-gate.yml"
-      - "functions/**"
-      - "src/**"
-      - "public/**"
-      - "contabo/**"
-      - "migrations/**"
-      - "scripts/**"
-      - "tests/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig*.json"
-      - "vite.config.*"
-      - "playwright.config.*"
 
 permissions:
   contents: read
