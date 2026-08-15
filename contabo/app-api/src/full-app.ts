@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp } from './index.js';
 import { registerWorkspaceApi } from './workspace-api.js';
-import { registerAsteraStorageApi } from './astera-storage-api.js';
+import { registerStorageBinaryApi } from './storage-binary-api.js';
 
 function bearerToken(value: string | undefined): string {
   if (!value?.startsWith('Bearer ')) return '';
@@ -20,10 +20,10 @@ export function createFullApp(config: RuntimeConfig, service = new AsteraRuntime
     await next();
   });
 
-  // Remaining Workspace/Storage compatibility routes stay registered until each
-  // consumer is migrated. Project authorization for new Jobs is owned by D1.
+  // Remaining non-Storage Workspace compatibility routes stay registered until
+  // their D1 consumers are migrated. Astera Storage itself is binary-only here.
   registerWorkspaceApi(app, { database: service.database, config });
-  registerAsteraStorageApi(app, service.database.pool, config);
+  registerStorageBinaryApi(app, config);
 
   const runtime = createApp(config, service);
   app.route('/', runtime.app);
