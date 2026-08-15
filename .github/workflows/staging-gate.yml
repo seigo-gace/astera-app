@@ -3,8 +3,22 @@ name: Staging Gate
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
       - ".github/workflows/staging-gate.yml"
+      - "functions/**"
+      - "src/**"
+      - "public/**"
+      - "contabo/**"
+      - "migrations/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig*.json"
+      - "vite.config.*"
+      - "playwright.config.*"
 
 permissions:
   contents: read
@@ -30,6 +44,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://astera:astera_test_password@127.0.0.1:5432/astera_app_test?sslmode=disable
       MIGRATIONS_DIR: ${{ github.workspace }}/migrations/postgres
+      STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -72,6 +87,76 @@ jobs:
         run: docker build -f contabo/app-api/Dockerfile .
       - name: Enforce source gate
         run: npm run notion:audit:strict
+      - name: Require staging endpoint configuration
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ -z "${STAGING_BASE_URL:-}" ]; then
+            echo "STAGING_BASE_URL repository variable is required for runtime reachability verification." >&2
+            exit 1
+          fi
+      - name: Verify frontend-to-backend endpoint reachability
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          node <<'NODE'
+          const base = process.env.STAGING_BASE_URL;
+          const probes = [
+            { path: '/api/catalog/public', allowed: new Set([200]) },
+            { path: '/api/account', allowed: new Set([200, 401, 403]) },
+            { path: '/api/credit/balance', allowed: new Set([200, 401, 403]) },
+            { path: '/api/credit/ledger', allowed: new Set([200, 401, 403]) },
+            { path: '/api/projects', allowed: new Set([200, 401, 403]) },
+            { path: '/api/history', allowed: new Set([200, 401, 403]) },
+            { path: '/api/templates', allowed: new Set([200, 401, 403]) },
+            { path: '/api/preferences', allowed: new Set([200, 401, 403]) },
+            { path: '/api/storage/destinations', allowed: new Set([200, 401, 403]) },
+            { path: '/api/developer/catalog', allowed: new Set([200, 401, 403]) },
+            { path: '/api/shares', allowed: new Set([200, 401, 403]) },
+            { path: '/api/legal', allowed: new Set([200]) },
+            { path: '/api/status', allowed: new Set([200]) },
+          ];
+          const hardFailureCodes = new Set([
+            'API_ROUTE_NOT_FOUND',
+            'LOCAL_API_ROUTE_NOT_BOUND',
+            'APP_API_ORIGIN_NOT_CONFIGURED',
+            'APP_API_SERVICE_TOKEN_NOT_CONFIGURED',
+            'APP_API_UPSTREAM_UNAVAILABLE',
+            'APP_API_UPSTREAM_TIMEOUT',
+          ]);
+          const failures = [];
+          for (const probe of probes) {
+            const url = new URL(probe.path, base).toString();
+            try {
+              const response = await fetch(url, {
+                method: 'GET',
+                redirect: 'manual',
+                headers: { 'Cache-Control': 'no-cache', 'X-Reachability-Probe': 'staging-gate' },
+                signal: AbortSignal.timeout(10_000),
+              });
+              let code = null;
+              const contentType = response.headers.get('content-type') || '';
+              if (contentType.includes('application/json')) {
+                try {
+                  const body = await response.clone().json();
+                  code = body?.error?.code || null;
+                } catch {
+                  code = null;
+                }
+              }
+              if (!probe.allowed.has(response.status) || (code && hardFailureCodes.has(code))) {
+                failures.push(`${probe.path}: HTTP ${response.status}${code ? ` ${code}` : ''}`);
+              } else {
+                console.log(`PASS ${probe.path}: HTTP ${response.status}${code ? ` ${code}` : ''}`);
+              }
+            } catch (error) {
+              failures.push(`${probe.path}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+          if (failures.length) {
+            console.error('Frontend -> Backend endpoint reachability gate failed:');
+            for (const failure of failures) console.error(`- ${failure}`);
+            process.exit(1);
+          }
+          NODE
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
       - name: Run browser device and user journey matrix
