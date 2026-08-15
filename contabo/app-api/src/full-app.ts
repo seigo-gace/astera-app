@@ -3,6 +3,7 @@ import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp, type RuntimeCreateRequest } from './index.js';
 import type { RuntimeJobRow } from './database.js';
 import { assertProjectAccess, persistWorkspaceResult, registerWorkspaceApi } from './workspace-api.js';
+import { registerAsteraStorageApi } from './astera-storage-api.js';
 
 function bearerToken(value: string | undefined): string {
   if (!value?.startsWith('Bearer ')) return '';
@@ -72,6 +73,7 @@ export function createFullApp(config: RuntimeConfig, service = new FullAsteraRun
   });
 
   registerWorkspaceApi(app, { database: service.database, config });
+  registerAsteraStorageApi(app, service.database.pool, config);
 
   const runtime = createApp(config, service);
   app.route('/', runtime.app);

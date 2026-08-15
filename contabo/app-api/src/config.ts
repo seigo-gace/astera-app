@@ -13,6 +13,8 @@ export type RuntimeConfig = {
   translationModelId: string;
   translationGeminiKeyRef: string;
   translationTimeoutMs: number;
+  tgserverStorageOrigin: string;
+  tgserverStorageTimeoutMs: number;
 };
 
 function required(value: string | undefined, name: string): string {
@@ -38,6 +40,11 @@ function secureOrigin(value: string): string {
   return url.toString().replace(/\/$/, '');
 }
 
+function optionalSecureOrigin(value: string | undefined): string {
+  const normalized = value?.trim();
+  return normalized ? secureOrigin(normalized) : '';
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   return {
     port: integer(env.PORT, 8788, 1, 65_535),
@@ -54,6 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     translationModelId: env.ASTERA_TRANSLATION_MODEL_ID?.trim() || '',
     translationGeminiKeyRef: env.LIBRAL_VAULT_GEMINI_KEY_REF?.trim() || '',
     translationTimeoutMs: integer(env.ASTERA_TRANSLATION_TIMEOUT_MS, 90_000, 3_000, 180_000),
+    tgserverStorageOrigin: optionalSecureOrigin(env.TGS_STORAGE_INTERNAL_ORIGIN),
+    tgserverStorageTimeoutMs: integer(env.TGS_STORAGE_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
   };
 }
 
