@@ -61,6 +61,19 @@ const sourceRequirements = [
   ['public/ui-honesty.js', 'PURPOSE_OPTION_SELECTOR'],
   ['public/ui-honesty.js', 'data-project-source-unavailable'],
   ['public/ui-honesty.js', 'data-session-settings-notice'],
+  ['functions/_auth.ts', 'expiresIn: 60 * 60 * 24 * 7'],
+  ['functions/_auth.ts', 'updateAge: 60 * 60 * 24'],
+  ['functions/_auth.ts', 'freshAge: 60 * 15'],
+  ['functions/_account-projection.ts', 'requireFreshAsteraActor'],
+  ['functions/api/billing/checkout-intents.ts', 'requireFreshAsteraActor'],
+  ['functions/api/auth/[[path]].ts', 'FRESH_MANAGEMENT_PATHS'],
+  ['functions/api/auth/[[path]].ts', "'/api/auth/passkey/add-passkey'"],
+  ['functions/api/auth/[[path]].ts', "'/api/auth/two-factor/enable'"],
+];
+
+const forbiddenSourceMarkers = [
+  ['functions/api/[[path]].ts', "headers.set('X-Astera-Email'"],
+  ['contabo/app-api/src/workspace-api.ts', "headers.get('x-astera-email')"],
 ];
 
 const requiredStories = [
@@ -129,6 +142,14 @@ for (const [relativePath, marker] of sourceRequirements) {
   if (!read(relativePath).includes(marker)) gaps.push(`SOURCE_MARKER_MISSING:${relativePath}:${marker}`);
 }
 
+for (const [relativePath, marker] of forbiddenSourceMarkers) {
+  if (!fs.existsSync(resolve(relativePath))) {
+    gaps.push(`SOURCE_FILE_MISSING:${relativePath}`);
+    continue;
+  }
+  if (read(relativePath).includes(marker)) gaps.push(`FORBIDDEN_SOURCE_MARKER_PRESENT:${relativePath}:${marker}`);
+}
+
 const report = {
   generatedAt: new Date().toISOString(),
   storyFiles: storyPaths,
@@ -175,6 +196,9 @@ const report = {
     'Developer target availability and one-time Secret handling',
     'composer draft retention after failure',
     'fullscreen input behavior and user message accordion',
+    'Cloudflare-to-Contabo PII boundary does not forward account email',
+    'seven-day rolling session with 24-hour refresh and 15-minute fresh-session gate',
+    'fresh-session enforcement for checkout and sensitive authentication management actions',
   ],
   gaps,
   verdict: gaps.length === 0 ? 'PASS' : 'FAIL',
