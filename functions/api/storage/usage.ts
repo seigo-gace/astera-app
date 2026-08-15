@@ -1,0 +1,6 @@
+import { FunctionHttpError,functionErrorResponse,requestCorrelationId,requireAsteraActor,type AsteraFunctionEnv } from '../../_account-projection';
+import { loadStorageContractProjection } from '../../_storage-contract';
+import { StorageStoreError,usage } from '../../_storage-store';
+type C={request:Request;env:AsteraFunctionEnv};const norm=(e:unknown)=>e instanceof StorageStoreError?new FunctionHttpError(e.status,e.code,e.message,e.details):e;
+export async function onRequestGet(c:C){const id=requestCorrelationId(c.request);try{const a=await requireAsteraActor(c.request,c.env),contract=await loadStorageContractProjection(c.env.ASTERA_DB,a.profile.tenant_id);if(!contract.entitled)throw new FunctionHttpError(403,'ASTERA_STORAGE_NOT_ENTITLED','Astera Storage契約がありません。');return Response.json(await usage(c.env.ASTERA_DB,{userId:a.user.id,tenantId:a.profile.tenant_id},{capacityBytes:contract.capacityBytes,writeAllowed:contract.writeAllowed,state:contract.state}),{headers:{'Cache-Control':'no-store','X-Correlation-ID':id}});}catch(e){return functionErrorResponse(norm(e),id);}}
+export function onRequest(c:C){return c.request.method==='GET'?onRequestGet(c):Promise.resolve(Response.json({error:{code:'METHOD_NOT_ALLOWED',message:'GETのみ対応しています。'}},{status:405}));}
