@@ -9,8 +9,6 @@ function lost(id:string):RuntimeJobRow{const now=new Date();return{id,tenant_id:
 /** Cloudflare D1 app_jobs is the only persistent App Job authority. */
 export class RuntimeDatabase{
  private readonly jobs=new Map<string,RuntimeJobRow>(); private readonly requests=new Map<string,string>();
- // Temporary compatibility parameter until legacy migrate/smoke sources are removed.
- constructor(_legacyDatabaseUrl=''){}
  async ready():Promise<void>{}
  async close():Promise<void>{this.jobs.clear();this.requests.clear();}
  private key(t:string,r:string){return `${t}\u0000${r}`;}

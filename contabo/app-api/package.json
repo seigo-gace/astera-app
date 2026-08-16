@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "migrate": "node dist/migrate.js",
     "smoke": "node dist/smoke.js",
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
@@ -18,12 +17,10 @@
   },
   "dependencies": {
     "@hono/node-server": "2.0.12",
-    "hono": "4.12.32",
-    "pg": "8.22.0"
+    "hono": "4.12.32"
   },
   "devDependencies": {
     "@types/node": "24.10.8",
-    "@types/pg": "8.20.0",
     "tsx": "4.22.5",
     "typescript": "7.0.2"
   }

@@ -1,5 +1,3 @@
-import type { Pool } from 'pg';
-
 export const MAX_FILE_BYTES = 4 * 1024 * 1024 * 1024;
 export const INTEGRITY_ERROR_CODES = new Set([
   'STORAGE_GCM_AUTH_FAILED','STORAGE_SHA256_MISMATCH','STORAGE_PLAINTEXT_SIZE_MISMATCH',
@@ -16,10 +14,4 @@ export type StorageObjectRow = {
 };
 export class StorageApiError extends Error {
   constructor(public readonly status:number, public readonly code:string, message:string){super(message);this.name='StorageApiError'}
-}
-export async function ownedObject(pool:Pool,actor:StorageActor,objectId:string):Promise<StorageObjectRow>{
-  const result=await pool.query<StorageObjectRow>(`SELECT * FROM astera_storage_objects WHERE id=$1 AND tenant_id=$2 AND user_id=$3 LIMIT 1`,[objectId,actor.tenantId,actor.userId]);
-  const row=result.rows[0];
-  if(!row)throw new StorageApiError(404,'ASTERA_STORAGE_OBJECT_NOT_FOUND','Storage object not found.');
-  return row;
 }

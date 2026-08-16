@@ -201,7 +201,7 @@ export class AsteraRuntimeService {
   readonly vault: VaultClient;
   private readonly privateResults = new Map<string, PrivateResultEnvelope>();
 
-  constructor(config: RuntimeConfig, database = new RuntimeDatabase(config.databaseUrl), vault = new VaultClient(config)) {
+  constructor(config: RuntimeConfig, database = new RuntimeDatabase(), vault = new VaultClient(config)) {
     this.config = config;
     this.database = database;
     this.vault = vault;
@@ -507,7 +507,6 @@ export function createApp(config: RuntimeConfig, service = new AsteraRuntimeServ
 export const contaboAppApiReadiness = {
   status: 'runtime_source_implemented',
   deployed: false,
-  postgresMigrationApplied: false,
   vaultAdapterSourceIntegrated: true,
   vaultConnected: false,
   privateDataBrokerVerified: false,

@@ -10,23 +10,7 @@ jobs:
   staging-gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: astera
-          POSTGRES_PASSWORD: astera_test_password
-          POSTGRES_DB: astera_app_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U astera -d astera_app_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     env:
-      DATABASE_URL: postgresql://astera:astera_test_password@127.0.0.1:5432/astera_app_test?sslmode=disable
-      MIGRATIONS_DIR: ${{ github.workspace }}/migrations/postgres
       STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
@@ -62,9 +46,7 @@ jobs:
         run: npm run contabo:build
       - name: Test Contabo runtime
         run: npm run contabo:test
-      - name: Apply PostgreSQL migrations
-        run: npm --prefix contabo/app-api run migrate
-      - name: Run PostgreSQL-backed runtime smoke
+      - name: Run Contabo runtime smoke
         run: npm --prefix contabo/app-api run smoke
       - name: Build non-root Contabo container
         run: docker build -f contabo/app-api/Dockerfile .

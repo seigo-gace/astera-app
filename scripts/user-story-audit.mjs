@@ -73,7 +73,7 @@ const sourceRequirements = [
 
 const forbiddenSourceMarkers = [
   ['functions/api/[[path]].ts', "headers.set('X-Astera-Email'"],
-  ['contabo/app-api/src/workspace-api.ts', "headers.get('x-astera-email')"],
+  ['contabo/app-api/src/full-app.ts', 'registerWorkspaceApi'],
 ];
 
 const requiredStories = [
@@ -129,24 +129,15 @@ if (publicPaths.length < 5) gaps.push(`PUBLIC_PATH_COUNT_TOO_LOW:${publicPaths.l
 for (const relativePath of storyPaths) {
   if (!fs.existsSync(resolve(relativePath))) gaps.push(`STORY_FILE_MISSING:${relativePath}`);
 }
-
 for (const storyId of requiredStories) {
   if (!storyIds.includes(storyId)) gaps.push(`REQUIRED_STORY_MISSING:${storyId}`);
 }
-
 for (const [relativePath, marker] of sourceRequirements) {
-  if (!fs.existsSync(resolve(relativePath))) {
-    gaps.push(`SOURCE_FILE_MISSING:${relativePath}`);
-    continue;
-  }
+  if (!fs.existsSync(resolve(relativePath))) { gaps.push(`SOURCE_FILE_MISSING:${relativePath}`); continue; }
   if (!read(relativePath).includes(marker)) gaps.push(`SOURCE_MARKER_MISSING:${relativePath}:${marker}`);
 }
-
 for (const [relativePath, marker] of forbiddenSourceMarkers) {
-  if (!fs.existsSync(resolve(relativePath))) {
-    gaps.push(`SOURCE_FILE_MISSING:${relativePath}`);
-    continue;
-  }
+  if (!fs.existsSync(resolve(relativePath))) { gaps.push(`SOURCE_FILE_MISSING:${relativePath}`); continue; }
   if (read(relativePath).includes(marker)) gaps.push(`FORBIDDEN_SOURCE_MARKER_PRESENT:${relativePath}:${marker}`);
 }
 
@@ -208,5 +199,4 @@ const report = {
 fs.mkdirSync(resolve('audit-results'), { recursive: true });
 fs.writeFileSync(resolve('audit-results/user-story-audit.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 console.log(JSON.stringify(report, null, 2));
-
 if (strict && gaps.length > 0) process.exit(1);
