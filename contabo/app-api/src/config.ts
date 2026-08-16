@@ -1,5 +1,6 @@
 export type RuntimeConfig = {
   port: number;
+  /** Legacy-only until PostgreSQL migrate/smoke sources are removed. Runtime startup does not require it. */
   databaseUrl: string;
   internalServiceToken: string;
   processOrigin: string;
@@ -50,7 +51,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
   const tgserverStorageOrigin = optionalSecureOrigin(env.TGS_STORAGE_INTERNAL_ORIGIN);
   return {
     port: integer(env.PORT, 8788, 1, 65_535),
-    databaseUrl: required(env.DATABASE_URL, 'DATABASE_URL'),
+    databaseUrl: env.DATABASE_URL?.trim() || '',
     internalServiceToken: required(env.INTERNAL_SERVICE_TOKEN, 'INTERNAL_SERVICE_TOKEN'),
     processOrigin: secureOrigin(required(env.ASTERA_PROCESS_ORIGIN, 'ASTERA_PROCESS_ORIGIN')),
     processToken: required(env.ASTERA_PROCESS_TOKEN, 'ASTERA_PROCESS_TOKEN'),
