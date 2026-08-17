@@ -4,6 +4,7 @@
   const ROUTE = window.location.pathname.replace(/\/+$/, '') || '/';
   const isComposer = ROUTE === '/app' || ROUTE === '/app/new';
   let picker = null;
+  let settingsReturnFocus = null;
 
   const text = (node) => (node?.textContent || '').replace(/\s+/g, ' ').trim();
   const button = (label, className = '') => {
@@ -22,8 +23,30 @@
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function openSettings() {
+  function ensureSettingsCanonicalStyle() {
+    if (document.querySelector('[data-exterior-settings-canonical-style]')) return;
+    const style = document.createElement('style');
+    style.dataset.exteriorSettingsCanonicalStyle = 'true';
+    style.textContent = `
+html.exterior-settings-open{overflow:hidden!important}
+@media(max-width:600px){
+  .exterior-settings-panel{
+    inset:0!important;top:0!important;left:0!important;right:0!important;bottom:0!important;
+    width:100%!important;height:100dvh!important;max-height:none!important;transform:none!important;
+    border:0!important;border-radius:0!important;padding-top:env(safe-area-inset-top)!important;
+    padding-bottom:env(safe-area-inset-bottom)!important;display:flex!important;flex-direction:column!important;
+  }
+  .exterior-settings-panel header{flex:none}
+  .exterior-settings-panel nav{flex:1;min-height:0;overflow:auto;padding:8px 8px calc(16px + env(safe-area-inset-bottom))!important}
+  .exterior-settings-panel nav a{min-height:52px!important;border-radius:10px!important}
+}`;
+    document.head.append(style);
+  }
+
+  function openSettings(trigger = null) {
     if (document.querySelector('[data-exterior-settings-overlay]')) return;
+    ensureSettingsCanonicalStyle();
+    settingsReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const backdrop = button('', 'exterior-settings-backdrop');
     backdrop.dataset.exteriorSettingsOverlay = 'true';
     backdrop.setAttribute('aria-label', 'Settingsを閉じる');
@@ -42,9 +65,41 @@
       <a href="/account/credit">Credit・購入<span>›</span></a>
       <a href="/app/settings/data-privacy">Data・Privacy<span>›</span></a>
     </nav>`;
-    const close = () => { backdrop.remove(); panel.remove(); };
+    const close = () => {
+      backdrop.remove();
+      panel.remove();
+      document.documentElement.classList.remove('exterior-settings-open');
+      const target = settingsReturnFocus;
+      settingsReturnFocus = null;
+      if (target?.isConnected) target.focus();
+    };
     backdrop.addEventListener('click', close);
     panel.querySelector('header button')?.addEventListener('click', close);
+    panel.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(panel.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
+        .filter((node) => node instanceof HTMLElement && !node.hasAttribute('hidden') && node.getAttribute('aria-hidden') !== 'true');
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+    document.documentElement.classList.add('exterior-settings-open');
     document.body.append(backdrop, panel);
     panel.querySelector('a,button')?.focus();
   }
@@ -53,7 +108,7 @@
     root.querySelectorAll('[data-exterior-settings-trigger]').forEach((trigger) => {
       if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.exteriorSettingsBound === 'true') return;
       trigger.dataset.exteriorSettingsBound = 'true';
-      trigger.addEventListener('click', openSettings);
+      trigger.addEventListener('click', () => openSettings(trigger));
     });
   }
 
@@ -187,7 +242,7 @@
       if (!label) return;
       const optionLabel = text(label);
       const chip = button(`✦ ${optionLabel} ×`);
-      chip.setAttribute('aria-label', `${optionLabel}を解除`);
+      chip.setAttribute('aria-label', `${optionLabel} を解除`);
       chip.addEventListener('click', () => {
         if (!input.disabled && input.checked) input.click();
         refreshChips();
@@ -199,7 +254,7 @@
     if (project instanceof HTMLInputElement && project.value.trim()) {
       const value = project.value.trim();
       const chip = button(`@ ${value} ×`);
-      chip.setAttribute('aria-label', `Project ${value}を解除`);
+      chip.setAttribute('aria-label', `Project ${value} を解除`);
       chip.addEventListener('click', () => {
         setNativeValue(project, '');
         refreshChips();
