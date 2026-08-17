@@ -8,6 +8,27 @@
     <link rel="stylesheet" href="/exterior-shell.css" />
     <link rel="stylesheet" href="/customer-ai-bubble.css" />
     <link rel="stylesheet" href="/gpt-app-alignment.css" />
+    <style data-astera-tablet-drawer-fix>
+      @media (min-width: 601px) and (max-width: 1100px) {
+        .platform-backdrop {
+          display: block !important;
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 60 !important;
+          border: 0 !important;
+          background: rgba(0, 0, 0, .58) !important;
+        }
+        .platform-mobile-drawer {
+          display: flex !important;
+          position: fixed !important;
+          z-index: 70 !important;
+          inset: env(safe-area-inset-top) auto env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+          max-width: calc(100vw - env(safe-area-inset-left) - 30px) !important;
+          flex-direction: column !important;
+          overflow-x: hidden !important;
+        }
+      }
+    </style>
     <meta name="theme-color" content="#000000" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
