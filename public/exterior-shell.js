@@ -296,9 +296,22 @@ html.exterior-settings-open{overflow:hidden!important}
   function refreshChips() {
     const host = document.querySelector('[data-exterior-chips]');
     if (!host) return;
+
+    const purposeInput = document.querySelector('.canonical-purpose-grid input:checked');
+    const optionInputs = Array.from(document.querySelectorAll('.canonical-option-grid input:checked'));
+    const projectInput = document.querySelector('.canonical-two-column input');
+    const privateStateInput = document.querySelector('.canonical-private-toggle input');
+    const signature = JSON.stringify({
+      purpose: purposeInput instanceof HTMLInputElement ? purposeInput.value : '',
+      options: optionInputs.map((input) => text(input.closest('label'))),
+      project: projectInput instanceof HTMLInputElement ? projectInput.value.trim() : '',
+      privateMode: privateStateInput instanceof HTMLInputElement && privateStateInput.checked,
+    });
+    if (host.dataset.exteriorChipsSignature === signature) return;
+    host.dataset.exteriorChipsSignature = signature;
     host.replaceChildren();
 
-    const checkedPurpose = document.querySelector('.canonical-purpose-grid input:checked')?.closest('label');
+    const checkedPurpose = purposeInput?.closest('label');
     if (checkedPurpose) {
       const purposeLabel = text(checkedPurpose).split(' ')[0];
       const chip = button(`◉ ${purposeLabel}`);
