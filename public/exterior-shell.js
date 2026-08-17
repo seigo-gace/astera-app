@@ -171,18 +171,52 @@
     const host = document.querySelector('[data-exterior-chips]');
     if (!host) return;
     host.replaceChildren();
+
     const checkedPurpose = document.querySelector('.canonical-purpose-grid input:checked')?.closest('label');
     if (checkedPurpose) {
-      const chip = button(`◉ ${text(checkedPurpose).split(' ')[0]}`); chip.addEventListener('click', openPurpose); host.append(chip);
+      const purposeLabel = text(checkedPurpose).split(' ')[0];
+      const chip = button(`◉ ${purposeLabel}`);
+      chip.setAttribute('aria-label', `Purpose ${purposeLabel}を変更`);
+      chip.addEventListener('click', openPurpose);
+      host.append(chip);
     }
+
     document.querySelectorAll('.canonical-option-grid input:checked').forEach((input) => {
-      const label = input.closest('label'); if (!label) return;
-      const chip = button(`✦ ${text(label)}`); chip.addEventListener('click', openOptions); host.append(chip);
+      if (!(input instanceof HTMLInputElement)) return;
+      const label = input.closest('label');
+      if (!label) return;
+      const optionLabel = text(label);
+      const chip = button(`✦ ${optionLabel} ×`);
+      chip.setAttribute('aria-label', `${optionLabel}を解除`);
+      chip.addEventListener('click', () => {
+        if (!input.disabled && input.checked) input.click();
+        refreshChips();
+      });
+      host.append(chip);
     });
+
     const project = document.querySelector('.canonical-two-column input');
-    if (project instanceof HTMLInputElement && project.value.trim()) { const chip = button(`@ ${project.value.trim()}`); chip.addEventListener('click', openProject); host.append(chip); }
+    if (project instanceof HTMLInputElement && project.value.trim()) {
+      const value = project.value.trim();
+      const chip = button(`@ ${value} ×`);
+      chip.setAttribute('aria-label', `Project ${value}を解除`);
+      chip.addEventListener('click', () => {
+        setNativeValue(project, '');
+        refreshChips();
+      });
+      host.append(chip);
+    }
+
     const privateInput = document.querySelector('.canonical-private-toggle input');
-    if (privateInput instanceof HTMLInputElement && privateInput.checked) { const chip = button('◇ Private'); chip.addEventListener('click', () => { if (!privateInput.disabled) privateInput.click(); refreshChips(); }); host.append(chip); }
+    if (privateInput instanceof HTMLInputElement && privateInput.checked) {
+      const chip = button('◇ Private ×');
+      chip.setAttribute('aria-label', 'Private Modeを解除');
+      chip.addEventListener('click', () => {
+        if (!privateInput.disabled && privateInput.checked) privateInput.click();
+        refreshChips();
+      });
+      host.append(chip);
+    }
   }
 
   function enhanceComposer() {

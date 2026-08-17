@@ -217,6 +217,22 @@ html.exterior-composer-route .canonical-primary-actions .is-primary{
 }
 html.exterior-composer-route .canonical-primary-actions .is-primary:after{font-size:20px!important}
 
+/* Composer canonical secondary actions remain reachable when their state is active. */
+html.exterior-composer-route .canonical-primary-actions .platform-button:not(.is-primary),
+html.exterior-composer-route .canonical-primary-actions a{
+  display:inline-flex!important;
+  min-height:34px!important;
+  height:34px!important;
+  padding:0 10px!important;
+  border:0!important;
+  border-radius:999px!important;
+  background:var(--gpt-ui-hover)!important;
+  color:var(--ex-text)!important;
+  font-size:12px!important;
+  white-space:nowrap;
+}
+.exterior-chips button[aria-label$="を解除"]{color:var(--ex-text)!important}
+
 /* Pickers/sheets use the same quiet list-item rhythm. */
 .exterior-picker{
   border-radius:16px!important;
