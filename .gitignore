@@ -18,3 +18,7 @@ ios/App/DerivedData/
 ios/App/Pods/
 **/xcuserdata/
 *.xcuserstate
+
+# Verified brand outputs materialized by npm run brand:sync
+public/assets/astera/astera-symbol-dark.svg
+public/logo-mark.svg

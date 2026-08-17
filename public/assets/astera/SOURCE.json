@@ -1,0 +1,13 @@
+{
+  "source_repository": "seigo-gace/astera-hp",
+  "source_commit": "a6859a722366211509ed94508b4691f9c9b61100",
+  "source_path": "site/scripts/materialize-binary-assets.mjs",
+  "storage": "embedded-gzip-base64",
+  "target": {
+    "filename": "astera-symbol-dark.svg",
+    "output_path": "public/assets/astera/astera-symbol-dark.svg",
+    "alias_path": "public/logo-mark.svg",
+    "size": 26011,
+    "sha256": "d576d9cc6c4cb09914e807dc2dab62e5b0a2aca049e774599ca43efd24a947bd"
+  }
+}
