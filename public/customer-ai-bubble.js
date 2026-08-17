@@ -39,7 +39,6 @@
   const send = root.querySelector('.aca-send');
   const log = root.querySelector('.aca-log');
   let busy = false;
-  let suppressLauncherClick = false;
 
   function open() {
     root.classList.add('aca-open');
@@ -73,10 +72,6 @@
   }
 
   launcher.addEventListener('click', () => {
-    if (suppressLauncherClick) {
-      suppressLauncherClick = false;
-      return;
-    }
     root.classList.contains('aca-open') ? close() : open();
   });
   minimize.addEventListener('click', close);
@@ -121,36 +116,8 @@
     }
   });
 
-  // Dragging is limited to the collapsed launcher so text selection and mobile
-  // scrolling inside the expanded panel remain unaffected.
-  let drag = null;
-  launcher.addEventListener('pointerdown', (event) => {
-    if (root.classList.contains('aca-open')) return;
-    drag = {
-      x: event.clientX,
-      y: event.clientY,
-      right: parseFloat(getComputedStyle(root).right),
-      bottom: parseFloat(getComputedStyle(root).bottom),
-      moved: false
-    };
-    launcher.setPointerCapture(event.pointerId);
-  });
-  launcher.addEventListener('pointermove', (event) => {
-    if (!drag) return;
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
-    root.style.right = `${Math.max(10, Math.min(innerWidth - 72, drag.right - dx))}px`;
-    root.style.bottom = `${Math.max(10, Math.min(innerHeight - 72, drag.bottom - dy))}px`;
-  });
-  launcher.addEventListener('pointerup', () => {
-    suppressLauncherClick = Boolean(drag?.moved);
-    drag = null;
-  });
-  launcher.addEventListener('pointercancel', () => {
-    suppressLauncherClick = Boolean(drag?.moved);
-    drag = null;
-  });
+  // Canonical exterior rule: the launcher stays fixed beside the top-left
+  // navigation control. Dragging is intentionally disabled.
 
   window.AsteraCustomerAIUI = Object.assign(window.AsteraCustomerAIUI || {}, { open, close, root });
 })();
