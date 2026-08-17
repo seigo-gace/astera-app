@@ -1,26 +1,23 @@
 import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const SOURCE_REPOSITORY = 'seigo-gace/astera-hp';
-const SOURCE_COMMIT = 'aa8a40d84dee94c81bf614cbd19adf307593f87e';
+const SOURCE_COMMIT = 'a6859a722366211509ed94508b4691f9c9b61100';
+const SOURCE_PATH = 'site/scripts/materialize-binary-assets.mjs';
+const TARGET_FILENAME = 'astera-symbol-dark.svg';
+const EXPECTED_SIZE = 26011;
+const EXPECTED_SHA256 = 'd576d9cc6c4cb09914e807dc2dab62e5b0a2aca049e774599ca43efd24a947bd';
 const OUTPUT_DIRECTORY = 'public/assets/astera';
-const TREE_API = `https://api.github.com/repos/${SOURCE_REPOSITORY}/git/trees/${SOURCE_COMMIT}?recursive=1`;
-
-const EXPECTED = Object.freeze({
-  'astera-symbol-light.svg': '3e5c62a81f450df3336e67110fe840ff6a1acca7af78e9862ce35c51cceb3c20',
-  'astera-symbol-dark.svg': 'd576d9cc6c4cb09914e807dc2dab62e5b0a2aca049e774599ca43efd24a947bd',
-  'astera-wordmark-light.svg': '700a3ab3610ac40f194d028a4ab51faf2cdd14f2284b69d266d18700d7fe6de4',
-  'astera-wordmark-dark.svg': 'b4f2c7eee4a50efc6d67668dba85567eb04545c3562053d6d029899258d6b6a4',
-  'astera-logo-light.svg': 'b9bc0b8afcdfb1ca72182960bc049d4518f1790e22e95a66187e1f860badc004',
-  'astera-logo-dark.svg': 'cab61af560b3165130f7e8d922c093911f41e822ff01ea0c139db494c4612e52',
-});
+const OUTPUT_PATH = join(OUTPUT_DIRECTORY, TARGET_FILENAME);
+const ALIAS_PATH = 'public/logo-mark.svg';
+const SOURCE_URL = `https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${SOURCE_COMMIT}/${SOURCE_PATH}`;
 
 function githubHeaders() {
   const headers = {
-    Accept: 'application/vnd.github+json',
+    Accept: 'text/plain',
     'User-Agent': 'astera-app-brand-asset-gate',
-    'X-GitHub-Api-Version': '2022-11-28',
   };
   const token = process.env.ASTERA_BRAND_ASSET_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -53,68 +50,79 @@ function validateSvg(buffer, filename) {
   }
 }
 
-async function existingValid(outputPath, expectedHash) {
+function verifyBytes(bytes, source) {
+  if (bytes.length !== EXPECTED_SIZE) {
+    throw new Error(`BRAND_ASSET_SIZE_MISMATCH:${source}:expected=${EXPECTED_SIZE}:actual=${bytes.length}`);
+  }
+  const actualHash = sha256(bytes);
+  if (actualHash !== EXPECTED_SHA256) {
+    throw new Error(`BRAND_ASSET_HASH_MISMATCH:${source}:expected=${EXPECTED_SHA256}:actual=${actualHash}`);
+  }
+  validateSvg(bytes, TARGET_FILENAME);
+  return bytes;
+}
+
+async function readExistingVerified(path) {
   try {
-    const bytes = await readFile(outputPath);
-    return sha256(bytes) === expectedHash;
+    return verifyBytes(await readFile(path), path);
   } catch {
-    return false;
+    return null;
   }
 }
 
-async function main() {
-  const treeResponse = await fetchChecked(TREE_API, { headers: githubHeaders() });
-  const treePayload = await treeResponse.json();
-  if (treePayload.truncated === true) throw new Error('BRAND_SOURCE_TREE_TRUNCATED');
-  if (!Array.isArray(treePayload.tree)) throw new Error('BRAND_SOURCE_TREE_INVALID');
+function extractVerifiedSymbol(materializerSource) {
+  const match = materializerSource.match(
+    /file:\s*['"]astera-symbol-dark\.svg['"]\s*,\s*expectedSize:\s*(\d+)\s*,\s*expectedSha256:\s*['"]([0-9a-f]{64})['"]\s*,\s*gzipBase64:\s*['"]([^'"]+)['"]/s,
+  );
+  if (!match) throw new Error('BRAND_SOURCE_SYMBOL_NOT_FOUND');
 
-  const blobs = treePayload.tree.filter((entry) => entry?.type === 'blob' && typeof entry.path === 'string');
-  const resolved = new Map();
-  for (const filename of Object.keys(EXPECTED)) {
-    const matches = blobs.filter((entry) => basename(entry.path) === filename);
-    if (matches.length !== 1) {
-      throw new Error(`BRAND_ASSET_PATH_AMBIGUOUS:${filename}:matches=${matches.length}`);
-    }
-    resolved.set(filename, matches[0].path);
+  const [, sourceSize, sourceSha256, gzipBase64] = match;
+  if (Number(sourceSize) !== EXPECTED_SIZE || sourceSha256 !== EXPECTED_SHA256) {
+    throw new Error(`BRAND_SOURCE_METADATA_MISMATCH:size=${sourceSize}:sha256=${sourceSha256}`);
   }
 
+  return verifyBytes(gunzipSync(Buffer.from(gzipBase64, 'base64')), `${SOURCE_REPOSITORY}@${SOURCE_COMMIT}:${SOURCE_PATH}`);
+}
+
+async function main() {
   await mkdir(OUTPUT_DIRECTORY, { recursive: true });
+
+  let bytes = await readExistingVerified(OUTPUT_PATH);
+  let reused = Boolean(bytes);
+
+  if (!bytes) {
+    const sourceResponse = await fetchChecked(SOURCE_URL, { headers: githubHeaders() });
+    bytes = extractVerifiedSymbol(await sourceResponse.text());
+    await mkdir(dirname(OUTPUT_PATH), { recursive: true });
+    await writeFile(OUTPUT_PATH, bytes);
+    reused = false;
+  }
+
+  await writeFile(ALIAS_PATH, bytes);
+
   const manifest = {
     source_repository: SOURCE_REPOSITORY,
     source_commit: SOURCE_COMMIT,
+    source_path: SOURCE_PATH,
     generated_at: new Date().toISOString(),
-    assets: {},
+    target: {
+      filename: TARGET_FILENAME,
+      output_path: OUTPUT_PATH,
+      alias_path: ALIAS_PATH,
+      size: EXPECTED_SIZE,
+      sha256: EXPECTED_SHA256,
+      reused,
+    },
   };
-
-  for (const [filename, expectedHash] of Object.entries(EXPECTED)) {
-    const outputPath = join(OUTPUT_DIRECTORY, filename);
-    const sourcePath = resolved.get(filename);
-    if (await existingValid(outputPath, expectedHash)) {
-      manifest.assets[filename] = { source_path: sourcePath, sha256: expectedHash, reused: true };
-      continue;
-    }
-    const rawUrl = `https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${SOURCE_COMMIT}/${sourcePath.split('/').map(encodeURIComponent).join('/')}`;
-    const assetResponse = await fetchChecked(rawUrl, { headers: githubHeaders() });
-    const bytes = Buffer.from(await assetResponse.arrayBuffer());
-    const actualHash = sha256(bytes);
-    if (actualHash !== expectedHash) {
-      throw new Error(`BRAND_ASSET_HASH_MISMATCH:${filename}:expected=${expectedHash}:actual=${actualHash}`);
-    }
-    validateSvg(bytes, filename);
-    await mkdir(dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, bytes);
-    manifest.assets[filename] = { source_path: sourcePath, sha256: actualHash, reused: false };
-  }
-
-  const symbolBytes = await readFile(join(OUTPUT_DIRECTORY, 'astera-symbol-light.svg'));
-  if (sha256(symbolBytes) !== EXPECTED['astera-symbol-light.svg']) throw new Error('BRAND_SYMBOL_ALIAS_SOURCE_MISMATCH');
-  await writeFile('public/logo-mark.svg', symbolBytes);
   await writeFile(join(OUTPUT_DIRECTORY, 'SOURCE.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
   console.log(JSON.stringify({
-    event: 'official_brand_assets_verified',
+    event: 'official_brand_symbol_verified',
     source_repository: SOURCE_REPOSITORY,
     source_commit: SOURCE_COMMIT,
-    asset_count: Object.keys(EXPECTED).length,
+    target: TARGET_FILENAME,
+    sha256: EXPECTED_SHA256,
+    reused,
   }));
 }
 

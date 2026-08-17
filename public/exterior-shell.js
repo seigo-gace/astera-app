@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const LOGO = 'https://raw.githubusercontent.com/seigo-gace/astera-hp/main/assets/brand/astera-logo-dark.svg';
+  const LOGO = new URL('/logo-mark.svg', window.location.origin).href;
   const ROUTE = window.location.pathname.replace(/\/+$/, '') || '/';
   const isComposer = ROUTE === '/app' || ROUTE === '/app/new';
   let picker = null;
@@ -27,7 +27,7 @@
     root.querySelectorAll('.platform-brand img').forEach((img) => {
       if (!(img instanceof HTMLImageElement)) return;
       if (img.src !== LOGO) img.src = LOGO;
-      img.alt = 'Astera';
+      img.alt = '';
     });
   }
 

@@ -10,8 +10,9 @@
     "node": ">=22.12 <23"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "brand:sync": "node scripts/fetch-official-brand-assets.mjs",
+    "dev": "npm run brand:sync && vite",
+    "build": "npm run brand:sync && tsc --noEmit && vite build",
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "contract:check": "tsc -p tsconfig.contracts.json --noEmit && npm run contabo:check",
