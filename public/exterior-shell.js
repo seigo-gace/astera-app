@@ -5,6 +5,8 @@
   const isComposer = ROUTE === '/app' || ROUTE === '/app/new';
   let picker = null;
   let settingsReturnFocus = null;
+  let mobileMenuReturnFocus = null;
+  let mobileMenuWasOpen = false;
 
   const text = (node) => (node?.textContent || '').replace(/\s+/g, ' ').trim();
   const button = (label, className = '') => {
@@ -15,6 +17,13 @@
     return el;
   };
 
+  const focusableElements = (root) => Array.from(root.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
+    .filter((node) => {
+      if (!(node instanceof HTMLElement) || node.hasAttribute('hidden') || node.getAttribute('aria-hidden') === 'true') return false;
+      const style = window.getComputedStyle(node);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+
   function setNativeValue(input, value) {
     const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
@@ -23,10 +32,10 @@
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  function ensureSettingsCanonicalStyle() {
-    if (document.querySelector('[data-exterior-settings-canonical-style]')) return;
+  function ensureCanonicalExteriorStyle() {
+    if (document.querySelector('[data-exterior-canonical-style]')) return;
     const style = document.createElement('style');
-    style.dataset.exteriorSettingsCanonicalStyle = 'true';
+    style.dataset.exteriorCanonicalStyle = 'true';
     style.textContent = `
 html.exterior-settings-open{overflow:hidden!important}
 @media(max-width:600px){
@@ -39,13 +48,23 @@ html.exterior-settings-open{overflow:hidden!important}
   .exterior-settings-panel header{flex:none}
   .exterior-settings-panel nav{flex:1;min-height:0;overflow:auto;padding:8px 8px calc(16px + env(safe-area-inset-bottom))!important}
   .exterior-settings-panel nav a{min-height:52px!important;border-radius:10px!important}
+  html.exterior-mobile-menu-open{overflow:hidden!important}
+  .platform-mobile-drawer{
+    top:auto!important;left:0!important;right:0!important;bottom:0!important;
+    width:100%!important;max-width:none!important;height:auto!important;max-height:min(84dvh,720px)!important;
+    border-right:0!important;border-top:1px solid var(--ex-line)!important;border-radius:22px 22px 0 0!important;
+    padding:12px 8px calc(12px + env(safe-area-inset-bottom))!important;overflow:auto!important;
+    box-shadow:0 -20px 54px rgba(0,0,0,.34)!important;
+  }
+  .platform-mobile-drawer .platform-brand{display:none!important}
+  .platform-mobile-drawer .platform-nav{margin-top:0!important}
 }`;
     document.head.append(style);
   }
 
   function openSettings(trigger = null) {
     if (document.querySelector('[data-exterior-settings-overlay]')) return;
-    ensureSettingsCanonicalStyle();
+    ensureCanonicalExteriorStyle();
     settingsReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const backdrop = button('', 'exterior-settings-backdrop');
     backdrop.dataset.exteriorSettingsOverlay = 'true';
@@ -83,8 +102,7 @@ html.exterior-settings-open{overflow:hidden!important}
         return;
       }
       if (event.key !== 'Tab') return;
-      const focusable = Array.from(panel.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
-        .filter((node) => node instanceof HTMLElement && !node.hasAttribute('hidden') && node.getAttribute('aria-hidden') !== 'true');
+      const focusable = focusableElements(panel);
       if (!focusable.length) {
         event.preventDefault();
         return;
@@ -110,6 +128,59 @@ html.exterior-settings-open{overflow:hidden!important}
       trigger.dataset.exteriorSettingsBound = 'true';
       trigger.addEventListener('click', () => openSettings(trigger));
     });
+  }
+
+  function enhanceMobileNavigation() {
+    ensureCanonicalExteriorStyle();
+    const drawer = document.querySelector('#platform-mobile-drawer');
+    const menuButton = document.querySelector('.platform-menu-button');
+    const isMobile = window.matchMedia('(max-width:600px)').matches;
+    document.documentElement.classList.toggle('exterior-mobile-menu-open', isMobile && drawer instanceof HTMLElement);
+
+    if (!(drawer instanceof HTMLElement)) {
+      if (mobileMenuWasOpen) {
+        mobileMenuWasOpen = false;
+        const target = mobileMenuReturnFocus;
+        mobileMenuReturnFocus = null;
+        if (target?.isConnected) target.focus();
+      }
+      return;
+    }
+
+    drawer.setAttribute('role', 'dialog');
+    drawer.setAttribute('aria-modal', 'true');
+    drawer.setAttribute('aria-label', 'Navigation');
+    if (drawer.dataset.exteriorMobileNavBound === 'true') return;
+    drawer.dataset.exteriorMobileNavBound = 'true';
+    mobileMenuWasOpen = true;
+    mobileMenuReturnFocus = menuButton instanceof HTMLElement ? menuButton : null;
+
+    drawer.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        const backdrop = document.querySelector('.platform-backdrop');
+        if (backdrop instanceof HTMLButtonElement) backdrop.click();
+        else if (menuButton instanceof HTMLButtonElement) menuButton.click();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = focusableElements(drawer);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+    window.requestAnimationFrame(() => focusableElements(drawer)[0]?.focus());
   }
 
   function enhanceDesktopCollapse() {
@@ -300,7 +371,9 @@ html.exterior-settings-open{overflow:hidden!important}
 
   function refresh() {
     document.documentElement.dataset.asteraExterior = 'gpt';
+    ensureCanonicalExteriorStyle();
     enhanceSettingsTriggers();
+    enhanceMobileNavigation();
     enhanceDesktopCollapse();
     enhanceComposer();
     refreshChips();
