@@ -9,7 +9,7 @@
   --gpt-ui-focus:color-mix(in srgb,var(--platform-accent,#d3a15f) 78%,white 22%);
 }
 
-/* Sidebar: quiet, compact, history/project-first, profile/settings at the bottom. */
+/* Sidebar: quiet, compact, recent-aware, with profile/settings at the bottom. */
 .platform-sidebar{
   padding:10px 8px 8px!important;
   border-right:0!important;
@@ -44,9 +44,45 @@
   color:var(--ex-text)!important;
   font-weight:600;
 }
-/* Settings and Account are profile/footer responsibilities, not primary navigation. */
-.platform-nav a[href="/app/settings"],
-.platform-nav a[href="/account"]{display:none!important}
+.platform-side-section{
+  min-height:0;
+  margin:14px 4px 8px;
+}
+.platform-side-section-title{
+  padding:0 8px 6px;
+  color:var(--ex-muted);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.02em;
+}
+.platform-recent-list{
+  display:grid;
+  gap:1px;
+  max-height:min(34dvh,320px);
+  overflow:auto;
+  scrollbar-width:none;
+}
+.platform-recent-list::-webkit-scrollbar{display:none}
+.platform-recent-list a,
+.platform-recent-state{
+  min-width:0;
+  min-height:34px;
+  display:flex;
+  align-items:center;
+  padding:0 8px;
+  border-radius:8px;
+  color:var(--ex-muted);
+  font-size:12px;
+  text-decoration:none;
+}
+.platform-recent-list a:hover{background:var(--gpt-ui-hover);color:var(--ex-text)}
+.platform-recent-list a span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.platform-recent-state{opacity:.72}
 .platform-side-meta{
   gap:2px!important;
   padding-top:6px!important;
@@ -54,21 +90,13 @@
 }
 .platform-side-meta>a[href="/app/about"],
 .exterior-settings-trigger,
-.exterior-account-row,
-.exterior-credit-shortcuts a{
+.exterior-account-row{
   min-height:40px!important;
   border-radius:9px!important;
   padding-inline:10px!important;
 }
 .exterior-settings-trigger:hover,
-.exterior-account-row:hover,
-.exterior-credit-shortcuts a:hover{background:var(--gpt-ui-hover)!important}
-.exterior-credit-shortcuts{
-  gap:1px!important;
-  margin-top:4px!important;
-  padding-top:4px!important;
-  border-top:0!important;
-}
+.exterior-account-row:hover{background:var(--gpt-ui-hover)!important}
 .exterior-sidebar-collapse{
   width:36px!important;
   height:36px!important;
@@ -80,6 +108,7 @@
   font-size:20px;
 }
 .exterior-sidebar-collapse:hover{background:var(--gpt-ui-hover)!important}
+.platform-shell.exterior-sidebar-collapsed .platform-side-section{display:none!important}
 
 /* Customer AI: fixed beside the top-left navigation control, visually a quiet app control. */
 .aca-launcher{
@@ -231,6 +260,8 @@ html.exterior-composer-route .canonical-primary-actions .is-primary:after{font-s
     box-shadow:18px 0 54px rgba(0,0,0,.34)!important;
   }
   .platform-mobile-drawer .platform-nav{margin-top:6px!important}
+  .platform-mobile-drawer .platform-side-section{margin-top:12px;max-height:30dvh}
+  .platform-mobile-drawer .platform-recent-list{max-height:30dvh}
   .platform-mobile-drawer .platform-side-meta{margin-top:auto!important}
   .exterior-settings-panel{
     top:auto!important;
@@ -253,5 +284,5 @@ html.exterior-composer-route .canonical-primary-actions .is-primary:after{font-s
 }
 
 @media(prefers-reduced-motion:reduce){
-  .platform-nav a,.exterior-round-tool,.aca-launcher{transition:none!important}
+  .platform-nav a,.platform-recent-list a,.exterior-round-tool,.aca-launcher{transition:none!important}
 }

@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVerifiedAccountSession } from './account-session';
-import { ApiError, apiRequest, asRecord, recordText } from './api-client';
+import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-client';
 import type { RouteMatch } from './route-registry';
 
 const APP_NAV = [
   { href: '/app/new', label: '新しい実行', key: 'new' },
   { href: '/app/projects', label: 'Project', key: 'projects' },
   { href: '/app/history', label: 'History', key: 'history' },
-  { href: '/app/settings', label: 'Settings', key: 'settings' },
-  { href: '/account', label: 'Account', key: 'account' },
 ] as const;
 
 function Brand() {
@@ -56,6 +54,17 @@ type CreditProjection =
       state: 'healthy' | 'low' | 'critical' | 'depleted';
       capacity: number;
     };
+
+type SidebarRecentItem = {
+  id: string;
+  title: string;
+  href: string;
+};
+
+type SidebarRecentState =
+  | { status: 'loading'; items: SidebarRecentItem[] }
+  | { status: 'ready'; items: SidebarRecentItem[] }
+  | { status: 'error'; items: SidebarRecentItem[] };
 
 function numeric(value: unknown, fallback = 0): number {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
@@ -128,6 +137,39 @@ function useCreditProjection(enabled: boolean): CreditProjection {
   }, [enabled, load]);
 
   return projection;
+}
+
+function useSidebarRecent(enabled: boolean): SidebarRecentState {
+  const [state, setState] = useState<SidebarRecentState>({ status: enabled ? 'loading' : 'ready', items: [] });
+
+  useEffect(() => {
+    if (!enabled) {
+      setState({ status: 'ready', items: [] });
+      return;
+    }
+    const controller = new AbortController();
+    setState({ status: 'loading', items: [] });
+    apiRequest('/api/history?limit=6', { signal: controller.signal })
+      .then((payload) => {
+        const items = asArray(payload, ['history', 'items', 'results'])
+          .slice(0, 6)
+          .map((item, index) => {
+            const record = asRecord(item);
+            const id = recordText(record, ['result_id', 'id']);
+            if (!id) return null;
+            const title = recordText(record, ['title', 'prompt', 'name'], `Result ${index + 1}`);
+            return { id, title, href: `/app/results/${encodeURIComponent(id)}` } satisfies SidebarRecentItem;
+          })
+          .filter((item): item is SidebarRecentItem => item !== null);
+        setState({ status: 'ready', items });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ status: 'error', items: [] });
+      });
+    return () => controller.abort();
+  }, [enabled]);
+
+  return state;
 }
 
 function CreditMeter({ enabled }: { enabled: boolean }) {
@@ -217,6 +259,7 @@ export function ResponsivePageShell({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const session = useSession(route.access === 'authenticated');
+  const recent = useSidebarRecent(route.access === 'authenticated');
 
   useEffect(() => {
     document.title = `${route.title} | Astera App`;
@@ -241,11 +284,26 @@ export function ResponsivePageShell({
           </a>
         ))}
       </nav>
+      <section className="platform-side-section" aria-label="Recent history">
+        <div className="platform-side-section-title">Recent</div>
+        <div className="platform-recent-list">
+          {recent.status === 'loading' && <span className="platform-recent-state">読み込み中…</span>}
+          {recent.status === 'error' && <a className="platform-recent-state" href="/app/history" onClick={() => setMenuOpen(false)}>Historyを開く</a>}
+          {recent.status === 'ready' && recent.items.length === 0 && <span className="platform-recent-state">まだ履歴がありません</span>}
+          {recent.status === 'ready' && recent.items.map((item) => (
+            <a key={item.id} href={item.href} title={item.title} onClick={() => setMenuOpen(false)}>
+              <span>{item.title}</span>
+            </a>
+          ))}
+        </div>
+      </section>
       <div className="platform-side-meta">
-        {session.displayName && <span className="platform-account-name">{session.displayName}</span>}
-        <a href="/app/about">Asteraについて</a>
-        <a href="/legal">規約・Privacy</a>
-        <a href="/status">System Status</a>
+        <a href="/app/about" onClick={() => setMenuOpen(false)}>Asteraについて</a>
+        <button type="button" className="exterior-settings-trigger" data-exterior-settings-trigger="true">⚙ Settings</button>
+        <a href="/account" className="exterior-account-row" onClick={() => setMenuOpen(false)}>
+          <span aria-hidden="true">◎</span>
+          <span><strong>{session.displayName || 'Account'}</strong><small>Account・Plan・Security</small></span>
+        </a>
       </div>
     </>
   );

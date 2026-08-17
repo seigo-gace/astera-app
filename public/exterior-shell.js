@@ -1,7 +1,6 @@
 (() => {
   'use strict';
 
-  const LOGO = new URL('/logo-mark.svg', window.location.origin).href;
   const ROUTE = window.location.pathname.replace(/\/+$/, '') || '/';
   const isComposer = ROUTE === '/app' || ROUTE === '/app/new';
   let picker = null;
@@ -21,14 +20,6 @@
     setter?.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function fixBrand(root = document) {
-    root.querySelectorAll('.platform-brand img').forEach((img) => {
-      if (!(img instanceof HTMLImageElement)) return;
-      if (img.src !== LOGO) img.src = LOGO;
-      img.alt = '';
-    });
   }
 
   function openSettings() {
@@ -58,24 +49,12 @@
     panel.querySelector('a,button')?.focus();
   }
 
-  function enhanceSide(side) {
-    if (!(side instanceof HTMLElement) || side.dataset.exteriorReady) return;
-    side.dataset.exteriorReady = 'true';
-    const meta = side.querySelector('.platform-side-meta');
-    if (!meta) return;
-    const settings = button('⚙ Settings', 'exterior-settings-trigger');
-    settings.addEventListener('click', openSettings);
-    const shortcuts = document.createElement('div');
-    shortcuts.className = 'exterior-credit-shortcuts';
-    shortcuts.innerHTML = '<a href="/account/credit">＋ Creditを追加</a><a href="/account/subscription">◇ Plan変更</a><a href="/app/settings/notifications">◉ 通知</a>';
-    const account = document.createElement('a');
-    account.href = '/account';
-    account.className = 'exterior-account-row';
-    const name = text(meta.querySelector('.platform-account-name')) || 'Account';
-    account.innerHTML = `<span aria-hidden="true">◎</span><span><strong>${name.replace(/[<>&"]/g, '')}</strong><small>Account・Plan・Security</small></span>`;
-    const about = meta.querySelector('a[href="/app/about"]');
-    about?.after(settings);
-    meta.append(shortcuts, account);
+  function enhanceSettingsTriggers(root = document) {
+    root.querySelectorAll('[data-exterior-settings-trigger]').forEach((trigger) => {
+      if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.exteriorSettingsBound === 'true') return;
+      trigger.dataset.exteriorSettingsBound = 'true';
+      trigger.addEventListener('click', openSettings);
+    });
   }
 
   function enhanceDesktopCollapse() {
@@ -232,8 +211,7 @@
 
   function refresh() {
     document.documentElement.dataset.asteraExterior = 'gpt';
-    fixBrand();
-    document.querySelectorAll('.platform-sidebar, .platform-mobile-drawer').forEach(enhanceSide);
+    enhanceSettingsTriggers();
     enhanceDesktopCollapse();
     enhanceComposer();
     refreshChips();
