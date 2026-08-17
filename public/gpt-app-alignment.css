@@ -1,0 +1,257 @@
+/*
+ * ASTERA App exterior fallback rule
+ * Master-decided Astera-specific UI stays authoritative.
+ * Unspecified exterior details follow the current ChatGPT app interaction model.
+ */
+:root{
+  --gpt-ui-hover:color-mix(in srgb,var(--ex-text) 7%,transparent);
+  --gpt-ui-pressed:color-mix(in srgb,var(--ex-text) 11%,transparent);
+  --gpt-ui-focus:color-mix(in srgb,var(--platform-accent,#d3a15f) 78%,white 22%);
+}
+
+/* Sidebar: quiet, compact, history/project-first, profile/settings at the bottom. */
+.platform-sidebar{
+  padding:10px 8px 8px!important;
+  border-right:0!important;
+  background:color-mix(in srgb,var(--ex-bg) 96%,var(--ex-text) 4%)!important;
+}
+.platform-brand{
+  min-height:42px!important;
+  margin:2px 4px 8px!important;
+  padding:0 6px!important;
+  border-radius:10px;
+}
+.platform-nav{
+  margin-top:4px!important;
+  gap:2px!important;
+}
+.platform-nav a{
+  min-height:40px!important;
+  padding:0 10px!important;
+  border-radius:9px!important;
+  font-size:14px;
+  font-weight:450;
+  transition:background-color .14s ease,color .14s ease;
+}
+.platform-nav a:hover{background:var(--gpt-ui-hover)!important}
+.platform-nav a[aria-current="page"]{
+  background:var(--gpt-ui-hover)!important;
+  box-shadow:none!important;
+  color:var(--ex-text)!important;
+}
+.platform-nav a[href="/app/new"]{
+  margin-bottom:6px;
+  color:var(--ex-text)!important;
+  font-weight:600;
+}
+/* Settings and Account are profile/footer responsibilities, not primary navigation. */
+.platform-nav a[href="/app/settings"],
+.platform-nav a[href="/account"]{display:none!important}
+.platform-side-meta{
+  gap:2px!important;
+  padding-top:6px!important;
+  border-top:0!important;
+}
+.platform-side-meta>a[href="/app/about"],
+.exterior-settings-trigger,
+.exterior-account-row,
+.exterior-credit-shortcuts a{
+  min-height:40px!important;
+  border-radius:9px!important;
+  padding-inline:10px!important;
+}
+.exterior-settings-trigger:hover,
+.exterior-account-row:hover,
+.exterior-credit-shortcuts a:hover{background:var(--gpt-ui-hover)!important}
+.exterior-credit-shortcuts{
+  gap:1px!important;
+  margin-top:4px!important;
+  padding-top:4px!important;
+  border-top:0!important;
+}
+.exterior-sidebar-collapse{
+  width:36px!important;
+  height:36px!important;
+  top:13px!important;
+  right:8px!important;
+  border:0!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  font-size:20px;
+}
+.exterior-sidebar-collapse:hover{background:var(--gpt-ui-hover)!important}
+
+/* Customer AI: fixed beside the top-left navigation control, visually a quiet app control. */
+.aca-launcher{
+  width:40px!important;
+  height:40px!important;
+  border:0!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:var(--ex-text)!important;
+}
+.aca-launcher:hover{background:var(--gpt-ui-hover)!important}
+.aca-launcher:active{background:var(--gpt-ui-pressed)!important}
+.aca-orbit{display:none!important}
+.aca-mark{
+  font-size:18px!important;
+  text-shadow:none!important;
+}
+.aca-launcher-label{
+  left:46px!important;
+  right:auto!important;
+  padding:6px 8px!important;
+  border:1px solid var(--ex-line)!important;
+  border-radius:8px!important;
+  background:var(--ex-panel)!important;
+  color:var(--ex-text)!important;
+  letter-spacing:0!important;
+  font-size:11px!important;
+}
+.aca-panel{
+  border-radius:16px!important;
+  clip-path:none!important;
+  border-color:var(--ex-line)!important;
+  background:var(--ex-bg)!important;
+}
+
+/* Desktop settings follows the ChatGPT-style modal treatment. */
+@media(min-width:1101px){
+  .exterior-settings-panel{
+    left:50%!important;
+    top:50%!important;
+    bottom:auto!important;
+    width:min(560px,calc(100vw - 48px))!important;
+    max-height:min(78dvh,720px)!important;
+    transform:translate(-50%,-50%)!important;
+    border-radius:18px!important;
+  }
+  .exterior-settings-panel nav{padding:10px!important}
+  .exterior-settings-panel nav a{
+    min-height:48px!important;
+    border-radius:10px!important;
+  }
+}
+
+/* Composer: one compact surface, message field first, tools/mentions inline below it. */
+html.exterior-composer-route .canonical-composer-card{
+  border-radius:26px!important;
+  padding:9px 10px 8px!important;
+  gap:2px!important;
+  box-shadow:0 8px 28px rgba(0,0,0,.28)!important;
+}
+html.exterior-composer-route .canonical-files{order:1!important}
+html.exterior-composer-route .canonical-composer-card>.canonical-field{order:2!important}
+html.exterior-composer-route .exterior-composer-tools{order:3!important}
+html.exterior-composer-route .canonical-alert{order:4!important}
+html.exterior-composer-route .canonical-primary-actions{order:5!important}
+html.exterior-composer-route .canonical-composer-card>.canonical-field textarea{
+  min-height:48px!important;
+  max-height:190px!important;
+  padding:9px 10px 5px!important;
+  font-size:16px!important;
+  line-height:1.5!important;
+}
+.exterior-composer-tools{
+  min-height:36px;
+  gap:3px!important;
+  padding:0 48px 0 1px!important;
+}
+.exterior-round-tool{
+  width:34px!important;
+  height:34px!important;
+  min-height:34px!important;
+  border:0!important;
+  border-radius:50%!important;
+  background:transparent!important;
+  font-size:18px!important;
+}
+.exterior-round-tool:hover{background:var(--gpt-ui-hover)!important}
+.exterior-round-tool:active{background:var(--gpt-ui-pressed)!important}
+.exterior-chips{gap:4px!important;scrollbar-width:none}
+.exterior-chips::-webkit-scrollbar{display:none}
+.exterior-chips button{
+  min-height:30px!important;
+  border-color:var(--ex-line)!important;
+  background:transparent!important;
+  color:var(--ex-muted)!important;
+}
+.exterior-chips button:hover{background:var(--gpt-ui-hover)!important;color:var(--ex-text)!important}
+html.exterior-composer-route .canonical-primary-actions .is-primary{
+  width:36px!important;
+  height:36px!important;
+  min-height:36px!important;
+  right:2px;
+  border:0!important;
+  box-shadow:none!important;
+}
+html.exterior-composer-route .canonical-primary-actions .is-primary:after{font-size:20px!important}
+
+/* Pickers/sheets use the same quiet list-item rhythm. */
+.exterior-picker{
+  border-radius:16px!important;
+  border-color:var(--ex-line)!important;
+  background:var(--ex-bg)!important;
+}
+.exterior-picker-body{padding:6px!important}
+.exterior-picker-body>button{
+  min-height:44px!important;
+  border-radius:9px!important;
+  padding:6px 9px!important;
+}
+.exterior-picker-body>button:hover,
+.exterior-picker-body>button.is-selected{background:var(--gpt-ui-hover)!important}
+
+/* Keyboard/focus behavior is explicit and consistent across the shell. */
+:where(.platform-shell,.exterior-settings-panel,.exterior-picker,.aca-shell) :where(a,button,input,textarea,select):focus-visible{
+  outline:2px solid var(--gpt-ui-focus)!important;
+  outline-offset:2px!important;
+}
+
+/* Tablet/mobile: simplified drawer + top bar, with no desktop-like chrome. */
+@media(max-width:1100px){
+  .platform-mobile-header{
+    border-bottom:0!important;
+    padding-inline:10px!important;
+    background:color-mix(in srgb,var(--ex-bg) 94%,transparent)!important;
+    box-shadow:none!important;
+  }
+  .platform-menu-button,.platform-header-account{
+    width:40px!important;
+    height:40px!important;
+    border-radius:10px!important;
+    font-size:18px!important;
+  }
+  .platform-menu-button:hover,.platform-header-account:hover{background:var(--gpt-ui-hover)!important}
+  .platform-mobile-drawer{
+    width:min(88vw,360px)!important;
+    padding:10px 8px calc(10px + env(safe-area-inset-bottom))!important;
+    border-right:1px solid var(--ex-line)!important;
+    box-shadow:18px 0 54px rgba(0,0,0,.34)!important;
+  }
+  .platform-mobile-drawer .platform-nav{margin-top:6px!important}
+  .platform-mobile-drawer .platform-side-meta{margin-top:auto!important}
+  .exterior-settings-panel{
+    top:auto!important;
+    transform:none!important;
+    border-radius:18px!important;
+  }
+  html.exterior-composer-route .canonical-composer-card{
+    left:10px!important;
+    right:10px!important;
+    bottom:calc(8px + env(safe-area-inset-bottom))!important;
+    border-radius:24px!important;
+  }
+}
+
+@media(max-width:600px){
+  .platform-mobile-drawer{width:min(92vw,340px)!important}
+  .aca-panel{border-radius:18px!important}
+  .exterior-picker{border-radius:20px 20px 0 0!important}
+  .exterior-settings-panel{border-radius:20px 20px 0 0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .platform-nav a,.exterior-round-tool,.aca-launcher{transition:none!important}
+}
