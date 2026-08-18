@@ -15,6 +15,9 @@ export type RuntimeConfig = {
   tgserverStorageOrigin: string;
   tgserverStorageToken: string;
   tgserverStorageTimeoutMs: number;
+  webhookGatewayOrigin: string;
+  webhookGatewayToken: string;
+  webhookGatewayTimeoutMs: number;
 };
 
 function required(value: string | undefined, name: string): string {
@@ -47,6 +50,7 @@ function optionalSecureOrigin(value: string | undefined): string {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const tgserverStorageOrigin = optionalSecureOrigin(env.TGS_STORAGE_INTERNAL_ORIGIN);
+  const webhookGatewayOrigin = optionalSecureOrigin(env.WEBHOOK_GATEWAY_INTERNAL_ORIGIN);
   return {
     port: integer(env.PORT, 8788, 1, 65_535),
     internalServiceToken: required(env.INTERNAL_SERVICE_TOKEN, 'INTERNAL_SERVICE_TOKEN'),
@@ -64,6 +68,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     tgserverStorageOrigin,
     tgserverStorageToken: tgserverStorageOrigin ? required(env.TGS_STORAGE_INTERNAL_TOKEN, 'TGS_STORAGE_INTERNAL_TOKEN') : '',
     tgserverStorageTimeoutMs: integer(env.TGS_STORAGE_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
+    webhookGatewayOrigin,
+    webhookGatewayToken: webhookGatewayOrigin
+      ? required(env.WEBHOOK_GATEWAY_INTERNAL_TOKEN, 'WEBHOOK_GATEWAY_INTERNAL_TOKEN')
+      : '',
+    webhookGatewayTimeoutMs: integer(env.WEBHOOK_GATEWAY_TIMEOUT_MS, 15_000, 1_000, 120_000),
   };
 }
 
