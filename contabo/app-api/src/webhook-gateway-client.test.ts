@@ -89,6 +89,22 @@ describe('WebhookGatewayClient', () => {
     } satisfies Partial<WebhookGatewayError>);
   });
 
+  it('treats Gateway token/CIDR failures as server configuration failures, not customer authentication', async () => {
+    for (const status of [401, 403]) {
+      const client = new WebhookGatewayClient(
+        'https://webhook.asterav8.jp',
+        'gateway-secret',
+        5_000,
+        (async () => jsonResponse({ error: 'unauthorized' }, status)) as typeof fetch,
+      );
+      await expect(client.list()).rejects.toMatchObject({
+        status: 503,
+        code: 'WEBHOOK_GATEWAY_AUTHENTICATION_FAILED',
+        retryable: false,
+      });
+    }
+  });
+
   it('maps transport failure to service unavailable without exposing the Gateway token', async () => {
     const client = new WebhookGatewayClient(
       'https://webhook.asterav8.jp',
