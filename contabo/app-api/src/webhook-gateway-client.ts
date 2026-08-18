@@ -107,15 +107,15 @@ export class WebhookGatewayClient {
   }
 
   private async requestJson<T>(path: string, init: RequestInit): Promise<T> {
+    const headers = new Headers(init.headers);
+    headers.set('authorization', `Bearer ${this.token}`);
+    headers.set('accept', 'application/json');
+
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.origin}${path}`, {
         ...init,
-        headers: {
-          ...init.headers,
-          authorization: `Bearer ${this.token}`,
-          accept: 'application/json',
-        },
+        headers,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
@@ -136,6 +136,14 @@ export class WebhookGatewayClient {
     }
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new WebhookGatewayError(
+          503,
+          'WEBHOOK_GATEWAY_AUTHENTICATION_FAILED',
+          'Webhook Gateway server authentication failed.',
+          false,
+        );
+      }
       const upstreamMessage = extractUpstreamMessage(body);
       throw new WebhookGatewayError(
         mapUpstreamStatus(response.status),
@@ -164,7 +172,7 @@ function extractUpstreamMessage(body: unknown): string {
 }
 
 function mapUpstreamStatus(status: number): number {
-  if (status === 400 || status === 401 || status === 403 || status === 404 || status === 413 || status === 422 || status === 429) {
+  if (status === 400 || status === 404 || status === 413 || status === 422 || status === 429) {
     return status;
   }
   return status >= 500 ? 503 : 502;
