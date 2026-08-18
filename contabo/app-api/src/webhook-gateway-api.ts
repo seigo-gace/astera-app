@@ -1,4 +1,4 @@
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import type { RuntimeConfig } from './config.js';
 import {
   WebhookGatewayClient,
@@ -99,7 +99,7 @@ function isSubmitRequest(value: unknown): value is WebhookGatewaySubmitRequest {
   return Object.prototype.hasOwnProperty.call(record, 'data');
 }
 
-function notConfigured(context: Parameters<Parameters<Hono['get']>[1]>[0]) {
+function notConfigured(context: Context) {
   return context.json({
     error: {
       code: 'WEBHOOK_GATEWAY_NOT_CONFIGURED',
@@ -109,7 +109,7 @@ function notConfigured(context: Parameters<Parameters<Hono['get']>[1]>[0]) {
   }, 503);
 }
 
-function gatewayError(context: Parameters<Parameters<Hono['get']>[1]>[0], error: unknown) {
+function gatewayError(context: Context, error: unknown) {
   if (!(error instanceof WebhookGatewayError)) {
     return context.json({
       error: {
