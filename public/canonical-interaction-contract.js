@@ -59,9 +59,8 @@
     textarea.dataset.canonTriggerBound = 'true';
     textarea.addEventListener('keydown', (event) => {
       if (suppressComposerTrigger || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-      if ((event.key !== '@' && event.key !== '/') || !triggerAllowedAt(textarea)) return;
-      const selector = event.key === '@' ? '.canon-at' : '.canon-plus';
-      const trigger = document.querySelector(selector);
+      if (event.key !== '@' || !triggerAllowedAt(textarea)) return;
+      const trigger = document.querySelector('.canon-at');
       if (!(trigger instanceof HTMLButtonElement) || trigger.disabled) return;
       event.preventDefault();
       suppressComposerTrigger = true;
