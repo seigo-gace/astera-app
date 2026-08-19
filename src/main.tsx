@@ -4,6 +4,7 @@ import './i18n';
 import './styles.css';
 import AppRouter from './platform/app-router';
 import { CanonicalSettingsExterior } from './platform/canonical-settings-exterior';
+import { CanonicalAccountSecurityManagement } from './platform/canonical-account-security-management';
 import './device-compatibility.css';
 import './horizontal-stability.css';
 import './orientation-stability.css';
@@ -26,6 +27,7 @@ if (!runtimeUnsupported) {
     <StrictMode>
       <AppRouter />
       <CanonicalSettingsExterior />
+      <CanonicalAccountSecurityManagement />
     </StrictMode>,
   );
 }
