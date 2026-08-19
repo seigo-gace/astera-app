@@ -97,7 +97,6 @@ function validateCreateRequest(value: unknown): RuntimeCreateRequest {
     return { key, config: normalizedConfig };
   }) : [];
   if (new Set(options.map((option) => option.key)).size !== options.length) throw Object.assign(new Error('Optionが重複しています。'), { code: 'EXECUTION_OPTION_DUPLICATED' });
-  if (privateMode && options.some((option) => option.key === 'external-storage-transfer')) throw Object.assign(new Error('Private Modeでは外部Storage転送を実行できません。'), { code: 'PRIVATE_MODE_TRANSFER_FORBIDDEN' });
   const files = Array.isArray(source.files) ? source.files.map((item) => {
     const file = record(item);
     const normalized: RuntimeFile = {

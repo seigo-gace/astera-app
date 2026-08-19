@@ -16,6 +16,7 @@ type PurposeKey = 'auto' | 'review' | 'compare' | 'verify' | 'improve' | 'resear
 type ExecutionOptionKey = 'translation' | 'agent-mode' | 'document' | 'external-storage-transfer';
 type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pending' | 'credited' | 'resume_available' | 'resume_blocked';
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'confirmation' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
+type DocumentTemplateSource = 'official' | 'personal';
 
 type UploadedFile = {
   localId: string;
@@ -51,6 +52,7 @@ type DraftSnapshot = {
   targetLanguage: string;
   agentMode: 'low' | 'medium' | 'high';
   documentTemplateId: string;
+  documentTemplateSource: DocumentTemplateSource;
   storageDestinationId: string;
   privateMode: boolean;
   projectId: string;
@@ -70,15 +72,15 @@ const RESULT_KEYS = [
   'next_prompt',
 ] as const;
 
-const PURPOSES: ReadonlyArray<{ key: PurposeKey; label: string; description: string }> = [
-  { key: 'auto', label: '自動', description: '入力内容から最適な観点を選択' },
-  { key: 'review', label: 'レビュー', description: '内容の妥当性と改善点を確認' },
-  { key: 'compare', label: '比較', description: '複数案を同じ条件で比較' },
-  { key: 'verify', label: '検証', description: '事実・前提・成立条件を確認' },
-  { key: 'improve', label: '改善', description: '問題点を特定し改善案を整理' },
-  { key: 'research', label: '調査', description: '必要な情報と根拠を収集' },
-  { key: 'plan', label: '計画', description: '順序・依存関係・判断点を設計' },
-  { key: 'consider', label: '検討', description: '選択肢・リスク・推奨判断を整理' },
+const PURPOSES: ReadonlyArray<{ key: PurposeKey; label: string }> = [
+  { key: 'auto', label: '自動' },
+  { key: 'review', label: 'レビュー' },
+  { key: 'compare', label: '比較' },
+  { key: 'verify', label: '検証' },
+  { key: 'improve', label: '改善' },
+  { key: 'research', label: '調査' },
+  { key: 'plan', label: '計画' },
+  { key: 'consider', label: '検討' },
 ];
 
 const OPTION_LABELS: Record<ExecutionOptionKey, string> = {
@@ -99,16 +101,21 @@ const RESULT_TITLES: Record<(typeof RESULT_KEYS)[number], string> = {
   next_prompt: '主役AIへの再指示',
 };
 
+function defaultLanguage(): string {
+  return document.documentElement.lang || navigator.language || 'ja-JP';
+}
+
 function readDraft(): DraftSnapshot {
   const fallback: DraftSnapshot = {
     prompt: '',
     purpose: 'auto',
     selectedOptions: [],
-    targetLanguage: '',
+    targetLanguage: defaultLanguage(),
     agentMode: 'medium',
     documentTemplateId: '',
+    documentTemplateSource: 'personal',
     storageDestinationId: '',
-    privateMode: false,
+    privateMode: true,
     projectId: '',
   };
   try {
@@ -123,7 +130,8 @@ function readDraft(): DraftSnapshot {
     const selectedOptions = Array.isArray(parsed.selectedOptions)
       ? parsed.selectedOptions.filter((value): value is ExecutionOptionKey => typeof value === 'string' && value in OPTION_LABELS)
       : [];
-    return { ...fallback, ...parsed, purpose, selectedOptions };
+    const documentTemplateSource = parsed.documentTemplateSource === 'official' ? 'official' : 'personal';
+    return { ...fallback, ...parsed, purpose, selectedOptions, documentTemplateSource, privateMode: true };
   } catch {
     return fallback;
   }
@@ -256,6 +264,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
   const [targetLanguage, setTargetLanguage] = useState(initialDraft.targetLanguage);
   const [agentMode, setAgentMode] = useState<'low' | 'medium' | 'high'>(initialDraft.agentMode);
   const [documentTemplateId, setDocumentTemplateId] = useState(initialDraft.documentTemplateId);
+  const [documentTemplateSource, setDocumentTemplateSource] = useState<DocumentTemplateSource>(initialDraft.documentTemplateSource);
   const [storageDestinationId, setStorageDestinationId] = useState(initialDraft.storageDestinationId);
   const [privateMode, setPrivateMode] = useState(initialDraft.privateMode);
   const [projectId, setProjectId] = useState(initialDraft.projectId);
@@ -302,10 +311,11 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
     targetLanguage,
     agentMode,
     documentTemplateId,
+    documentTemplateSource,
     storageDestinationId,
     privateMode,
     projectId,
-  }), [agentMode, documentTemplateId, privateMode, projectId, prompt, purpose, selectedOptions, storageDestinationId, targetLanguage]);
+  }), [agentMode, documentTemplateId, documentTemplateSource, privateMode, projectId, prompt, purpose, selectedOptions, storageDestinationId, targetLanguage]);
 
   useEffect(() => {
     if (privateMode) {
@@ -331,11 +341,11 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
   const hasFailedFiles = files.some((file) => file.status === 'error');
 
   const executionOptions = useMemo(() => selectedOptions.map((key) => {
-    if (key === 'translation') return { key, profileVersion: 'document-v1', targetLanguage };
+    if (key === 'translation') return { key, profileVersion: 'translation-flash-lite', targetLanguage };
     if (key === 'agent-mode') return { key, policyVersion: 'v1', mode: agentMode };
-    if (key === 'document') return { key, templateSource: 'personal', templateId: documentTemplateId, templateVersion: 'latest' };
+    if (key === 'document') return { key, templateSource: documentTemplateSource, templateId: documentTemplateId, templateVersion: 'latest' };
     return { key, destinationId: storageDestinationId, adapterVersion: 'v1', format: 'markdown' };
-  }), [agentMode, documentTemplateId, selectedOptions, storageDestinationId, targetLanguage]);
+  }), [agentMode, documentTemplateId, documentTemplateSource, selectedOptions, storageDestinationId, targetLanguage]);
 
   const requestFingerprint = useMemo(() => JSON.stringify({
     prompt,
@@ -355,9 +365,8 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
     if (selectedOptions.includes('translation') && !targetLanguage.trim()) return new ApiError('翻訳先言語を指定してください。', 422, 'TARGET_LANGUAGE_REQUIRED');
     if (selectedOptions.includes('document') && !documentTemplateId.trim()) return new ApiError('書類Templateを指定してください。', 422, 'DOCUMENT_TEMPLATE_REQUIRED');
     if (selectedOptions.includes('external-storage-transfer') && !storageDestinationId.trim()) return new ApiError('転送先Storageを指定してください。', 422, 'STORAGE_DESTINATION_REQUIRED');
-    if (privateMode && selectedOptions.includes('external-storage-transfer')) return new ApiError('Private Modeでは外部Storage転送を実行できません。', 422, 'PRIVATE_MODE_TRANSFER_FORBIDDEN');
     return null;
-  }, [documentTemplateId, files.length, hasFailedFiles, hasPendingFiles, privateMode, prompt, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
+  }, [documentTemplateId, files.length, hasFailedFiles, hasPendingFiles, prompt, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
 
   const uploadFile = useCallback(async (file: File, localId: string) => {
     const requestId = crypto.randomUUID();
@@ -557,11 +566,12 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
     setPrompt('');
     setPurpose('auto');
     setSelectedOptions([]);
-    setTargetLanguage('');
+    setTargetLanguage(defaultLanguage());
     setAgentMode('medium');
     setDocumentTemplateId('');
+    setDocumentTemplateSource('personal');
     setStorageDestinationId('');
-    setPrivateMode(false);
+    setPrivateMode(true);
     setProjectId('');
     setFiles([]);
     setEstimate(null);
@@ -611,7 +621,7 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
           {PURPOSES.map((item) => (
             <label key={item.key} className={purpose === item.key ? 'is-selected' : ''}>
               <input type="radio" name="purpose" value={item.key} checked={purpose === item.key} onChange={() => setPurpose(item.key)} />
-              <strong>{item.label}</strong><span>{item.description}</span>
+              <strong>{item.label}</strong>
             </label>
           ))}
         </fieldset>
@@ -621,20 +631,20 @@ export default function CanonicalComposerPage({ route }: { route: RouteMatch }) 
           <div className="canonical-option-grid">
             {(Object.keys(OPTION_LABELS) as ExecutionOptionKey[]).map((key) => (
               <label key={key} className={selectedOptions.includes(key) ? 'is-selected' : ''}>
-                <input type="checkbox" checked={selectedOptions.includes(key)} onChange={() => toggleOption(key)} disabled={privateMode && key === 'external-storage-transfer'} />
+                <input type="checkbox" checked={selectedOptions.includes(key)} onChange={() => toggleOption(key)} />
                 <span>{OPTION_LABELS[key]}</span>
               </label>
             ))}
           </div>
           {selectedOptions.includes('translation') && <label className="canonical-field"><span>翻訳先言語</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} placeholder="例: English" /></label>}
-          {selectedOptions.includes('agent-mode') && <label className="canonical-field"><span>Agent強度</span><select value={agentMode} onChange={(event) => setAgentMode(event.target.value as 'low' | 'medium' | 'high')}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>}
-          {selectedOptions.includes('document') && <label className="canonical-field"><span>書類Template ID</span><input value={documentTemplateId} onChange={(event) => setDocumentTemplateId(event.target.value)} /></label>}
+          {selectedOptions.includes('agent-mode') && <label className="canonical-field"><span>Agent強度</span><select value={agentMode} onChange={(event) => setAgentMode(event.target.value as 'low' | 'medium' | 'high')}><option value="low">エージェント低</option><option value="medium">エージェント中</option><option value="high">エージェント高</option></select></label>}
+          {selectedOptions.includes('document') && <label className="canonical-field"><span>書類Template ID</span><input value={documentTemplateId} onChange={(event) => { setDocumentTemplateId(event.target.value); const source = event.currentTarget.dataset.templateSource; if (source === 'official' || source === 'personal') setDocumentTemplateSource(source); }} /></label>}
           {selectedOptions.includes('external-storage-transfer') && <label className="canonical-field"><span>Storage Destination ID</span><input value={storageDestinationId} onChange={(event) => setStorageDestinationId(event.target.value)} /></label>}
         </section>
 
         <div className="canonical-two-column">
           <label className="canonical-field"><span>Project ID（任意）</span><input value={projectId} onChange={(event) => setProjectId(event.target.value)} /></label>
-          <label className="canonical-private-toggle"><input type="checkbox" checked={privateMode} disabled={activeWork || files.length > 0 || resultSections.length > 0} onChange={(event) => { setPrivateMode(event.target.checked); if (event.target.checked) setSelectedOptions((current) => current.filter((key) => key !== 'external-storage-transfer')); }} /><span><strong>Private Mode</strong><small>本文・File・ResultをAstera側へ永続保存しない</small></span></label>
+          <label className="canonical-private-toggle"><input type="checkbox" checked={privateMode} disabled={activeWork || files.length > 0 || resultSections.length > 0} onChange={(event) => setPrivateMode(event.target.checked)} /><span><strong>Private Mode</strong><small>本文・File・ResultをAstera側へ永続保存しない</small></span></label>
         </div>
 
         <section className="canonical-files">
