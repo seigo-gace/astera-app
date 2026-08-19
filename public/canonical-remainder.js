@@ -103,23 +103,6 @@
     }, true);
   }
 
-  function stripPurposeFromPlus() {
-    const panel = document.querySelector('.canon-picker:not(.canon-purpose-picker)');
-    if (!(panel instanceof HTMLElement)) return;
-    Array.from(panel.querySelectorAll('button')).forEach((item) => {
-      if (text(item) === 'Purposeを選択') item.remove();
-    });
-  }
-
-  function normalizeAgentLabels() {
-    document.querySelectorAll('.canon-picker select option').forEach((option) => {
-      if (!(option instanceof HTMLOptionElement)) return;
-      if (option.value === 'low' && option.textContent === 'Low') option.textContent = 'エージェント低';
-      if (option.value === 'medium' && option.textContent === 'Medium') option.textContent = 'エージェント中';
-      if (option.value === 'high' && option.textContent === 'High') option.textContent = 'エージェント高';
-    });
-  }
-
   function setNativeValue(input, value) {
     if (!(input instanceof HTMLInputElement)) return;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
@@ -174,8 +157,6 @@
   function run() {
     bindSlash();
     refreshPurposeChip();
-    stripPurposeFromPlus();
-    normalizeAgentLabels();
     applyTranslationDefault();
     ensureVaultSettings();
   }
