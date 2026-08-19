@@ -51,7 +51,8 @@
       chip.dataset.canonPurposeChip = 'true';
       host.prepend(chip);
     }
-    chip.textContent = `/${selected ? purposeLabel(selected) : '自動'}`;
+    const nextText = `/${selected ? purposeLabel(selected) : '自動'}`;
+    if (chip.textContent !== nextText) chip.textContent = nextText;
   }
 
   function openPurposePicker() {
