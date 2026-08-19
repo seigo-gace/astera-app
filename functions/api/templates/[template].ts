@@ -1,0 +1,10 @@
+import { FunctionHttpError, functionErrorResponse, requestCorrelationId, requireAsteraActor, type AsteraFunctionEnv } from '../../_account-projection';
+import { deleteTemplate, getTemplate, TemplateStoreError, updateTemplate } from '../../_template-store';
+type C = { request: Request; env: AsteraFunctionEnv; params: { template?: string } };
+const norm = (error: unknown) => error instanceof TemplateStoreError ? new FunctionHttpError(error.status, error.code, error.message, error.details) : error;
+function templateId(c: C) { const id=c.params.template?.trim(); if(!id) throw new FunctionHttpError(400,'TEMPLATE_ID_REQUIRED','Template IDが必要です。'); return id; }
+async function actor(c: C) { const a=await requireAsteraActor(c.request,c.env); return {userId:a.user.id,tenantId:a.profile.tenant_id}; }
+export async function onRequestGet(c:C){const cid=requestCorrelationId(c.request);try{return Response.json(await getTemplate(c.env.ASTERA_DB,await actor(c),templateId(c)),{headers:{'Cache-Control':'no-store','X-Correlation-ID':cid}});}catch(error){return functionErrorResponse(norm(error),cid);}}
+export async function onRequestPatch(c:C){const cid=requestCorrelationId(c.request);try{return Response.json(await updateTemplate(c.env.ASTERA_DB,await actor(c),templateId(c),await c.request.json().catch(()=>null)),{headers:{'Cache-Control':'no-store','X-Correlation-ID':cid}});}catch(error){return functionErrorResponse(norm(error),cid);}}
+export async function onRequestDelete(c:C){const cid=requestCorrelationId(c.request);try{return Response.json(await deleteTemplate(c.env.ASTERA_DB,await actor(c),templateId(c)),{headers:{'Cache-Control':'no-store','X-Correlation-ID':cid}});}catch(error){return functionErrorResponse(norm(error),cid);}}
+export function onRequest(c:C){if(c.request.method==='GET')return onRequestGet(c);if(c.request.method==='PATCH')return onRequestPatch(c);if(c.request.method==='DELETE')return onRequestDelete(c);return Promise.resolve(Response.json({error:{code:'METHOD_NOT_ALLOWED',message:'GET/PATCH/DELETEのみ対応しています。'}},{status:405}));}
