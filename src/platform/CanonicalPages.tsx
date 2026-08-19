@@ -3,6 +3,7 @@ import HistoryPage from '../features/history/HistoryPage';
 import ProjectPage from '../features/projects/ProjectPage';
 import ResultPage from '../features/results/ResultPage';
 import SecurityPage from '../features/security/SecurityPage';
+import ShareManagementPage from '../features/share/ShareManagementPage';
 import type { RouteMatch } from './route-registry';
 import { AccountPlatformPage } from './pages/AccountPages';
 import { AuthPage } from './pages/AuthPages';
@@ -19,6 +20,7 @@ export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'projects') return <ProjectPage route={route} />;
   if (route.id === 'history') return <HistoryPage route={route} />;
   if (route.id === 'result-detail') return <ResultPage route={route} />;
+  if (route.id === 'shares') return <ShareManagementPage route={route} />;
   if (workspaceRoutes.has(route.id)) return <WorkspacePage route={route} />;
   if (route.id === 'account-security') return <SecurityPage route={route} />;
   if (accountRoutes.has(route.id)) return <AccountPlatformPage route={route} />;
