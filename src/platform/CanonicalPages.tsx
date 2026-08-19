@@ -1,4 +1,5 @@
 import LoginPage from '../features/auth/LoginPage';
+import DeveloperPage from '../features/developer/DeveloperPage';
 import HistoryPage from '../features/history/HistoryPage';
 import ProjectPage from '../features/projects/ProjectPage';
 import ResultPage from '../features/results/ResultPage';
@@ -14,7 +15,7 @@ import { WorkspacePage } from './pages/WorkspacePages';
 
 const authRoutes = new Set(['register', 'verify-email', 'forgot-password', 'reset-password', 'password-setup', 'two-factor']);
 const workspaceRoutes = new Set(['settings', 'settings-language', 'settings-templates', 'settings-storage-destinations', 'settings-astera-storage', 'settings-notifications']);
-const accountRoutes = new Set(['account', 'account-subscription', 'account-credit', 'billing-status', 'developer']);
+const accountRoutes = new Set(['account', 'account-subscription', 'account-credit', 'billing-status']);
 
 export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'login') return <LoginPage route={route} />;
@@ -25,6 +26,7 @@ export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'shares') return <ShareManagementPage route={route} />;
   if (route.id === 'settings-options') return <OptionSettingsPage route={route} />;
   if (route.id === 'settings-data-privacy') return <DataPrivacyPage route={route} />;
+  if (route.id === 'developer') return <DeveloperPage route={route} />;
   if (workspaceRoutes.has(route.id)) return <WorkspacePage route={route} />;
   if (route.id === 'account-security') return <SecurityPage route={route} />;
   if (accountRoutes.has(route.id)) return <AccountPlatformPage route={route} />;

@@ -1,0 +1,95 @@
+html[data-developer-dedicated-owner="true"] [data-react-canonical-exterior="true"] {
+  display: none !important;
+}
+.developer-credit-banner,
+.developer-secret,
+.developer-target-grid article,
+.developer-key-card {
+  border: 1px solid var(--platform-border);
+  border-radius: 14px;
+  padding: 14px;
+}
+.developer-credit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.developer-credit-banner > div,
+.developer-secret {
+  display: grid;
+  gap: 4px;
+}
+.developer-target-grid,
+.developer-key-list {
+  display: grid;
+  gap: 12px;
+}
+.developer-target-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.developer-target-grid article header,
+.developer-key-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.developer-target-grid article header span,
+.developer-key-card small,
+.developer-key-card dt,
+.developer-boundary-note {
+  color: var(--platform-muted);
+}
+.developer-key-card > header > div {
+  display: grid;
+  gap: 3px;
+}
+.developer-key-card > header b {
+  text-align: right;
+}
+.developer-key-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.developer-key-card dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.developer-key-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.developer-key-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.developer-secret code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+@media (max-width: 800px) {
+  .developer-target-grid,
+  .developer-key-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .developer-key-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .developer-credit-banner,
+  .developer-key-card > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .developer-key-card dl {
+    grid-template-columns: 1fr;
+  }
+}
