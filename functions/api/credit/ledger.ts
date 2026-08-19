@@ -1,58 +1,14 @@
-import { functionErrorResponse, requestCorrelationId, requireAsteraActor, type AsteraFunctionEnv } from '../../_account-projection';
+import { FunctionHttpError, functionErrorResponse, requestCorrelationId, requireAsteraActor, type AsteraFunctionEnv } from '../../_account-projection';
 
-type LedgerRow = {
-  transaction_id: string;
-  kind: string;
-  amount: number;
-  reference_type: string;
-  reference_id: string;
-  request_fingerprint: string;
-  created_at: string;
-};
-
-type PagesContext = { request: Request; env: AsteraFunctionEnv };
-
-function pageLimit(request: Request): number {
-  const value = Number(new URL(request.url).searchParams.get('limit') ?? 50);
-  if (!Number.isInteger(value)) return 50;
-  return Math.min(100, Math.max(1, value));
-}
-
-export async function onRequestGet(context: PagesContext): Promise<Response> {
-  const requestId = requestCorrelationId(context.request);
-  try {
-    const actor = await requireAsteraActor(context.request, context.env);
-    const limit = pageLimit(context.request);
-    const result = await context.env.ASTERA_DB.prepare(
-      `SELECT transaction_id, kind, amount, reference_type, reference_id, request_fingerprint, created_at
-       FROM credit_ledger
-       WHERE credit_account_id = ?1
-       ORDER BY created_at DESC, transaction_id DESC
-       LIMIT ?2`,
-    ).bind(actor.credit.id, limit).all<LedgerRow>();
-    const entries = (result.results ?? []).map((row) => ({
-      id: row.transaction_id,
-      transaction_id: row.transaction_id,
-      type: row.kind,
-      kind: row.kind,
-      amount: Number(row.amount),
-      reference_type: row.reference_type,
-      reference_id: row.reference_id,
-      request_fingerprint: row.request_fingerprint,
-      created_at: row.created_at,
-      status: 'posted',
-    }));
-    return Response.json({ ledger: entries, entries, limit }, {
-      headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId },
-    });
-  } catch (error) {
-    return functionErrorResponse(error, requestId);
-  }
-}
-
-export function onRequest(context: PagesContext): Promise<Response> {
-  if (context.request.method !== 'GET') {
-    return Promise.resolve(Response.json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'GETのみ対応しています。' } }, { status: 405 }));
-  }
-  return onRequestGet(context);
-}
+const KINDS = ['grant','reserve','commit','release','refund','adjustment'] as const;
+type LedgerKind=(typeof KINDS)[number];
+type LedgerRow={transaction_id:string;kind:string;amount:number;reference_type:string;reference_id:string;request_fingerprint:string;created_at:string};
+type PagesContext={request:Request;env:AsteraFunctionEnv};
+type Cursor={created_at:string;transaction_id:string};
+function limitFor(url:URL){const n=Number(url.searchParams.get('limit')??50);return Number.isInteger(n)?Math.min(100,Math.max(1,n)):50;}
+function kindFor(url:URL):LedgerKind|''{const value=(url.searchParams.get('kind')??'').trim();if(!value)return'';if(!KINDS.includes(value as LedgerKind))throw new FunctionHttpError(422,'LEDGER_KIND_INVALID','Ledger kindが不正です。');return value as LedgerKind;}
+function refFor(url:URL):string{const value=(url.searchParams.get('reference_type')??'').trim();if(value.length>80)throw new FunctionHttpError(422,'LEDGER_REFERENCE_TYPE_INVALID','reference_typeは80文字以内です。');return value;}
+function encodeCursor(value:Cursor):string{return btoa(unescape(encodeURIComponent(JSON.stringify(value)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function decodeCursor(value:string):Cursor|null{if(!value)return null;try{const base=value.replace(/-/g,'+').replace(/_/g,'/');const json=decodeURIComponent(escape(atob(base.padEnd(Math.ceil(base.length/4)*4,'='))));const parsed=JSON.parse(json) as Cursor;if(typeof parsed.created_at==='string'&&typeof parsed.transaction_id==='string')return parsed;}catch{}throw new FunctionHttpError(422,'LEDGER_CURSOR_INVALID','Ledger cursorが不正です。');}
+export async function onRequestGet(context:PagesContext):Promise<Response>{const requestId=requestCorrelationId(context.request);try{const actor=await requireAsteraActor(context.request,context.env);const url=new URL(context.request.url);const limit=limitFor(url);const kind=kindFor(url);const referenceType=refFor(url);const cursor=decodeCursor((url.searchParams.get('cursor')??'').trim());const conditions=['credit_account_id = ?1'];const values:unknown[]=[actor.credit.id];if(kind){conditions.push(`kind = ?${values.length+1}`);values.push(kind);}if(referenceType){conditions.push(`reference_type = ?${values.length+1}`);values.push(referenceType);}if(cursor){conditions.push(`(created_at < ?${values.length+1} OR (created_at = ?${values.length+1} AND transaction_id < ?${values.length+2}))`);values.push(cursor.created_at,cursor.transaction_id);}values.push(limit+1);const sql=`SELECT transaction_id, kind, amount, reference_type, reference_id, request_fingerprint, created_at FROM credit_ledger WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC, transaction_id DESC LIMIT ?${values.length}`;const result=await context.env.ASTERA_DB.prepare(sql).bind(...values).all<LedgerRow>();const rows=result.results??[];const hasMore=rows.length>limit;const page=hasMore?rows.slice(0,limit):rows;const entries=page.map((row)=>({id:row.transaction_id,transaction_id:row.transaction_id,type:row.kind,kind:row.kind,amount:Number(row.amount),reference_type:row.reference_type,reference_id:row.reference_id,request_fingerprint:row.request_fingerprint,created_at:row.created_at,status:'posted'}));const last=page.at(-1);return Response.json({ledger:entries,entries,limit,filters:{kind:kind||null,reference_type:referenceType||null},next_cursor:hasMore&&last?encodeCursor({created_at:last.created_at,transaction_id:last.transaction_id}):null},{headers:{'Cache-Control':'no-store','X-Correlation-ID':requestId}});}catch(error){return functionErrorResponse(error,requestId);}}
+export function onRequest(context:PagesContext):Promise<Response>{if(context.request.method!=='GET')return Promise.resolve(Response.json({error:{code:'METHOD_NOT_ALLOWED',message:'GETのみ対応しています。'}},{status:405}));return onRequestGet(context);}
