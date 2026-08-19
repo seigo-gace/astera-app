@@ -104,9 +104,6 @@
   function privateInput() {
     return document.querySelector('.canonical-private-toggle input[type="checkbox"]');
   }
-  function purposeInputs() {
-    return Array.from(document.querySelectorAll('.canonical-purpose-grid input[type="radio"]'));
-  }
   function labelledField(label) {
     return Array.from(document.querySelectorAll('.canonical-option-section .canonical-field')).find((row) => text(row).includes(label));
   }
@@ -172,26 +169,8 @@
     return row;
   }
 
-  function openPurposePicker() {
-    const body = openPopup('Purposeを選択');
-    purposeInputs().forEach((input) => {
-      const label = input.closest('label');
-      const item = button(text(label), input.checked ? 'canon-list-button is-selected' : 'canon-list-button');
-      item.addEventListener('click', () => {
-        input.click();
-        closePopup();
-        refreshCanonicalChips();
-      });
-      body.append(item);
-    });
-  }
-
   function openPlusPicker() {
     const body = openPopup('＋ 追加・実行Option');
-    const purpose = button('Purposeを選択', 'canon-list-button');
-    purpose.addEventListener('click', openPurposePicker);
-    body.append(purpose);
-
     const fileInput = document.querySelector('.canonical-files input[type="file"]');
     if (fileInput instanceof HTMLInputElement) {
       const file = button('Fileを追加', 'canon-list-button');
@@ -271,7 +250,7 @@
       if (kind.value === 'agent') {
         const current = agentModeSelect();
         const select = create('select', 'canon-select');
-        [['low','Low'],['medium','Medium'],['high','High']].forEach(([value,label]) => { const o=create('option','',label);o.value=value;select.append(o); });
+        [['low','エージェント低'],['medium','エージェント中'],['high','エージェント高']].forEach(([value,label]) => { const o=create('option','',label);o.value=value;select.append(o); });
         select.value = current?.value || 'medium';
         const apply = button('Agent Modeを差し込む', 'canon-primary');
         apply.addEventListener('click', () => { setNativeValue(current, select.value); closePopup(); refreshCanonicalChips(); });
@@ -400,7 +379,7 @@
     const currentButtons = Array.from(tools.querySelectorAll(':scope > .exterior-round-tool'));
     if (tools.dataset.canonControlsReady !== 'true' && currentButtons.length >= 2) {
       const plus = button('＋', 'exterior-round-tool canon-plus');
-      plus.setAttribute('aria-label', 'Purpose・Option・Fileを追加');
+      plus.setAttribute('aria-label', 'Option・Fileを追加');
       plus.addEventListener('click', openPlusPicker);
       const at = button('@', 'exterior-round-tool canon-at');
       at.setAttribute('aria-label', '選択中機能へ差し込み');
