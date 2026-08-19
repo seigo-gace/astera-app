@@ -167,9 +167,6 @@ export function normalizeEstimateInput(value: unknown): EstimateInput {
   const fileIds = Array.isArray(rawFileIds) ? rawFileIds.map(text).filter(Boolean) : [];
   if (new Set(fileIds).size !== fileIds.length) throw new FunctionHttpError(422, 'FILE_ID_DUPLICATED', '同じFileを重複指定できません。');
   const privateMode = source.private_mode === true || source.privateMode === true;
-  if (privateMode && options.some((option) => option.key === 'external-storage-transfer')) {
-    throw new FunctionHttpError(422, 'PRIVATE_MODE_TRANSFER_FORBIDDEN', 'Private Modeでは外部Storage転送を実行できません。');
-  }
   const projectId = text(source.project_id ?? source.projectId) || null;
   const parentJobId = text(source.revision_of_job_id ?? source.revisionOfJobId);
   const basePrompt = text(source.revision_base_prompt ?? source.revisionBasePrompt);
