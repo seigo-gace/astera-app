@@ -1,3 +1,4 @@
+import AccountPage from '../features/account/AccountPage';
 import LoginPage from '../features/auth/LoginPage';
 import DeveloperPage from '../features/developer/DeveloperPage';
 import HistoryPage from '../features/history/HistoryPage';
@@ -18,7 +19,7 @@ import { WorkspacePage } from './pages/WorkspacePages';
 
 const authRoutes = new Set(['register', 'verify-email', 'forgot-password', 'reset-password', 'password-setup', 'two-factor']);
 const workspaceRoutes = new Set(['settings-language', 'settings-storage-destinations', 'settings-astera-storage']);
-const accountRoutes = new Set(['account', 'account-subscription', 'account-credit', 'billing-status']);
+const accountRoutes = new Set(['account-subscription', 'account-credit', 'billing-status']);
 
 export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'login') return <LoginPage route={route} />;
@@ -34,6 +35,7 @@ export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'settings-notifications') return <NotificationSettingsPage route={route} />;
   if (route.id === 'developer') return <DeveloperPage route={route} />;
   if (workspaceRoutes.has(route.id)) return <WorkspacePage route={route} />;
+  if (route.id === 'account') return <AccountPage route={route} />;
   if (route.id === 'account-security') return <SecurityPage route={route} />;
   if (accountRoutes.has(route.id)) return <AccountPlatformPage route={route} />;
   return <PublicPlatformPage route={route} />;
