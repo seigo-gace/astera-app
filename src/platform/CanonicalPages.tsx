@@ -11,7 +11,9 @@ import OptionSettingsPage from '../features/settings/OptionSettingsPage';
 import SettingsHomePage from '../features/settings/SettingsHomePage';
 import TemplateSettingsPage from '../features/settings/TemplateSettingsPage';
 import ShareManagementPage from '../features/share/ShareManagementPage';
+import { CreditManagementPage } from './canonical-credit-management';
 import { NotificationSettingsPage } from './canonical-notification-management';
+import { SubscriptionManagementPage } from './canonical-subscription-management';
 import type { RouteMatch } from './route-registry';
 import { AccountPlatformPage } from './pages/AccountPages';
 import { AuthPage } from './pages/AuthPages';
@@ -20,7 +22,6 @@ import { WorkspacePage } from './pages/WorkspacePages';
 
 const authRoutes = new Set(['register', 'verify-email', 'forgot-password', 'reset-password', 'password-setup', 'two-factor']);
 const workspaceRoutes = new Set(['settings-storage-destinations', 'settings-astera-storage']);
-const accountRoutes = new Set(['account-subscription', 'account-credit', 'billing-status']);
 
 export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'login') return <LoginPage route={route} />;
@@ -39,6 +40,8 @@ export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (workspaceRoutes.has(route.id)) return <WorkspacePage route={route} />;
   if (route.id === 'account') return <AccountPage route={route} />;
   if (route.id === 'account-security') return <SecurityPage route={route} />;
-  if (accountRoutes.has(route.id)) return <AccountPlatformPage route={route} />;
+  if (route.id === 'account-subscription') return <SubscriptionManagementPage route={route} />;
+  if (route.id === 'account-credit') return <CreditManagementPage route={route} />;
+  if (route.id === 'billing-status') return <AccountPlatformPage route={route} />;
   return <PublicPlatformPage route={route} />;
 }
