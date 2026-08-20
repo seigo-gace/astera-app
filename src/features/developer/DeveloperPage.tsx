@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useAppText } from '../../app-text';
+import { useDeveloperText, type DeveloperTextKey } from '../../developer-text';
 import { asArray, asRecord, recordText, textValue, type JsonObject } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, EmptyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
@@ -7,12 +7,12 @@ import { FormResult, KeyValueGrid, Panel, SelectField, submitForm, useResource, 
 import './developer-page.css';
 
 const HOLD_PRIORITY = ['security_hold', 'account_suspended', 'plan_entitlement', 'target_suspended', 'credit_insufficient'] as const;
-const HOLD_LABELS: Record<string, string> = {
-  security_hold: 'Security確認中',
-  account_suspended: 'Account停止',
-  plan_entitlement: 'Plan変更で停止',
-  target_suspended: 'Target停止',
-  credit_insufficient: 'Credit不足で停止中',
+const HOLD_TEXT_KEYS: Record<string, DeveloperTextKey> = {
+  security_hold: 'stateSecurityHold',
+  account_suspended: 'stateAccountSuspended',
+  plan_entitlement: 'statePlanEntitlement',
+  target_suspended: 'stateTargetSuspended',
+  credit_insufficient: 'stateCreditInsufficient',
 };
 
 function targetCanIssue(record: JsonObject): boolean {
@@ -28,18 +28,6 @@ function stringList(value: unknown): string[] {
 function holds(record: JsonObject): string[] {
   return stringList(record.hold_reasons ?? record.holdReasons ?? record.runtime_holds ?? record.holds);
 }
-function effectiveState(record: JsonObject): string {
-  const control = recordText(record, ['control_status', 'controlStatus', 'status'], 'active');
-  if (control !== 'active') {
-    if (control === 'paused_user') return '利用者が停止中';
-    if (control === 'revoked') return '削除済み';
-    if (control === 'expired') return '期限切れ';
-    return control;
-  }
-  const reasons = holds(record);
-  const primary = HOLD_PRIORITY.find((reason) => reasons.includes(reason));
-  return primary ? HOLD_LABELS[primary] : '稼働中';
-}
 function scopedObject(record: JsonObject, keys: string[]): JsonObject {
   for (const key of keys) {
     const value = asRecord(record[key]);
@@ -49,7 +37,7 @@ function scopedObject(record: JsonObject, keys: string[]): JsonObject {
 }
 
 export default function DeveloperPage({ route }: { route: RouteMatch }) {
-  const { text } = useAppText();
+  const { text } = useDeveloperText();
   const [account] = useResource('/api/account');
   const [credit] = useResource('/api/credit/balance');
   const [catalog] = useResource('/api/developer/catalog');
@@ -77,22 +65,39 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
     if (!target && issuableTargets.length) setTarget(recordText(issuableTargets[0], ['target_id', 'id']));
   }, [issuableTargets, target]);
 
+  const holdLabel = (reason: string) => {
+    const key = HOLD_TEXT_KEYS[reason];
+    return key ? text(key) : reason;
+  };
+  const effectiveState = (record: JsonObject): string => {
+    const control = recordText(record, ['control_status', 'controlStatus', 'status'], 'active');
+    if (control !== 'active') {
+      if (control === 'paused_user') return text('statePausedUser');
+      if (control === 'revoked') return text('stateRevoked');
+      if (control === 'expired') return text('stateExpired');
+      return control;
+    }
+    const reasons = holds(record);
+    const primary = HOLD_PRIORITY.find((reason) => reasons.includes(reason));
+    return primary ? holdLabel(primary) : text('stateActive');
+  };
+
   const createKey = async (event: FormEvent) => {
     event.preventDefault();
     const selected = issuableTargets.find((item) => recordText(item, ['target_id', 'id']) === target);
     if (!selected) {
-      setState({ type: 'error', message: '現在発行可能なTargetを選択してください。', code: 'DEVELOPER_TARGET_UNAVAILABLE' });
+      setState({ type: 'error', message: text('targetUnavailable'), code: 'DEVELOPER_TARGET_UNAVAILABLE' });
       return;
     }
     setCreatedSecret('');
     const payload = await submitForm(`/api/developer/targets/${encodeURIComponent(target)}/keys`, {
       environment: 'sandbox',
       scopes: ['execute', 'read:usage'],
-    }, setState, { success: 'Sandbox API Keyを発行しました。', idempotent: true });
+    }, setState, { success: text('sandboxIssued'), idempotent: true });
     if (!payload) return;
     const secret = recordText(asRecord(payload), ['api_key', 'secret', 'key']);
     if (!secret) {
-      setState({ type: 'error', message: '一度だけ表示するAPI Key Secretを受信できませんでした。', code: 'API_KEY_SECRET_MISSING' });
+      setState({ type: 'error', message: text('secretMissing'), code: 'API_KEY_SECRET_MISSING' });
       return;
     }
     setCreatedSecret(secret);
@@ -100,59 +105,59 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   };
 
   const summary = useMemo(() => ({
-    account: recordText(accountRecord, ['email', 'display_name', 'user_id', 'id'], '—'),
-    tenant_workspace: recordText(accountRecord, ['tenant_name', 'workspace_name', 'tenant_id'], '—'),
-    current_plan: recordText(accountRecord, ['plan_name', 'plan', 'plan_id'], '—'),
-    api_entitlement: textValue(accountRecord.api_entitlement ?? accountRecord.developer_api_enabled, '—'),
-    available_credit: textValue(creditRecord.available_credits ?? creditRecord.available ?? creditRecord.balance, '—'),
-    reserved_credit: textValue(creditRecord.reserved_credits ?? creditRecord.reserved, '—'),
-    api_keys: keyItems.length,
-    catalog_targets: targetItems.length,
-  }), [accountRecord, creditRecord, keyItems.length, targetItems.length]);
+    [text('summaryAccount')]: recordText(accountRecord, ['email', 'display_name', 'user_id', 'id'], '—'),
+    [text('summaryWorkspace')]: recordText(accountRecord, ['tenant_name', 'workspace_name', 'tenant_id'], '—'),
+    [text('summaryPlan')]: recordText(accountRecord, ['plan_name', 'plan', 'plan_id'], '—'),
+    [text('summaryEntitlement')]: textValue(accountRecord.api_entitlement ?? accountRecord.developer_api_enabled, '—'),
+    [text('summaryAvailableCredit')]: textValue(creditRecord.available_credits ?? creditRecord.available ?? creditRecord.balance, '—'),
+    [text('summaryReservedCredit')]: textValue(creditRecord.reserved_credits ?? creditRecord.reserved, '—'),
+    [text('summaryKeys')]: keyItems.length,
+    [text('summaryTargets')]: targetItems.length,
+  }), [accountRecord, creditRecord, keyItems.length, targetItems.length, text]);
 
   const creditState = recordText(creditRecord, ['credit_state', 'state', 'status']).toLowerCase();
   const showCreditWarning = ['low', 'critical', 'insufficient', 'depleted'].some((value) => creditState.includes(value));
 
-  return <ResponsivePageShell route={route} description="Account-linked API Catalog、Key状態、Runtime Hold、Credit、Usageを管理します。Public Key全文は発行直後だけ表示します。">
-    {showCreditWarning && <div className="developer-credit-banner" role="status"><div><strong>Developer API Credit警告</strong><span>{creditState || 'Credit状態を確認してください。'}</span></div><a className="platform-button is-primary" href="/account/credit">Creditを追加</a></div>}
+  return <ResponsivePageShell route={route} description={text('pageDescription')}>
+    {showCreditWarning && <div className="developer-credit-banner" role="status"><div><strong>{text('creditWarningTitle')}</strong><span>{creditState || text('creditCheck')}</span></div><a className="platform-button is-primary" href="/account/credit">{text('addCredit')}</a></div>}
 
-    <Panel title={text('navDeveloper')}>
+    <Panel title={text('developerMode')}>
       <div className="platform-card-grid">
-        <div className="platform-link-card"><strong>{text('developerApi')}</strong><span>{text('developerAvailable')}</span></div>
-        <div className="platform-link-card"><strong>{text('developerWebhook')}</strong><span>{text('developerAvailable')}</span></div>
-        <div className="platform-link-card"><strong>{text('developerVault')}</strong><span>{text('developerVaultDescription')}</span><small>{vaultTarget ? recordText(vaultTarget, ['availability', 'status'], text('developerAvailable')) : text('developerUnavailable')}</small></div>
-        <div className="platform-link-card"><strong>{text('developerDocs')}</strong><span>{text('developerAvailable')}</span></div>
+        <div className="platform-link-card"><strong>{text('api')}</strong><span>{text('available')}</span></div>
+        <div className="platform-link-card"><strong>{text('webhook')}</strong><span>{text('available')}</span></div>
+        <div className="platform-link-card"><strong>{text('vault')}</strong><span>{text('vaultDescription')}</span><small>{vaultTarget ? recordText(vaultTarget, ['availability', 'status'], text('available')) : text('notCataloged')}</small></div>
+        <div className="platform-link-card"><strong>{text('docs')}</strong><span>{text('available')}</span></div>
       </div>
     </Panel>
 
-    <Panel title="Developer Summary">
+    <Panel title={text('summary')}>
       {(account.status === 'loading' || credit.status === 'loading') && <BusyState />}
       {account.status === 'error' && <ErrorState error={account.error} />}
       {credit.status === 'error' && <ErrorState error={credit.error} />}
       {account.status === 'ready' && credit.status === 'ready' && <KeyValueGrid value={summary} />}
     </Panel>
 
-    <Panel title="API Catalog">
+    <Panel title={text('apiCatalog')}>
       {catalog.status === 'loading' && <BusyState />}
       {catalog.status === 'error' && <ErrorState error={catalog.error} />}
-      {catalog.status === 'ready' && targetItems.length === 0 && <EmptyState>利用可能なTarget Catalogはありません。</EmptyState>}
+      {catalog.status === 'ready' && targetItems.length === 0 && <EmptyState>{text('noCatalog')}</EmptyState>}
       {catalog.status === 'ready' && targetItems.length > 0 && <div className="developer-target-grid">{targetItems.map((item) => {
         const id = recordText(item, ['target_id', 'id']);
         const openapi = recordText(item, ['openapi_url', 'openapiUrl']);
-        return <article key={id}><header><strong>{recordText(item, ['display_name', 'name'], id)}</strong><span>{recordText(item, ['availability', 'status'], 'unknown')}</span></header><p>{recordText(item, ['description']) || '説明未提供'}</p><div className="platform-action-row">{openapi ? <a className="platform-button" href={openapi} target="_blank" rel="noreferrer">OpenAPI</a> : <button className="platform-button" type="button" disabled>OpenAPI未提供</button>}</div></article>;
+        return <article key={id}><header><strong>{recordText(item, ['display_name', 'name'], id)}</strong><span>{recordText(item, ['availability', 'status'], text('unknown'))}</span></header><p>{recordText(item, ['description']) || text('descriptionMissing')}</p><div className="platform-action-row">{openapi ? <a className="platform-button" href={openapi} target="_blank" rel="noreferrer">OpenAPI</a> : <button className="platform-button" type="button" disabled>{text('openApiMissing')}</button>}</div></article>;
       })}</div>}
     </Panel>
 
-    <Panel title="Sandbox Key発行">
-      {catalog.status === 'ready' && issuableTargets.length === 0 ? <EmptyState>現在Keyを発行できるTargetはありません。</EmptyState> : <form className="platform-inline-form" onSubmit={createKey}><SelectField label="Target" name="target" value={target} onChange={setTarget} options={[{ value: '', label: '選択してください' }, ...issuableTargets.map((item) => { const value = recordText(item, ['target_id', 'id']); return { value, label: recordText(item, ['display_name', 'name'], value) }; })]} /><button className="platform-button is-primary" type="submit" disabled={!target || state.type === 'working'}>Sandbox Keyを発行</button><button className="platform-button" type="button" disabled title="Production KeyはFresh Session／再認証契約が接続されるまで発行しません。">Production Key</button></form>}
+    <Panel title={text('sandboxIssue')}>
+      {catalog.status === 'ready' && issuableTargets.length === 0 ? <EmptyState>{text('noIssuableTarget')}</EmptyState> : <form className="platform-inline-form" onSubmit={createKey}><SelectField label={text('selectTarget')} name="target" value={target} onChange={setTarget} options={[{ value: '', label: text('selectPrompt') }, ...issuableTargets.map((item) => { const value = recordText(item, ['target_id', 'id']); return { value, label: recordText(item, ['display_name', 'name'], value) }; })]} /><button className="platform-button is-primary" type="submit" disabled={!target || state.type === 'working'}>{text('issueSandbox')}</button><button className="platform-button" type="button" disabled title={text('productionKeyUnavailable')}>{text('productionKey')}</button></form>}
       <FormResult state={state} />
-      {createdSecret && <div className="developer-secret" role="status"><strong>このSecretは今回だけ表示します。</strong><code>{createdSecret}</code><button className="platform-button" type="button" onClick={() => void navigator.clipboard.writeText(createdSecret)}>Copy</button></div>}
+      {createdSecret && <div className="developer-secret" role="status"><strong>{text('secretOnce')}</strong><code>{createdSecret}</code><button className="platform-button" type="button" onClick={() => void navigator.clipboard.writeText(createdSecret)}>{text('copy')}</button></div>}
     </Panel>
 
-    <Panel title="API Keys">
+    <Panel title={text('apiKeys')}>
       {keys.status === 'loading' && <BusyState />}
       {keys.status === 'error' && <ErrorState error={keys.error} onRetry={reloadKeys} />}
-      {keys.status === 'ready' && keyItems.length === 0 && <EmptyState>API Keyはありません。</EmptyState>}
+      {keys.status === 'ready' && keyItems.length === 0 && <EmptyState>{text('noApiKeys')}</EmptyState>}
       {keys.status === 'ready' && keyItems.length > 0 && <div className="developer-key-list">{keyItems.map((item) => {
         const id = recordText(item, ['key_id', 'id']);
         const reasons = holds(item);
@@ -160,30 +165,30 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
         const usage = scopedObject(item, ['usage', 'usage_month', 'monthly_usage']);
         const rate = scopedObject(item, ['rate', 'rate_limit', 'quota']);
         return <article className="developer-key-card" key={id}>
-          <header><div><strong>{recordText(item, ['label', 'name'], id)}</strong><small>{recordText(item, ['key_prefix', 'prefix'], 'Prefix未提供')}</small></div><b>{effectiveState(item)}</b></header>
+          <header><div><strong>{recordText(item, ['label', 'name'], id)}</strong><small>{recordText(item, ['key_prefix', 'prefix'], text('prefixMissing'))}</small></div><b>{effectiveState(item)}</b></header>
           <dl>
-            <div><dt>Target</dt><dd>{recordText(item, ['target_id', 'target'], '—')}</dd></div>
-            <div><dt>Environment</dt><dd>{recordText(item, ['environment'], '—')}</dd></div>
-            <div><dt>Scope</dt><dd>{scopes.join(', ') || '—'}</dd></div>
-            <div><dt>Control Status</dt><dd>{recordText(item, ['control_status', 'controlStatus', 'status'], '—')}</dd></div>
-            <div><dt>Runtime Hold</dt><dd>{reasons.map((reason) => HOLD_LABELS[reason] || reason).join(' / ') || 'なし'}</dd></div>
-            <div><dt>Auto Resume</dt><dd>{textValue(item.auto_resume_after_credit ?? item.autoResumeAfterCredit, '—')}</dd></div>
-            <div><dt>最終利用</dt><dd>{recordText(item, ['last_used_at', 'last_used'], '—')}</dd></div>
-            <div><dt>概算残りRequest</dt><dd>{textValue(item.estimated_remaining_requests ?? item.remaining_requests, '—')}</dd></div>
+            <div><dt>{text('target')}</dt><dd>{recordText(item, ['target_id', 'target'], '—')}</dd></div>
+            <div><dt>{text('environment')}</dt><dd>{recordText(item, ['environment'], '—')}</dd></div>
+            <div><dt>{text('scope')}</dt><dd>{scopes.join(', ') || '—'}</dd></div>
+            <div><dt>{text('controlStatus')}</dt><dd>{recordText(item, ['control_status', 'controlStatus', 'status'], '—')}</dd></div>
+            <div><dt>{text('runtimeHold')}</dt><dd>{reasons.map(holdLabel).join(' / ') || text('none')}</dd></div>
+            <div><dt>{text('autoResume')}</dt><dd>{textValue(item.auto_resume_after_credit ?? item.autoResumeAfterCredit, '—')}</dd></div>
+            <div><dt>{text('lastUsed')}</dt><dd>{recordText(item, ['last_used_at', 'last_used'], '—')}</dd></div>
+            <div><dt>{text('estimatedRemainingRequests')}</dt><dd>{textValue(item.estimated_remaining_requests ?? item.remaining_requests, '—')}</dd></div>
           </dl>
-          {(Object.keys(usage).length > 0 || Object.keys(rate).length > 0) && <div className="developer-key-detail-grid">{Object.keys(usage).length > 0 && <div><strong>Usage / Credit</strong><KeyValueGrid value={usage} /></div>}{Object.keys(rate).length > 0 && <div><strong>Rate / Quota</strong><KeyValueGrid value={rate} /></div>}</div>}
+          {(Object.keys(usage).length > 0 || Object.keys(rate).length > 0) && <div className="developer-key-detail-grid">{Object.keys(usage).length > 0 && <div><strong>{text('usageCredit')}</strong><KeyValueGrid value={usage} /></div>}{Object.keys(rate).length > 0 && <div><strong>{text('rateQuota')}</strong><KeyValueGrid value={rate} /></div>}</div>}
           <div className="platform-action-row">
-            <button className="platform-button" type="button" disabled title="Lifecycle API Routeが正本で確定・接続されるまで送信しません。">Rotate</button>
-            <button className="platform-button" type="button" disabled title="Lifecycle API Routeが正本で確定・接続されるまで送信しません。">Pause</button>
-            <button className="platform-button" type="button" disabled title="Lifecycle API Routeが正本で確定・接続されるまで送信しません。">Resume</button>
-            <button className="platform-button" type="button" disabled title="Production重要操作を含む削除Contractが接続されるまで送信しません。">Delete</button>
+            <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{text('rotate')}</button>
+            <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{text('pause')}</button>
+            <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{text('resume')}</button>
+            <button className="platform-button" type="button" disabled title={text('productionDeleteUnavailable')}>{text('delete')}</button>
           </div>
         </article>;
       })}</div>}
     </Panel>
 
-    <Panel title="未接続Lifecycle境界">
-      <p className="developer-boundary-note">Rotate／Pause／Resume／Delete／Status History／Explorerの実API RouteはDeveloper正本にPathが確定していません。存在しないEndpointをFrontendから推測して呼ばず、外部Backend Contract確定後に接続します。停止されたRequestを自動再送する処理も追加していません。</p>
+    <Panel title={text('lifecycleBoundary')}>
+      <p className="developer-boundary-note">{text('lifecycleBoundaryDescription')}</p>
     </Panel>
   </ResponsivePageShell>;
 }
