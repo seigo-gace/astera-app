@@ -18,8 +18,11 @@ import { initializeRevisionCreditBridge } from './revision-credit-bridge';
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found');
 const runtimeUnsupported = (window as Window & { __ASTERA_RUNTIME_UNSUPPORTED__?: boolean }).__ASTERA_RUNTIME_UNSUPPORTED__ === true;
+const routePath = window.location.pathname.replace(/\/+$/, '') || '/';
+const nativeComposerRoute = routePath === '/app' || routePath === '/app/new';
+
 if (!runtimeUnsupported) {
-  initializeRevisionCreditBridge();
+  if (!nativeComposerRoute) initializeRevisionCreditBridge();
   initializeDeviceCompatibility();
   void initializeNativeShell();
   createRoot(root).render(<StrictMode><AppRouter /><CanonicalSettingsExterior /><CanonicalAccountSecurityManagement /><CanonicalSubscriptionManagement /><CanonicalNotificationManagement /><CanonicalCreditManagement /></StrictMode>);
