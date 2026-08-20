@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 const css = readFileSync(new URL('../src/platform/platform.css', import.meta.url), 'utf8');
 const nativeCss = readFileSync(new URL('../src/features/composer/native-composer.css', import.meta.url), 'utf8');
 const nativeComposer = readFileSync(new URL('../src/features/composer/NativeComposerPage.tsx', import.meta.url), 'utf8');
+const compatibilityCss = readFileSync(new URL('../src/device-compatibility.css', import.meta.url), 'utf8');
+const horizontalCss = readFileSync(new URL('../src/horizontal-stability.css', import.meta.url), 'utf8');
+const orientationCss = readFileSync(new URL('../src/orientation-stability.css', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../src/platform/ResponsivePageShell.tsx', import.meta.url), 'utf8');
 const router = readFileSync(new URL('../src/platform/app-router.tsx', import.meta.url), 'utf8');
 const failures = [];
@@ -38,6 +41,9 @@ check('native composer dynamic viewport', nativeCss.includes('100dvh'), 'native 
 check('native composer overflow guard', nativeCss.includes('overflow-x: hidden'), 'native composer horizontal overflow guard missing');
 check('native composer 16px input', /\.native-composer textarea[\s\S]*?font-size:\s*16px/.test(nativeCss), 'native composer mobile input must avoid iOS zoom');
 check('native composer explicit controls', nativeComposer.includes("setPicker('purpose')") && nativeComposer.includes("setPicker('add')") && nativeComposer.includes('openContextPicker'), '/, + and @ controls are not independently implemented');
+check('native composer device compatibility', compatibilityCss.includes('.native-composer textarea') && compatibilityCss.includes('.native-round-button'), 'native composer is missing touch/input compatibility guards');
+check('native composer horizontal stability', horizontalCss.includes('.native-composer-workspace') && horizontalCss.includes('.native-result-section p'), 'native composer is missing horizontal and long-content guards');
+check('native composer orientation stability', orientationCss.includes('.native-composer-dock') && orientationCss.includes('.native-composer textarea'), 'native composer is missing rotation and short-landscape guards');
 
 for (const item of checks) console.log(`${item.ok ? 'PASS' : 'FAIL'} ${item.name}`);
 if (failures.length) {
