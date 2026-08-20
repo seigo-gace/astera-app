@@ -7,6 +7,11 @@ const compatibilityCss = readFileSync(new URL('../src/device-compatibility.css',
 const horizontalCss = readFileSync(new URL('../src/horizontal-stability.css', import.meta.url), 'utf8');
 const orientationCss = readFileSync(new URL('../src/orientation-stability.css', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../src/platform/ResponsivePageShell.tsx', import.meta.url), 'utf8');
+const settingsHome = readFileSync(new URL('../src/features/settings/SettingsHomePage.tsx', import.meta.url), 'utf8');
+const optionSettings = readFileSync(new URL('../src/features/settings/OptionSettingsPage.tsx', import.meta.url), 'utf8');
+const customerAi = readFileSync(new URL('../public/customer-ai-bubble.js', import.meta.url), 'utf8');
+const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
 const router = readFileSync(new URL('../src/platform/app-router.tsx', import.meta.url), 'utf8');
 const failures = [];
 const checks = [];
@@ -44,6 +49,24 @@ check('native composer explicit controls', nativeComposer.includes("setPicker('p
 check('native composer device compatibility', compatibilityCss.includes('.native-composer textarea') && compatibilityCss.includes('.native-round-button'), 'native composer is missing touch/input compatibility guards');
 check('native composer horizontal stability', horizontalCss.includes('.native-composer-workspace') && horizontalCss.includes('.native-result-section p'), 'native composer is missing horizontal and long-content guards');
 check('native composer orientation stability', orientationCss.includes('.native-composer-dock') && orientationCss.includes('.native-composer textarea'), 'native composer is missing rotation and short-landscape guards');
+
+const sidebarLabels = ['新しいページ', '検索', 'プロジェクト', 'オプション', 'プラン/クレジット', '開発者モード', '履歴'];
+let priorIndex = -1;
+let sidebarOrderOk = true;
+for (const label of sidebarLabels) {
+  const index = shell.indexOf(`label: '${label}'`);
+  if (index <= priorIndex) sidebarOrderOk = false;
+  priorIndex = index;
+}
+check('decided sidebar order', sidebarOrderOk, 'sidebar items must remain in the user-decided order');
+check('sidebar bottom order', shell.indexOf("label: 'ASTERAとは？'") >= 0 && shell.indexOf("label: '設定'") > shell.indexOf("label: 'ASTERAとは？'"), 'About must sit immediately above Settings at the bottom');
+check('AI and account top-right cluster', shell.includes('platform-global-actions') && shell.includes('data-customer-ai-anchor="true"') && shell.includes('aria-label="アカウント"'), 'AI and account must share the top-right control cluster');
+
+check('settings home only owns real app settings', settingsHome.includes('/app/settings/language') && settingsHome.includes('/app/settings/notifications') && !settingsHome.includes('/app/developer') && !settingsHome.includes('/account/credit') && !settingsHome.includes('/app/settings/data-privacy'), 'settings home must not aggregate feature, account, plan, developer, or privacy pages');
+check('data privacy belongs to options', optionSettings.includes('/app/settings/data-privacy') && optionSettings.includes('オプション関連の管理'), 'data/privacy must be reachable from Options');
+check('legacy settings aggregation disabled', !indexHtml.includes('/exterior-all-surfaces.js') && !indexHtml.includes('/canonical-interaction-contract.js'), 'legacy DOM mutation scripts must not rebuild Settings');
+check('global settings portal disabled', !main.includes('CanonicalSettingsExterior'), 'global Settings portal must not concatenate route pages');
+check('official HP AI icon', customerAi.includes("'/assets/astera/ai-guide-robot.svg'") && !customerAi.includes('>✦<') && !customerAi.includes('aca-orbit'), 'customer AI must use the vendored HP robot icon, not the star/orbit mark');
 
 for (const item of checks) console.log(`${item.ok ? 'PASS' : 'FAIL'} ${item.name}`);
 if (failures.length) {

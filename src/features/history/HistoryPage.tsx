@@ -6,7 +6,7 @@ import { Field, Panel, SelectField, useResource } from '../../platform/pages/pag
 import './history-page.css';
 
 const PURPOSE_OPTIONS = [
-  { value: '', label: 'すべてのPurpose' },
+  { value: '', label: 'すべての目的' },
   { value: 'auto', label: '自動' },
   { value: 'review', label: 'レビュー' },
   { value: 'compare', label: '比較' },
@@ -33,7 +33,16 @@ function buildEndpoint(filters: Filters, cursor: string): string {
   return `/api/history?${params.toString()}`;
 }
 
+function statusLabel(value: string): string {
+  if (value === 'complete' || value === 'completed') return '完了';
+  if (value === 'partial' || value === 'partially_completed') return '一部完了';
+  if (value === 'failed') return '失敗';
+  return value || '—';
+}
+
 export default function HistoryPage({ route }: { route: RouteMatch }) {
+  const searchMode = new URLSearchParams(window.location.search).get('mode') === 'search';
+  const displayRoute: RouteMatch = searchMode ? { ...route, title: '検索' } : { ...route, title: '履歴' };
   const [draft, setDraft] = useState<Filters>(EMPTY);
   const [applied, setApplied] = useState<Filters>(EMPTY);
   const [cursor, setCursor] = useState('');
@@ -44,11 +53,11 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
 
   const projects = projectsResource.status === 'ready' ? asArray(projectsResource.data, ['projects', 'items']).map(asRecord) : [];
   const projectOptions = [
-    { value: '', label: 'すべてのProject' },
-    { value: 'unassigned', label: 'Unassigned' },
+    { value: '', label: 'すべてのプロジェクト' },
+    { value: 'unassigned', label: '未分類' },
     ...projects.map((project) => ({
       value: recordText(project, ['project_id', 'id']),
-      label: `${recordText(project, ['name'], 'Project')}${recordText(project, ['status']) === 'archived' ? '（Archived）' : ''}`,
+      label: `${recordText(project, ['name'], 'プロジェクト')}${recordText(project, ['status']) === 'archived' ? '（アーカイブ済み）' : ''}`,
     })).filter((option) => option.value),
   ];
 
@@ -59,7 +68,7 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
 
   const apply = (event: FormEvent) => {
     event.preventDefault();
-    setApplied({ ...draft });
+    setApplied(searchMode ? { ...EMPTY, q: draft.q } : { ...draft });
     setCursor('');
     setCursorStack([]);
   };
@@ -82,40 +91,52 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
   };
 
   return (
-    <ResponsivePageShell route={route} description="Normal Modeで保存されたHistoryを検索・絞込みし、Revision付きResultへ移動します。Private Modeの実行はHistoryへ保存しません。">
-      <Panel title="History Filter">
+    <ResponsivePageShell
+      route={displayRoute}
+      description={searchMode
+        ? '保存済みの結果を、タイトル・本文・目的から検索します。'
+        : '保存済みの履歴を目的、プロジェクト、期間、状態で絞り込みます。プライベートモードの実行は履歴へ保存されません。'}
+    >
+      <Panel title={searchMode ? '検索' : '履歴の絞り込み'}>
         <form className="history-filter-grid" onSubmit={apply}>
-          <Field label="検索" name="history-q" value={draft.q} onChange={(q) => setDraft((current) => ({ ...current, q }))} placeholder="Title・本文・Purpose" />
-          <SelectField label="Purpose" name="history-purpose" value={draft.purpose} onChange={(purpose) => setDraft((current) => ({ ...current, purpose }))} options={PURPOSE_OPTIONS} />
-          <SelectField label="Project" name="history-project" value={draft.project} onChange={(project) => setDraft((current) => ({ ...current, project }))} options={projectOptions} />
-          <SelectField label="状態" name="history-status" value={draft.status} onChange={(status) => setDraft((current) => ({ ...current, status }))} options={[
-            { value: '', label: 'すべての状態' },
-            { value: 'complete', label: 'Complete' },
-            { value: 'partial', label: 'Partial' },
-          ]} />
-          <Field label="開始日" name="history-from" type="date" value={draft.from} onChange={(from) => setDraft((current) => ({ ...current, from }))} />
-          <Field label="終了日" name="history-to" type="date" value={draft.to} onChange={(to) => setDraft((current) => ({ ...current, to }))} />
+          <Field label="検索" name="history-q" value={draft.q} onChange={(q) => setDraft((current) => ({ ...current, q }))} placeholder="タイトル・本文・目的" />
+          {!searchMode && <>
+            <SelectField label="目的" name="history-purpose" value={draft.purpose} onChange={(purpose) => setDraft((current) => ({ ...current, purpose }))} options={PURPOSE_OPTIONS} />
+            <SelectField label="プロジェクト" name="history-project" value={draft.project} onChange={(project) => setDraft((current) => ({ ...current, project }))} options={projectOptions} />
+            <SelectField label="状態" name="history-status" value={draft.status} onChange={(status) => setDraft((current) => ({ ...current, status }))} options={[
+              { value: '', label: 'すべての状態' },
+              { value: 'complete', label: '完了' },
+              { value: 'partial', label: '一部完了' },
+            ]} />
+            <Field label="開始日" name="history-from" type="date" value={draft.from} onChange={(from) => setDraft((current) => ({ ...current, from }))} />
+            <Field label="終了日" name="history-to" type="date" value={draft.to} onChange={(to) => setDraft((current) => ({ ...current, to }))} />
+          </>}
           <div className="history-filter-actions">
-            <button className="platform-button is-primary" type="submit">適用</button>
-            <button className="platform-button" type="button" onClick={clear}>Clear</button>
+            <button className="platform-button is-primary" type="submit">{searchMode ? '検索' : '適用'}</button>
+            <button className="platform-button" type="button" onClick={clear}>クリア</button>
           </div>
         </form>
       </Panel>
 
-      <Panel title="History">
+      <Panel title={searchMode ? '検索結果' : '履歴'}>
         {resource.status === 'loading' && <BusyState />}
         {resource.status === 'error' && <ErrorState error={resource.error} onRetry={reload} />}
-        {resource.status === 'ready' && items.length === 0 && <EmptyState>{hasFilters ? '条件に一致するHistoryはありません。' : '保存済みHistoryはありません。'}</EmptyState>}
+        {resource.status === 'ready' && items.length === 0 && <EmptyState>{
+          hasFilters
+            ? (searchMode ? '検索条件に一致する結果はありません。' : '条件に一致する履歴はありません。')
+            : (searchMode ? '検索する言葉を入力してください。' : '保存済みの履歴はありません。')
+        }</EmptyState>}
         {resource.status === 'ready' && items.length > 0 && (
           <div className="history-record-list">
             {items.map((item) => {
               const record = asRecord(item);
               const id = recordText(record, ['result_id', 'id']);
+              const projectName = recordText(record, ['project_name']) || (record.project_id ? 'プロジェクト' : '未分類');
               return (
                 <a className="history-record" href={`/app/results/${encodeURIComponent(id)}`} key={id}>
                   <span>
                     <strong>{recordText(record, ['title'], id)}</strong>
-                    <small>{recordText(record, ['project_name']) || (record.project_id ? 'Project' : 'Unassigned')} · {recordText(record, ['purpose'], '—')} · {recordText(record, ['status'], '—')}</small>
+                    <small>{projectName} · {recordText(record, ['purpose'], '—')} · {statusLabel(recordText(record, ['status']))}</small>
                   </span>
                   <span className="history-record-meta"><b>r{textValue(record.current_revision, '1')}</b><time>{recordText(record, ['created_at'])}</time></span>
                 </a>
@@ -124,9 +145,9 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
           </div>
         )}
         {resource.status === 'ready' && (cursorStack.length > 0 || nextCursor) && (
-          <div className="history-pagination" aria-label="History pagination">
+          <div className="history-pagination" aria-label="履歴ページ">
             <button className="platform-button" type="button" disabled={cursorStack.length === 0} onClick={previous}>前へ</button>
-            <span>{cursorStack.length + 1} Page</span>
+            <span>{cursorStack.length + 1}ページ</span>
             <button className="platform-button" type="button" disabled={!nextCursor} onClick={next}>次へ</button>
           </div>
         )}

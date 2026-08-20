@@ -1,4 +1,239 @@
-:root{--platform-accent:#0ea5e9;--platform-radius:16px;--copper:#0284c7;--copper-bright:#0ea5e9;--copper-dark:#0369a1;--gold:#0ea5e9;--silver:var(--text-tertiary)}.platform-shell,.platform-public-page{background:var(--platform-bg)!important}.platform-sidebar,.platform-mobile-header,.platform-mobile-drawer{background:var(--platform-bg)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.platform-mobile-drawer,.exterior-settings-panel,.exterior-picker,.aca-panel{box-shadow:none!important}.platform-panel,.platform-auth-card,.platform-legal-document,.platform-link-card{background:var(--platform-surface)!important;box-shadow:none!important}.platform-button.is-primary{background:var(--platform-text)!important;color:var(--platform-bg)!important;border-color:var(--platform-text)!important}.platform-button:hover,.platform-field input:focus,.platform-field select:focus,.platform-field textarea:focus{border-color:var(--platform-accent)!important}.platform-field input:focus,.platform-field select:focus,.platform-field textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--platform-accent) 16%,transparent)!important}.platform-nav a[aria-current="page"]{box-shadow:inset 2px 0 var(--platform-accent)!important}.platform-record b,.platform-link-card b,.platform-eyebrow,.platform-account-name{color:var(--platform-accent)!important}.platform-record:hover,.platform-link-card:hover{border-color:color-mix(in srgb,var(--platform-accent) 42%,var(--platform-border))!important;transform:none!important}.platform-credit-meter{border-color:color-mix(in srgb,var(--platform-accent) 28%,var(--platform-border))!important;background:var(--platform-bg)!important;color:var(--platform-text)!important;box-shadow:none!important}.platform-credit-meter:before,.platform-credit-meter:after{display:none!important}.platform-credit-track{background:var(--platform-surface-2)!important;border-color:var(--platform-border)!important;box-shadow:none!important}.platform-credit-fill,.platform-credit-mark{background:var(--platform-accent)!important;box-shadow:none!important}.platform-credit-meter.is-low .platform-credit-fill,.platform-credit-meter.is-low .platform-credit-mark{background:#d97706!important;box-shadow:none!important}.platform-credit-meter.is-critical .platform-credit-fill,.platform-credit-meter.is-critical .platform-credit-mark,.platform-credit-meter.is-depleted .platform-credit-fill,.platform-credit-meter.is-depleted .platform-credit-mark{background:#dc2626!important;box-shadow:none!important;animation:none!important}.platform-credit-meter.is-critical,.platform-credit-meter.is-depleted{box-shadow:none!important}.platform-brand small{display:none!important}.platform-brand strong{letter-spacing:.14em}.native-composer-dock{background:var(--native-bg)!important}.native-composer,.native-picker,.native-confirm-sheet{box-shadow:none!important}.native-processing-dot{animation:none!important}
-html.native-composer-route .platform-main{min-height:0!important;margin-top:0!important;padding:0!important;overflow:hidden!important}html.native-composer-route .platform-page-content{width:100%!important;max-width:none!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important;display:block!important;overflow:hidden!important}
-@media(max-width:1100px){html.native-composer-route .platform-main{height:calc(100dvh - var(--ex-top,64px) - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;margin-top:0!important}}
-@media(orientation:landscape) and (max-height:560px) and (max-width:1100px){html.native-composer-route{--ex-top:52px}html.native-composer-route .platform-main{height:calc(100dvh - var(--ex-top) - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;margin-top:0!important}.native-composer textarea{max-height:88px!important}}
+:root {
+  --platform-accent: #0ea5e9;
+  --platform-radius: 16px;
+  --copper: #0284c7;
+  --copper-bright: #0ea5e9;
+  --copper-dark: #0369a1;
+  --gold: #0ea5e9;
+  --silver: var(--text-tertiary);
+}
+
+.platform-shell,
+.platform-public-page { background: var(--platform-bg) !important; }
+
+.platform-sidebar,
+.platform-mobile-header,
+.platform-mobile-drawer {
+  background: var(--platform-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.platform-mobile-drawer,
+.exterior-settings-panel,
+.exterior-picker,
+.aca-panel { box-shadow: none !important; }
+
+.platform-panel,
+.platform-auth-card,
+.platform-legal-document,
+.platform-link-card {
+  background: var(--platform-surface) !important;
+  box-shadow: none !important;
+}
+
+.platform-button.is-primary {
+  background: var(--platform-text) !important;
+  color: var(--platform-bg) !important;
+  border-color: var(--platform-text) !important;
+}
+
+.platform-button:hover,
+.platform-field input:focus,
+.platform-field select:focus,
+.platform-field textarea:focus { border-color: var(--platform-accent) !important; }
+
+.platform-field input:focus,
+.platform-field select:focus,
+.platform-field textarea:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--platform-accent) 16%, transparent) !important;
+}
+
+.platform-nav a[aria-current="page"] { box-shadow: inset 2px 0 var(--platform-accent) !important; }
+.platform-record b,
+.platform-link-card b,
+.platform-eyebrow,
+.platform-account-name { color: var(--platform-accent) !important; }
+.platform-record:hover,
+.platform-link-card:hover {
+  border-color: color-mix(in srgb, var(--platform-accent) 42%, var(--platform-border)) !important;
+  transform: none !important;
+}
+
+.platform-credit-meter {
+  border-color: color-mix(in srgb, var(--platform-accent) 28%, var(--platform-border)) !important;
+  background: var(--platform-bg) !important;
+  color: var(--platform-text) !important;
+  box-shadow: none !important;
+}
+.platform-credit-meter:before,
+.platform-credit-meter:after { display: none !important; }
+.platform-credit-track {
+  background: var(--platform-surface-2) !important;
+  border-color: var(--platform-border) !important;
+  box-shadow: none !important;
+}
+.platform-credit-fill,
+.platform-credit-mark {
+  background: var(--platform-accent) !important;
+  box-shadow: none !important;
+}
+.platform-credit-meter.is-low .platform-credit-fill,
+.platform-credit-meter.is-low .platform-credit-mark {
+  background: #d97706 !important;
+  box-shadow: none !important;
+}
+.platform-credit-meter.is-critical .platform-credit-fill,
+.platform-credit-meter.is-critical .platform-credit-mark,
+.platform-credit-meter.is-depleted .platform-credit-fill,
+.platform-credit-meter.is-depleted .platform-credit-mark {
+  background: #dc2626 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+.platform-credit-meter.is-critical,
+.platform-credit-meter.is-depleted { box-shadow: none !important; }
+
+.platform-brand small { display: none !important; }
+.platform-brand strong { letter-spacing: .14em; }
+
+/* Main app global controls: AI icon and account stay together at the top right. */
+.platform-global-actions {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: max(10px, env(safe-area-inset-right, 0px));
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 84px;
+  height: 42px;
+}
+.platform-ai-anchor {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.platform-global-actions .platform-header-account {
+  position: static !important;
+  inset: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: var(--platform-text) !important;
+  text-decoration: none !important;
+}
+.platform-global-actions .platform-header-account:hover {
+  background: color-mix(in srgb, var(--platform-text) 7%, transparent) !important;
+}
+.platform-ai-anchor .aca-launcher {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.platform-ai-anchor .aca-mark {
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  object-fit: contain !important;
+  text-shadow: none !important;
+}
+.platform-ai-anchor .aca-launcher-label {
+  left: auto !important;
+  right: 0 !important;
+  top: 44px !important;
+}
+.platform-mobile-header-spacer {
+  display: block;
+  width: 88px;
+  height: 40px;
+  flex: none;
+}
+
+/* Settings and About are the two bottom navigation items only. */
+.platform-side-meta {
+  margin-top: auto !important;
+  padding-top: 12px !important;
+}
+.platform-side-meta a {
+  min-height: 40px !important;
+  font-size: 13px !important;
+}
+.platform-side-meta a[aria-current="page"] {
+  background: var(--platform-surface-2) !important;
+  color: var(--platform-text) !important;
+  box-shadow: inset 2px 0 var(--platform-accent) !important;
+}
+
+.native-composer-dock { background: var(--native-bg) !important; }
+.native-composer,
+.native-picker,
+.native-confirm-sheet { box-shadow: none !important; }
+.native-processing-dot { animation: none !important; }
+
+html.native-composer-route .platform-main {
+  min-height: 0 !important;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+html.native-composer-route .platform-page-content {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: block !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 1100px) {
+  .platform-credit-layer {
+    left: 56px !important;
+    right: 98px !important;
+    padding-inline: 8px !important;
+  }
+  html.native-composer-route .platform-main {
+    height: calc(100dvh - var(--ex-top, 64px) - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    margin-top: 0 !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .platform-global-actions {
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    right: max(8px, env(safe-area-inset-right, 0px));
+  }
+  .platform-credit-layer {
+    left: 52px !important;
+    right: 96px !important;
+    padding-inline: 4px !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  html.native-composer-route { --ex-top: 52px; }
+  html.native-composer-route .platform-main {
+    height: calc(100dvh - var(--ex-top) - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    margin-top: 0 !important;
+  }
+  .native-composer textarea { max-height: 88px !important; }
+}
