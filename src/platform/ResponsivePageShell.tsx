@@ -12,7 +12,7 @@ const APP_NAV = [
 function Brand() {
   return (
     <a className="platform-brand" href="/app/new" aria-label="Astera App">
-      <img src="/logo-mark.svg" alt="" />
+      <img src="/logo-mark.svg" alt="" style={{ filter: 'var(--logo-filter)' }} />
       <span><strong>ASTERA</strong><small>APP</small></span>
     </a>
   );

@@ -33,7 +33,7 @@
           flex-direction: column !important;
           overflow-x: hidden !important;
           overflow-y: auto !important;
-          background: var(--ex-bg, var(--platform-bg, #090909)) !important;
+          background: var(--ex-bg, var(--platform-bg,var(--bg-primary,#090909))) !important;
         }
       }
       .platform-input {
@@ -41,9 +41,9 @@
         min-height: 42px;
         border: 1px solid var(--ex-line, var(--platform-border));
         border-radius: 10px;
-        background: var(--ex-bg, var(--platform-bg, #090909));
-        color: var(--ex-muted, var(--platform-muted, #aaa));
-        -webkit-text-fill-color: var(--ex-muted, var(--platform-muted, #aaa));
+        background: var(--ex-bg, var(--platform-bg,var(--bg-primary,#090909)));
+        color: var(--ex-muted, var(--platform-muted,var(--text-tertiary,#aaa)));
+        -webkit-text-fill-color: var(--ex-muted, var(--platform-muted,var(--text-tertiary,#aaa)));
         padding: 0 11px;
         opacity: 1;
       }
@@ -52,7 +52,7 @@
         border: 1px solid var(--ex-line, var(--platform-border));
         border-radius: 10px;
         background: transparent;
-        color: var(--ex-muted, var(--platform-muted, #aaa));
+        color: var(--ex-muted, var(--platform-muted,var(--text-tertiary,#aaa)));
         opacity: .55;
       }
     </style>

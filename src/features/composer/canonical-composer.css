@@ -3,7 +3,7 @@
 .canonical-result {
   border: 1px solid var(--platform-border, rgba(255,255,255,.14));
   border-radius: 18px;
-  background: var(--platform-panel, rgba(255,255,255,.04));
+  background: var(--platform-panel, color-mix(in srgb, var(--text-primary) 4%, transparent));
   padding: clamp(16px, 2.2vw, 28px);
 }
 
@@ -40,9 +40,9 @@
 .canonical-field select,
 .canonical-fullscreen textarea {
   width: 100%;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.16));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 12px;
-  background: rgba(0,0,0,.22);
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
   color: inherit;
   padding: 12px 14px;
   font: inherit;
@@ -136,8 +136,8 @@
   border: 1px solid currentColor;
 }
 .canonical-alert code { font-size: .75rem; }
-.canonical-alert.is-error { background: rgba(160, 32, 32, .13); }
-.canonical-alert.is-success { background: rgba(32, 130, 88, .13); }
+.canonical-alert.is-error { background: color-mix(in srgb, var(--danger) 13%, transparent); }
+.canonical-alert.is-success { background: color-mix(in srgb, var(--success) 13%, transparent); }
 
 .canonical-confirmation { display: grid; gap: 18px; }
 .canonical-confirmation dl {
@@ -189,7 +189,7 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0,0,0,.82);
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
   backdrop-filter: blur(12px);
   padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
 }
@@ -203,7 +203,7 @@
   padding: 18px;
   border-radius: 18px;
   border: 1px solid var(--platform-border, rgba(255,255,255,.15));
-  background: #090909;
+  background: var(--bg-primary, #090909);
   box-sizing: border-box;
 }
 .canonical-fullscreen textarea { min-height: 0; height: 100%; resize: none; line-height: 1.75; }

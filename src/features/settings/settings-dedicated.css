@@ -78,7 +78,7 @@ html[data-settings-dedicated-owner="true"] [data-react-canonical-exterior="true"
   border: 1px solid var(--platform-border);
   border-radius: 12px;
   background: var(--platform-bg);
-  box-shadow: 0 18px 40px rgba(0,0,0,.3);
+  box-shadow: 0 18px 40px var(--shadow, rgba(0,0,0,.3));
   font-weight: 400;
 }
 .settings-switch {

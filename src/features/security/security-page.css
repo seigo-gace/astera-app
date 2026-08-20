@@ -6,8 +6,8 @@
   padding: clamp(15px, 2vw, 24px);
 }
 .security-feedback { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.security-feedback.is-error { background: rgba(150, 35, 35, .14); }
-.security-feedback.is-success { background: rgba(24, 128, 84, .14); }
+.security-feedback.is-error { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.security-feedback.is-success { background: color-mix(in srgb, var(--success) 14%, transparent); }
 .security-feedback code { font-size: .75rem; }
 .security-panel { display: grid; gap: 16px; }
 .security-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
@@ -15,7 +15,7 @@
 .security-panel-head p { margin: 0; }
 .security-panel-head p { margin-top: 5px; opacity: .68; line-height: 1.55; }
 .security-panel-head > span { padding: 5px 10px; border: 1px solid currentColor; border-radius: 999px; font-size: .78rem; }
-.security-panel-head > span.is-enabled { background: rgba(24, 128, 84, .16); }
+.security-panel-head > span.is-enabled { background: color-mix(in srgb, var(--success) 16%, transparent); }
 .security-inline-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
 .security-inline-form label { display: grid; gap: 7px; }
 .security-inline-form label > span { font-size: .82rem; font-weight: 700; }
@@ -23,9 +23,9 @@
   width: 100%;
   box-sizing: border-box;
   min-height: 42px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.15));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 10px;
-  background: rgba(0,0,0,.22);
+  background: color-mix(in srgb, var(--bg-primary) 78%, transparent);
   color: inherit;
   padding: 9px 11px;
   font: inherit;
@@ -40,7 +40,7 @@
 .security-enrollment { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--platform-border, rgba(255,255,255,.12)); border-radius: 12px; }
 .security-enrollment h3,
 .security-enrollment p { margin: 0; }
-.security-enrollment > code { display: block; overflow-wrap: anywhere; padding: 11px; border-radius: 9px; background: rgba(0,0,0,.28); }
+.security-enrollment > code { display: block; overflow-wrap: anywhere; padding: 11px; border-radius: 9px; background: color-mix(in srgb, var(--bg-primary) 72%, transparent); }
 .security-two-factor-actions { display: grid; gap: 14px; }
 .security-backup-codes ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 0; padding-left: 28px; }
 .security-backup-codes li { padding: 7px 0; }

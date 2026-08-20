@@ -330,7 +330,7 @@ function App() {
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.lang = settings.language;
     void i18n.changeLanguage(settings.language);
-    const themeColor = resolvedTheme === 'dark' ? '#0a0a0a' : '#f3efe8';
+    const themeColor = resolvedTheme === 'dark' ? '#000000' : '#ffffff';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
   }, [settings, resolvedTheme, i18n]);
 
