@@ -62,7 +62,11 @@ body {
 .dialog-content,
 .platform-main,
 .platform-mobile-drawer,
-.platform-public-page {
+.platform-public-page,
+.native-timeline,
+.native-picker,
+.native-confirm-sheet,
+.native-fullscreen {
   -webkit-overflow-scrolling: touch;
 }
 
@@ -106,7 +110,15 @@ canvas {
 .response-card,
 .result-section,
 .composer,
-.composer-wrap {
+.composer-wrap,
+.native-composer-workspace,
+.native-timeline,
+.native-timeline-inner,
+.native-turn,
+.native-response,
+.native-result-section,
+.native-composer-dock,
+.native-composer {
   min-width: 0;
 }
 
@@ -140,7 +152,15 @@ canvas {
   .platform-menu-button,
   .platform-header-account,
   .platform-public-header nav a,
-  .platform-auth-card footer a {
+  .platform-auth-card footer a,
+  .native-round-button,
+  .native-run-button,
+  .native-text-button,
+  .native-picker-body > button,
+  .native-picker-link,
+  .native-picker-apply,
+  .native-sheet-actions button,
+  .native-sheet-actions a {
     min-width: 44px;
     min-height: 44px;
   }
@@ -150,7 +170,11 @@ canvas {
   input,
   select,
   textarea,
-  .composer textarea {
+  .composer textarea,
+  .native-composer textarea,
+  .native-picker input,
+  .native-picker select,
+  .native-fullscreen textarea {
     font-size: 16px !important;
   }
 }
@@ -164,7 +188,8 @@ canvas {
 
   .platform-page-head h1,
   .platform-public-hero h1,
-  .welcome-panel h1 {
+  .welcome-panel h1,
+  .native-empty-state h1 {
     overflow-wrap: anywhere;
   }
 
@@ -190,7 +215,9 @@ canvas {
   }
 
   .dialog-content,
-  .fullscreen-dialog {
+  .fullscreen-dialog,
+  .native-picker,
+  .native-confirm-sheet {
     max-height: calc(var(--app-viewport-height, 100vh) - 8px);
     border-radius: 14px;
   }
@@ -202,7 +229,7 @@ canvas {
   }
 
   ::selection {
-    background: var(--copper-dark);
+    background: var(--platform-accent, #0ea5e9);
   }
 
   .sidebar,
@@ -267,8 +294,24 @@ canvas {
   }
 
   .platform-button.is-primary {
-    background: var(--platform-accent);
-    border-color: var(--platform-accent);
+    background: var(--platform-text);
+    color: var(--platform-bg);
+    border-color: var(--platform-text);
+  }
+
+  .native-composer-workspace {
+    --native-line: var(--border-color);
+    --native-accent: #0ea5e9;
+    --native-accent-strong: #0284c7;
+  }
+
+  .native-composer,
+  .native-file-queue li,
+  .native-picker,
+  .native-confirm-sheet,
+  .native-notice {
+    background: var(--native-bg);
+    border-color: var(--border-color);
   }
 }
 
