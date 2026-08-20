@@ -4,19 +4,21 @@
   const transport = window.AsteraCustomerAI;
   if (!transport || document.getElementById('astera-customer-ai')) return;
 
+  // Exact AI guide icon used by the Astera HP. Do not substitute or generate another mark.
+  const HP_AI_ICON = 'https://raw.githubusercontent.com/seigo-gace/astera-hp/main/assets/icons/ai-guide-robot.svg';
+
   const root = document.createElement('section');
   root.id = 'astera-customer-ai';
   root.className = 'aca-shell';
   root.setAttribute('aria-label', 'Astera 総合案内AI');
   root.innerHTML = `
     <button class="aca-launcher" type="button" aria-expanded="false" aria-controls="aca-panel" title="総合案内AIを開く">
-      <span class="aca-orbit" aria-hidden="true"></span>
-      <span class="aca-mark" aria-hidden="true">✦</span>
+      <img class="aca-mark" src="${HP_AI_ICON}" alt="" aria-hidden="true">
       <span class="aca-launcher-label">案内AI</span>
     </button>
     <div class="aca-panel" id="aca-panel" aria-hidden="true">
       <header class="aca-header">
-        <div><small>ASTERA CUSTOMER AI</small><strong>総合案内AI</strong></div>
+        <div><small>ASTERA 案内AI</small><strong>総合案内AI</strong></div>
         <button class="aca-minimize" type="button" aria-label="最小化">−</button>
       </header>
       <div class="aca-status"><i></i><span>製品・利用方法・料金・技術・支援について案内します</span></div>
@@ -51,6 +53,18 @@
     root.classList.remove('aca-open');
     launcher.setAttribute('aria-expanded', 'false');
     panel.setAttribute('aria-hidden', 'true');
+  }
+
+  function mountBesideAccount() {
+    const anchor = document.querySelector('[data-customer-ai-anchor="true"]');
+    if (anchor instanceof HTMLElement && root.parentElement !== anchor) {
+      anchor.appendChild(root);
+    } else if (!(anchor instanceof HTMLElement) && root.parentElement !== document.body) {
+      document.body.appendChild(root);
+    }
+
+    // A navigation drawer and the AI panel must never cover each other on compact screens.
+    if (document.getElementById('platform-mobile-drawer') && root.classList.contains('aca-open')) close();
   }
 
   function append(text, role, pending = false) {
@@ -116,8 +130,11 @@
     }
   });
 
-  // Canonical exterior rule: the launcher stays fixed beside the top-left
-  // navigation control. Dragging is intentionally disabled.
+  // Authenticated app routes provide a top-right anchor immediately beside the account icon.
+  // Public routes keep the existing body mount as a fallback.
+  const mountObserver = new MutationObserver(mountBesideAccount);
+  mountObserver.observe(document.documentElement, { childList: true, subtree: true });
+  mountBesideAccount();
 
   window.AsteraCustomerAIUI = Object.assign(window.AsteraCustomerAIUI || {}, { open, close, root });
 })();
