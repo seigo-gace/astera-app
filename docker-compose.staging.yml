@@ -8,13 +8,14 @@ services:
       - contabo/app-api/.env
     environment:
       ASTERA_PROCESS_ORIGIN: http://host.docker.internal:7374
-      LIBRAL_VAULT_INTERNAL_ORIGIN: http://host.docker.internal:8791
+      LIBRAL_VAULT_INTERNAL_ORIGIN: http://libral-vault-libral-vault-1:8791
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "8789:8788"
     networks:
       - astera-app-staging
+      - libral-vault_default
     restart: unless-stopped
     healthcheck:
       test:
@@ -59,3 +60,6 @@ services:
 networks:
   astera-app-staging:
     name: astera-app-staging
+  libral-vault_default:
+    external: true
+    name: libral-vault_default

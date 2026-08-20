@@ -29,9 +29,15 @@ function integer(value: string | undefined, fallback: number, min: number, max: 
   return Math.min(max, Math.max(min, parsed));
 }
 
+function isInternalHttpHost(hostname: string): boolean {
+  if (['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(hostname)) return true;
+  // Docker Compose bridge DNS uses single-label service/container hostnames.
+  return !hostname.includes('.');
+}
+
 function secureOrigin(value: string): string {
   const url = new URL(value);
-  if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(url.hostname)) {
+  if (url.protocol !== 'https:' && !isInternalHttpHost(url.hostname)) {
     throw new Error('INTERNAL_ORIGIN_HTTPS_REQUIRED');
   }
   url.pathname = url.pathname.replace(/\/+$/, '');
