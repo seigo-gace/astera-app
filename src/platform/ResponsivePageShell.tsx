@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useVerifiedAccountSession, previewWithoutAuth } from './account-session';
-import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-client';
+import { ApiError, apiRequest, asRecord, recordText } from './api-client';
 import type { RouteMatch } from './route-registry';
 
 const APP_NAV = [
-  { href: '/app/new', label: '新しい実行', key: 'new' },
-  { href: '/app/projects', label: 'Project', key: 'projects' },
-  { href: '/app/history', label: 'History', key: 'history' },
+  { href: '/app/new', label: '新しいページ', key: 'new' },
+  { href: '/app/history?mode=search', label: '検索', key: 'search' },
+  { href: '/app/projects', label: 'プロジェクト', key: 'projects' },
+  { href: '/app/settings/options', label: 'オプション', key: 'options' },
+  { href: '/account', label: 'プラン/クレジット', key: 'plan-credit' },
+  { href: '/app/developer', label: '開発者モード', key: 'developer' },
+  { href: '/app/history', label: '履歴', key: 'history' },
+] as const;
+
+const APP_BOTTOM_NAV = [
+  { href: '/app/about', label: 'ASTERAとは？', key: 'about' },
+  { href: '/app/settings', label: '設定', key: 'settings' },
 ] as const;
 
 function Brand() {
@@ -54,17 +63,6 @@ type CreditProjection =
       state: 'healthy' | 'low' | 'critical' | 'depleted';
       capacity: number;
     };
-
-type SidebarRecentItem = {
-  id: string;
-  title: string;
-  href: string;
-};
-
-type SidebarRecentState =
-  | { status: 'loading'; items: SidebarRecentItem[] }
-  | { status: 'ready'; items: SidebarRecentItem[] }
-  | { status: 'error'; items: SidebarRecentItem[] };
 
 function numeric(value: unknown, fallback = 0): number {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
@@ -139,39 +137,6 @@ function useCreditProjection(enabled: boolean): CreditProjection {
   return projection;
 }
 
-function useSidebarRecent(enabled: boolean): SidebarRecentState {
-  const [state, setState] = useState<SidebarRecentState>({ status: enabled ? 'loading' : 'ready', items: [] });
-
-  useEffect(() => {
-    if (!enabled) {
-      setState({ status: 'ready', items: [] });
-      return;
-    }
-    const controller = new AbortController();
-    setState({ status: 'loading', items: [] });
-    apiRequest('/api/history?limit=6', { signal: controller.signal })
-      .then((payload) => {
-        const items = asArray(payload, ['history', 'items', 'results'])
-          .slice(0, 6)
-          .map((item, index) => {
-            const record = asRecord(item);
-            const id = recordText(record, ['result_id', 'id']);
-            if (!id) return null;
-            const title = recordText(record, ['title', 'prompt', 'name'], `Result ${index + 1}`);
-            return { id, title, href: `/app/results/${encodeURIComponent(id)}` } satisfies SidebarRecentItem;
-          })
-          .filter((item): item is SidebarRecentItem => item !== null);
-        setState({ status: 'ready', items });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ status: 'error', items: [] });
-      });
-    return () => controller.abort();
-  }, [enabled]);
-
-  return state;
-}
-
 function CreditMeter({ enabled }: { enabled: boolean }) {
   const credit = useCreditProjection(enabled);
   if (!enabled) return null;
@@ -179,7 +144,7 @@ function CreditMeter({ enabled }: { enabled: boolean }) {
   if (credit.status !== 'ready') {
     return (
       <div className="platform-credit-layer" aria-live="polite">
-        <div className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? 'Credit残高を確認中' : 'Credit残高を取得できません'}>
+        <div className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? 'クレジット残高を確認中' : 'クレジット残高を取得できません'}>
           <span className="platform-credit-mark" aria-hidden="true" />
           <span className="platform-credit-title">CREDIT</span>
           <span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span>
@@ -197,11 +162,11 @@ function CreditMeter({ enabled }: { enabled: boolean }) {
         className={`platform-credit-meter is-${credit.state}`}
         style={meterStyle}
         role="meter"
-        aria-label={`利用可能Credit ${credit.usable.toLocaleString('ja-JP')}`}
+        aria-label={`利用可能クレジット ${credit.usable.toLocaleString('ja-JP')}`}
         aria-valuemin={0}
         aria-valuemax={credit.capacity}
         aria-valuenow={credit.usable}
-        title={credit.reserved > 0 ? `予約中 ${credit.reserved.toLocaleString('ja-JP')}` : '利用可能Credit'}
+        title={credit.reserved > 0 ? `予約中 ${credit.reserved.toLocaleString('ja-JP')}` : '利用可能クレジット'}
       >
         <span className="platform-credit-mark" aria-hidden="true" />
         <span className="platform-credit-title">CREDIT</span>
@@ -217,7 +182,7 @@ function useSession(required: boolean): SessionState {
   const preview = previewWithoutAuth();
   const [state, setState] = useState<SessionState>(
     preview || !required || verified
-      ? { status: 'ready', displayName: verified?.displayName ?? (preview ? 'Preview' : '') }
+      ? { status: 'ready', displayName: verified?.displayName ?? (preview ? 'プレビュー' : '') }
       : { status: 'loading' },
   );
 
@@ -230,7 +195,7 @@ function useSession(required: boolean): SessionState {
         const account = asRecord(root.account ?? root.data ?? root);
         setState({
           status: 'ready',
-          displayName: recordText(account, ['nickname', 'display_name', 'name', 'email'], 'Account'),
+          displayName: recordText(account, ['nickname', 'display_name', 'name', 'email'], 'アカウント'),
         });
       })
       .catch((error: unknown) => {
@@ -245,10 +210,55 @@ function useSession(required: boolean): SessionState {
   }, [required, verified, preview]);
 
   if (preview || verified) {
-    return { status: 'ready', displayName: verified?.displayName ?? 'Preview' };
+    return { status: 'ready', displayName: verified?.displayName ?? 'プレビュー' };
   }
 
   return state;
+}
+
+function activeNavigationKey(): string {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  if (path === '/app/new' || path === '/app') return 'new';
+  if (path === '/app/history' && mode === 'search') return 'search';
+  if (path === '/app/history') return 'history';
+  if (path === '/app/projects') return 'projects';
+  if (path === '/app/developer') return 'developer';
+  if (path === '/app/about') return 'about';
+  if (path === '/app/settings') return 'settings';
+  if (path === '/app/settings/language' || path === '/app/settings/notifications') return 'settings';
+  if (
+    path === '/app/settings/options'
+    || path === '/app/settings/templates'
+    || path === '/app/settings/storage-destinations'
+    || path === '/app/settings/astera-storage'
+    || path === '/app/settings/data-privacy'
+  ) return 'options';
+  if (path === '/account' || path.startsWith('/account/')) return 'plan-credit';
+  return '';
+}
+
+function NavigationLinks({ onNavigate }: { onNavigate: () => void }) {
+  const active = activeNavigationKey();
+  return (
+    <>
+      <Brand />
+      <nav className="platform-nav" aria-label="Astera App メニュー">
+        {APP_NAV.map((item) => (
+          <a key={item.key} href={item.href} aria-current={active === item.key ? 'page' : undefined} onClick={onNavigate}>
+            <span>{item.label}</span>
+          </a>
+        ))}
+      </nav>
+      <div className="platform-side-meta">
+        {APP_BOTTOM_NAV.map((item) => (
+          <a key={item.key} href={item.href} aria-current={active === item.key ? 'page' : undefined} onClick={onNavigate}>
+            <span>{item.label}</span>
+          </a>
+        ))}
+      </div>
+    </>
+  );
 }
 
 export function ResponsivePageShell({
@@ -268,58 +278,26 @@ export function ResponsivePageShell({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const session = useSession(route.access === 'authenticated');
-  const recent = useSidebarRecent(route.access === 'authenticated');
 
   useEffect(() => {
     document.title = `${route.title} | Astera App`;
     setMenuOpen(false);
   }, [route.id, route.title]);
 
-  if (session.status === 'loading') return <BusyState label="AccountとSessionを確認しています…" />;
+  if (session.status === 'loading') return <BusyState label="アカウントとセッションを確認しています…" />;
   if (session.status === 'error') return <ErrorState error={session.error} onRetry={() => window.location.reload()} />;
-
-  const nav = (
-    <>
-      <Brand />
-      <nav className="platform-nav" aria-label="Astera App navigation">
-        {APP_NAV.map((item) => (
-          <a
-            key={item.key}
-            href={item.href}
-            aria-current={route.nav === item.key ? 'page' : undefined}
-            onClick={() => setMenuOpen(false)}
-          >
-            <span>{item.label}</span>
-          </a>
-        ))}
-      </nav>
-      <section className="platform-side-section" aria-label="Recent history">
-        <div className="platform-side-section-title">Recent</div>
-        <div className="platform-recent-list">
-          {recent.status === 'loading' && <span className="platform-recent-state">読み込み中…</span>}
-          {recent.status === 'error' && <a className="platform-recent-state" href="/app/history" onClick={() => setMenuOpen(false)}>Historyを開く</a>}
-          {recent.status === 'ready' && recent.items.length === 0 && <span className="platform-recent-state">まだ履歴がありません</span>}
-          {recent.status === 'ready' && recent.items.map((item) => (
-            <a key={item.id} href={item.href} title={item.title} onClick={() => setMenuOpen(false)}>
-              <span>{item.title}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-      <div className="platform-side-meta">
-        <a href="/app/about" onClick={() => setMenuOpen(false)}>Asteraについて</a>
-        <button type="button" className="exterior-settings-trigger" data-exterior-settings-trigger="true">⚙ Settings</button>
-        <a href="/account" className="exterior-account-row" onClick={() => setMenuOpen(false)}>
-          <span aria-hidden="true">◎</span>
-          <span><strong>{session.displayName || 'Account'}</strong><small>Account・Plan・Security</small></span>
-        </a>
-      </div>
-    </>
-  );
 
   return (
     <div className={`platform-shell${fullWidth ? ' is-full-width' : ''}`}>
       <CreditMeter enabled={route.access === 'authenticated'} />
+
+      {route.access === 'authenticated' && (
+        <div className="platform-global-actions" aria-label="案内AIとアカウント">
+          <span className="platform-ai-anchor" data-customer-ai-anchor="true" />
+          <a className="platform-header-account" href="/account" aria-label="アカウント">◎</a>
+        </div>
+      )}
+
       <header className="platform-mobile-header">
         <button
           type="button"
@@ -328,25 +306,29 @@ export function ResponsivePageShell({
           aria-controls="platform-mobile-drawer"
           onClick={() => setMenuOpen((value) => !value)}
         >
-          <span aria-hidden="true">☰</span><span className="sr-only">Menu</span>
+          <span aria-hidden="true">☰</span><span className="sr-only">メニュー</span>
         </button>
         <span className="platform-mobile-header-center" aria-hidden="true" />
-        <a className="platform-header-account" href="/account" aria-label="Account">◎</a>
+        <span className="platform-mobile-header-spacer" aria-hidden="true" />
       </header>
 
-      <aside className="platform-sidebar">{nav}</aside>
+      <aside className="platform-sidebar">
+        <NavigationLinks onNavigate={() => setMenuOpen(false)} />
+      </aside>
 
       {menuOpen && (
         <>
-          <button className="platform-backdrop" aria-label="Menuを閉じる" type="button" onClick={() => setMenuOpen(false)} />
-          <aside id="platform-mobile-drawer" className="platform-mobile-drawer">{nav}</aside>
+          <button className="platform-backdrop" aria-label="メニューを閉じる" type="button" onClick={() => setMenuOpen(false)} />
+          <aside id="platform-mobile-drawer" className="platform-mobile-drawer">
+            <NavigationLinks onNavigate={() => setMenuOpen(false)} />
+          </aside>
         </>
       )}
 
       <main className="platform-main">
         <section className="platform-page-head">
           <div>
-            <div className="platform-eyebrow">{eyebrow ?? route.group.toUpperCase()}</div>
+            <div className="platform-eyebrow">{eyebrow ?? 'ASTERA APP'}</div>
             <h1>{route.title}</h1>
             {description && <p>{description}</p>}
           </div>
@@ -379,7 +361,7 @@ export function PublicPageFrame({
         <Brand />
         <nav>
           <a href="/pricing">料金</a>
-          <a href="/login">Login</a>
+          <a href="/login">ログイン</a>
           <a href="/register">登録</a>
         </nav>
       </header>
