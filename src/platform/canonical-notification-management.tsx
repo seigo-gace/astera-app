@@ -2,58 +2,58 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiRequest, asArray, asRecord, recordText } from './api-client';
 import type { RouteMatch } from './route-registry';
 import { ResponsivePageShell } from './ResponsivePageShell';
+import '../features/settings/settings-home.css';
 import './canonical-notification-management.css';
 
-type Prefs = {
-  in_app_enabled: boolean;
-  email_enabled: boolean;
-  push_enabled: boolean;
-  warning_policy_version: string;
+type CreditPreferences = {
+  emailEnabled: boolean;
+  pushEnabled: boolean;
+  policyVersion: string;
   events: string[];
-  quiet_hours_start: string;
-  quiet_hours_end: string;
+  quietStart: string;
+  quietEnd: string;
 };
-type Policy = { version: string; low_threshold: number | null; critical_threshold: number | null };
+type Policy = { version: string; low: number | null; critical: number | null };
 type Feedback = { type: 'idle' | 'working' | 'success' | 'error'; message?: string };
 
-const EVENT_LABELS: Record<string, string> = {
-  'credit.low': '残高低下',
-  'credit.critical': '残高が危険域',
-  'credit.insufficient': 'クレジット不足で停止',
-  'credit.purchase_pending': '支払い確認中',
-  'credit.credited': 'クレジット反映完了',
-  'credit.resume_available': '再実行可能',
-  'credit.resume_blocked': '別の停止理由で継続停止',
-};
+const CREDIT_WARNING_EVENTS = ['credit.low', 'credit.critical', 'credit.insufficient'] as const;
 
-function NotificationSurface() {
+export function NotificationSettingsPage({ route }: { route: RouteMatch }) {
   const [loading, setLoading] = useState(true);
-  const [prefs, setPrefs] = useState<Prefs | null>(null);
-  const [policy, setPolicy] = useState<Policy>({ version: '', low_threshold: null, critical_threshold: null });
-  const [supported, setSupported] = useState<string[]>([]);
+  const [creditWarnings, setCreditWarnings] = useState(true);
+  const [updateNotices, setUpdateNotices] = useState(true);
+  const [creditPreferences, setCreditPreferences] = useState<CreditPreferences | null>(null);
+  const [policy, setPolicy] = useState<Policy>({ version: '', low: null, critical: null });
   const [feedback, setFeedback] = useState<Feedback>({ type: 'idle' });
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const payload = asRecord(await apiRequest('/api/credit/notification-preferences'));
-      const p = asRecord(payload.preferences);
-      const pol = asRecord(payload.policy);
-      setPrefs({
-        in_app_enabled: true,
-        email_enabled: p.email_enabled === true,
-        push_enabled: p.push_enabled === true,
-        warning_policy_version: recordText(p, ['warning_policy_version']),
-        events: asArray(p.events).filter((value): value is string => typeof value === 'string'),
-        quiet_hours_start: recordText(p, ['quiet_hours_start']),
-        quiet_hours_end: recordText(p, ['quiet_hours_end']),
+      const [generalPayload, creditPayload] = await Promise.all([
+        apiRequest('/api/preferences'),
+        apiRequest('/api/credit/notification-preferences'),
+      ]);
+      const generalRoot = asRecord(generalPayload);
+      const general = asRecord(generalRoot.preferences ?? generalRoot.data ?? generalRoot);
+      const creditRoot = asRecord(creditPayload);
+      const credit = asRecord(creditRoot.preferences ?? creditRoot.data ?? creditRoot);
+      const policyRoot = asRecord(creditRoot.policy);
+      const events = asArray(credit.events).filter((value): value is string => typeof value === 'string');
+      setCreditWarnings(CREDIT_WARNING_EVENTS.some((event) => events.includes(event)));
+      setUpdateNotices(general.update_notices_enabled !== false);
+      setCreditPreferences({
+        emailEnabled: credit.email_enabled === true,
+        pushEnabled: credit.push_enabled === true,
+        policyVersion: recordText(credit, ['warning_policy_version']),
+        events,
+        quietStart: recordText(credit, ['quiet_hours_start']),
+        quietEnd: recordText(credit, ['quiet_hours_end']),
       });
       setPolicy({
-        version: recordText(pol, ['version']),
-        low_threshold: typeof pol.low_threshold === 'number' ? pol.low_threshold : null,
-        critical_threshold: typeof pol.critical_threshold === 'number' ? pol.critical_threshold : null,
+        version: recordText(policyRoot, ['version']),
+        low: typeof policyRoot.low_threshold === 'number' ? policyRoot.low_threshold : null,
+        critical: typeof policyRoot.critical_threshold === 'number' ? policyRoot.critical_threshold : null,
       });
-      setSupported(asArray(payload.supported_events).filter((value): value is string => typeof value === 'string'));
       setFeedback({ type: 'idle' });
     } catch (error) {
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : '通知設定を取得できませんでした。' });
@@ -64,79 +64,73 @@ function NotificationSurface() {
 
   useEffect(() => { void reload(); }, [reload]);
 
-  const save = async () => {
-    if (!prefs || feedback.type === 'working') return;
+  const changeCreditWarnings = async (enabled: boolean) => {
+    if (!creditPreferences || feedback.type === 'working') return;
+    const previous = creditWarnings;
+    setCreditWarnings(enabled);
     setFeedback({ type: 'working' });
     try {
+      const events = enabled ? [...CREDIT_WARNING_EVENTS] : [];
       const payload = asRecord(await apiRequest('/api/credit/notification-preferences', {
         method: 'PATCH',
         idempotent: true,
-        body: { ...prefs, in_app_enabled: true },
+        body: {
+          in_app_enabled: true,
+          email_enabled: creditPreferences.emailEnabled,
+          push_enabled: creditPreferences.pushEnabled,
+          warning_policy_version: creditPreferences.policyVersion,
+          events,
+          quiet_hours_start: creditPreferences.quietStart,
+          quiet_hours_end: creditPreferences.quietEnd,
+        },
       }));
-      const p = asRecord(payload.preferences);
-      setPrefs({
-        ...prefs,
-        email_enabled: p.email_enabled === true,
-        push_enabled: p.push_enabled === true,
-        warning_policy_version: recordText(p, ['warning_policy_version']),
-        events: asArray(p.events).filter((value): value is string => typeof value === 'string'),
-        quiet_hours_start: recordText(p, ['quiet_hours_start']),
-        quiet_hours_end: recordText(p, ['quiet_hours_end']),
-      });
-      setFeedback({ type: 'success', message: '通知・クレジット警告設定を保存しました。' });
+      const saved = asRecord(payload.preferences);
+      setCreditPreferences((current) => current ? {
+        ...current,
+        policyVersion: recordText(saved, ['warning_policy_version'], current.policyVersion),
+        events: asArray(saved.events).filter((value): value is string => typeof value === 'string'),
+      } : current);
+      setFeedback({ type: 'success', message: 'クレジット通知を更新しました。' });
     } catch (error) {
-      setFeedback({ type: 'error', message: error instanceof Error ? error.message : '設定を保存できませんでした。' });
+      setCreditWarnings(previous);
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'クレジット通知を変更できませんでした。' });
     }
   };
 
-  if (loading && !prefs) return <section className="notification-management"><p>通知設定を読み込んでいます…</p></section>;
-  if (!prefs) return <section className="notification-management"><button className="platform-button" type="button" onClick={() => void reload()}>再取得</button>{feedback.message && <p role="alert">{feedback.message}</p>}</section>;
-
-  const toggleEvent = (event: string) => setPrefs((current) => current ? {
-    ...current,
-    events: current.events.includes(event) ? current.events.filter((value) => value !== event) : [...current.events, event],
-  } : current);
+  const changeUpdateNotices = async (enabled: boolean) => {
+    if (feedback.type === 'working') return;
+    const previous = updateNotices;
+    setUpdateNotices(enabled);
+    setFeedback({ type: 'working' });
+    try {
+      await apiRequest('/api/preferences', {
+        method: 'PATCH',
+        idempotent: true,
+        body: { update_notices_enabled: enabled },
+      });
+      setFeedback({ type: 'success', message: 'アップデートのお知らせ設定を更新しました。' });
+    } catch (error) {
+      setUpdateNotices(previous);
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : 'お知らせ設定を変更できませんでした。' });
+    }
+  };
 
   return (
-    <section className="notification-management" data-canon-notification-management="true">
-      <header>
-        <div><h2>通知・クレジット警告</h2><p>警告の基準値はアプリへ固定せず、現在のサーバー設定を表示します。</p></div>
-        <button className="platform-button" type="button" onClick={() => void reload()}>再読込</button>
-      </header>
-      {feedback.type !== 'idle' && <div className={`notification-feedback is-${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}>{feedback.type === 'working' ? '保存しています…' : feedback.message}</div>}
-      <section className="notification-policy">
-        <div><small>ポリシー版</small><strong>{policy.version || '未設定'}</strong></div>
-        <div><small>低残高</small><strong>{policy.low_threshold ?? '未設定'}</strong></div>
-        <div><small>危険域</small><strong>{policy.critical_threshold ?? '未設定'}</strong></div>
+    <ResponsivePageShell route={route} description="Asteraの通知はクレジット残量と重要なアップデート情報に絞ります。実行完了通知は扱いません。">
+      <section className="settings-inline-block">
+        <div><strong>クレジット警告基準</strong><small>判定値はFrontendへ固定せずServer Policyを使用します。</small></div>
+        <span>{policy.version || '未設定'} / Low {policy.low ?? '—'} / Critical {policy.critical ?? '—'}</span>
       </section>
-      <section className="notification-card">
-        <h3>通知方法</h3>
-        <label className="notification-toggle"><span><strong>アプリ内通知</strong><small>安全状態通知のため常時ON</small></span><input type="checkbox" checked disabled /></label>
-        <label className="notification-toggle"><span><strong>メール</strong><small>任意</small></span><input type="checkbox" checked={prefs.email_enabled} onChange={(event) => setPrefs({ ...prefs, email_enabled: event.target.checked })} /></label>
-        <label className="notification-toggle"><span><strong>プッシュ通知</strong><small>端末許可がない場合はアプリ内通知へ切り替えます</small></span><input type="checkbox" checked={prefs.push_enabled} onChange={(event) => setPrefs({ ...prefs, push_enabled: event.target.checked })} /></label>
-      </section>
-      <section className="notification-card">
-        <h3>任意通知の種類</h3>
-        <div className="notification-events">{supported.map((event) => <label key={event}><input type="checkbox" checked={prefs.events.includes(event)} onChange={() => toggleEvent(event)} /><span><strong>{EVENT_LABELS[event] || event}</strong><small>{event}</small></span></label>)}</div>
-      </section>
-      <section className="notification-card">
-        <h3>通知を抑える時間帯</h3>
-        <p>低残高・危険域の通知だけに適用します。クレジット不足などの停止通知は遅延させません。</p>
-        <div className="notification-times">
-          <label><span>開始</span><input type="time" value={prefs.quiet_hours_start} onChange={(event) => setPrefs({ ...prefs, quiet_hours_start: event.target.value })} /></label>
-          <label><span>終了</span><input type="time" value={prefs.quiet_hours_end} onChange={(event) => setPrefs({ ...prefs, quiet_hours_end: event.target.value })} /></label>
+
+      <section className="settings-accordion" aria-label="通知設定">
+        <div className="settings-accordion-body" style={{ borderTop: 0 }}>
+          <label className="settings-toggle-row"><span><strong>クレジット残量のお知らせ</strong><small>残量低下・危険域・不足時だけ通知します。</small></span><input type="checkbox" checked={creditWarnings} disabled={loading || !creditPreferences || feedback.type === 'working'} onChange={(event) => void changeCreditWarnings(event.target.checked)} /></label>
+          <label className="settings-toggle-row"><span><strong>Asteraアップデートのお知らせ</strong><small>重要な機能追加・更新のお知らせを表示します。</small></span><input type="checkbox" checked={updateNotices} disabled={loading || feedback.type === 'working'} onChange={(event) => void changeUpdateNotices(event.target.checked)} /></label>
         </div>
       </section>
-      <button className="platform-button is-primary" type="button" onClick={() => void save()} disabled={feedback.type === 'working'}>保存</button>
-      <section className="notification-card is-muted"><h3>配信機能の実装状態</h3><p>設定保存は接続済みです。メール・プッシュ配信、複数端末の既読同期、通知からの復帰動作は別途実機検証が必要です。</p></section>
-    </section>
-  );
-}
 
-export function NotificationSettingsPage({ route }: { route: RouteMatch }) {
-  return (
-    <ResponsivePageShell route={route} description="通知方法、クレジット残量警告、通知を抑える時間帯を管理します。">
-      <NotificationSurface />
+      {feedback.type !== 'idle' && <p className={`settings-feedback is-${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}>{feedback.type === 'working' ? '保存しています…' : feedback.message}</p>}
+      <div className="platform-action-row"><button className="platform-button" type="button" onClick={() => void reload()} disabled={loading}>再読込</button><a className="platform-button" href="/app/settings">設定へ戻る</a></div>
     </ResponsivePageShell>
   );
 }
