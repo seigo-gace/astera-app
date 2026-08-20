@@ -5,7 +5,6 @@ import './styles.css';
 import AppRouter from './platform/app-router';
 import { CanonicalAccountSecurityManagement } from './platform/canonical-account-security-management';
 import { CanonicalSubscriptionManagement } from './platform/canonical-subscription-management';
-import { CanonicalNotificationManagement } from './platform/canonical-notification-management';
 import { CanonicalCreditManagement } from './platform/canonical-credit-management';
 import './device-compatibility.css';
 import './horizontal-stability.css';
@@ -29,7 +28,6 @@ if (!runtimeUnsupported) {
       <AppRouter />
       <CanonicalAccountSecurityManagement />
       <CanonicalSubscriptionManagement />
-      <CanonicalNotificationManagement />
       <CanonicalCreditManagement />
     </StrictMode>,
   );
