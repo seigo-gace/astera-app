@@ -7,12 +7,7 @@ import { FormResult, Panel, submitForm, useResource, type SubmitState } from '..
 import './settings-dedicated.css';
 
 type OptionKey = 'translation' | 'agent_mode' | 'document' | 'storage_transfer';
-
-type OptionDefinition = {
-  key: OptionKey;
-  labelKey: AppTextKey;
-  descriptionKey: AppTextKey;
-};
+type OptionDefinition = { key: OptionKey; labelKey: AppTextKey; descriptionKey: AppTextKey };
 
 const OPTION_DEFS: ReadonlyArray<OptionDefinition> = [
   { key: 'translation', labelKey: 'optionTranslation', descriptionKey: 'optionTranslationDescription' },
@@ -40,12 +35,7 @@ export default function OptionSettingsPage({ route }: { route: RouteMatch }) {
     if (resource.status !== 'ready') return;
     const root = asRecord(resource.data);
     const preferences = asRecord(root.preferences ?? root.data ?? root);
-    setValues({
-      translation: preferences.translation !== false,
-      agent_mode: preferences.agent_mode !== false,
-      document: preferences.document !== false,
-      storage_transfer: preferences.storage_transfer !== false,
-    });
+    setValues({ translation: preferences.translation !== false, agent_mode: preferences.agent_mode !== false, document: preferences.document !== false, storage_transfer: preferences.storage_transfer !== false });
   }, [defaults, resource]);
 
   const save = async (event: FormEvent) => {
@@ -54,11 +44,7 @@ export default function OptionSettingsPage({ route }: { route: RouteMatch }) {
       setState({ type: 'error', message: text('optionSourceUnavailable'), code: 'PREFERENCE_SOURCE_NOT_READY' });
       return;
     }
-    const response = await submitForm('/api/preferences', values, setState, {
-      method: 'PATCH',
-      success: text('optionSaved'),
-      idempotent: true,
-    });
+    const response = await submitForm('/api/preferences', values, setState, { method: 'PATCH', success: text('optionSaved'), idempotent: true });
     if (response) reload();
   };
 
@@ -69,22 +55,18 @@ export default function OptionSettingsPage({ route }: { route: RouteMatch }) {
       {resource.status === 'ready' && <form className="settings-option-list" onSubmit={save}>
         {OPTION_DEFS.map((item) => {
           const label = text(item.labelKey);
-          return <div className="settings-option-row" key={item.key}>
-            <div><strong>{label}</strong><Info label={label} body={text(item.descriptionKey)} ariaSuffix={text('optionInfoAriaSuffix')} /></div>
-            <label className="settings-switch"><input type="checkbox" checked={values[item.key]} onChange={(event) => setValues((current) => ({ ...current, [item.key]: event.target.checked }))} /><span aria-hidden="true" /></label>
-          </div>;
+          return <div className="settings-option-row" key={item.key}><div><strong>{label}</strong><Info label={label} body={text(item.descriptionKey)} ariaSuffix={text('optionInfoAriaSuffix')} /></div><label className="settings-switch"><input type="checkbox" checked={values[item.key]} onChange={(event) => setValues((current) => ({ ...current, [item.key]: event.target.checked }))} /><span aria-hidden="true" /></label></div>;
         })}
         <p className="settings-note">{text('optionToggleNote')}</p>
         <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('save')}</button>
         <FormResult state={state} />
       </form>}
     </Panel>
-
     <Panel title={text('optionIndependentFeatures')}>
       <div className="settings-management-list">
         <a className="settings-management-card" href="/app/new"><span><strong>{text('optionPrivateMode')}</strong><Info label={text('optionPrivateMode')} body={text('optionPrivateModeDescription')} ariaSuffix={text('optionInfoAriaSuffix')} /></span><b>{text('optionManageInComposer')}</b></a>
         <a className="settings-management-card" href="/app/settings/astera-storage"><span><strong>{text('optionAsteraStorage')}</strong><small>{text('optionAsteraStorageDescription')}</small></span><b>{text('optionOpenSettings')}</b></a>
-        <div className="settings-management-card is-static"><span><strong>{text('optionVaultProtection')}</strong><Info label="Libral Vault" body={text('optionVaultProtectionDescription')} ariaSuffix={text('optionInfoAriaSuffix')} /></span><b>{text('optionAlwaysProtected')}</b></div>
+        <div className="settings-management-card is-static"><span><strong>{text('optionVaultProtection')}</strong><Info label={text('developerVault')} body={text('optionVaultProtectionDescription')} ariaSuffix={text('optionInfoAriaSuffix')} /></span><b>{text('optionAlwaysProtected')}</b></div>
       </div>
     </Panel>
   </ResponsivePageShell>;
