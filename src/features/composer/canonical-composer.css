@@ -1,7 +1,7 @@
 .canonical-composer-card,
 .canonical-confirmation,
 .canonical-result {
-  border: 1px solid var(--platform-border, rgba(255,255,255,.14));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 18px;
   background: var(--platform-panel, color-mix(in srgb, var(--text-primary) 4%, transparent));
   padding: clamp(16px, 2.2vw, 28px);
@@ -66,7 +66,7 @@
   gap: 5px;
   min-height: 86px;
   padding: 13px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.14));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 13px;
   cursor: pointer;
 }
@@ -87,7 +87,7 @@
   align-items: center;
   justify-content: center;
   padding: 10px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.14));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 12px;
   cursor: pointer;
   text-align: center;
@@ -99,7 +99,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.14));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 12px;
 }
 .canonical-private-toggle span { display: grid; gap: 3px; }
@@ -116,7 +116,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.12));
+  border: 1px solid var(--platform-border, var(--border-color));
   border-radius: 12px;
 }
 .canonical-files li > div { display: grid; gap: 3px; min-width: 0; }
@@ -151,7 +151,7 @@
   gap: 7px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.12));
+  border: 1px solid var(--platform-border, var(--border-color));
 }
 .canonical-confirmation dt { opacity: .65; font-size: .76rem; }
 .canonical-confirmation dd { margin: 0; font-size: 1.1rem; font-weight: 800; }
@@ -169,7 +169,7 @@
   gap: 12px;
   padding: 13px;
   border-radius: 12px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.14));
+  border: 1px solid var(--platform-border, var(--border-color));
   background: transparent;
   color: inherit;
   text-align: left;
@@ -178,7 +178,7 @@
 .canonical-prompt-accordion small { opacity: .64; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canonical-original-prompt { white-space: pre-wrap; line-height: 1.7; padding: 14px; border-inline-start: 3px solid currentColor; }
 .canonical-result-grid { display: grid; gap: 12px; }
-.canonical-result-grid article { padding: 16px; border: 1px solid var(--platform-border, rgba(255,255,255,.12)); border-radius: 14px; }
+.canonical-result-grid article { padding: 16px; border: 1px solid var(--platform-border, var(--border-color)); border-radius: 14px; }
 .canonical-result-grid article header { display: flex; align-items: center; gap: 10px; }
 .canonical-result-grid article header span { opacity: .5; font-variant-numeric: tabular-nums; }
 .canonical-result-grid article h2 { margin: 0; font-size: 1rem; }
@@ -202,8 +202,8 @@
   gap: 14px;
   padding: 18px;
   border-radius: 18px;
-  border: 1px solid var(--platform-border, rgba(255,255,255,.15));
-  background: var(--bg-primary, #090909);
+  border: 1px solid var(--platform-border, var(--border-color));
+  background: var(--bg-primary);
   box-sizing: border-box;
 }
 .canonical-fullscreen textarea { min-height: 0; height: 100%; resize: none; line-height: 1.75; }

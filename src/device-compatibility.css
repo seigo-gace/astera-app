@@ -267,7 +267,7 @@ canvas {
   }
 
   .platform-button.is-primary {
-    background: #6e3f24;
+    background: var(--platform-accent);
     border-color: var(--platform-accent);
   }
 }

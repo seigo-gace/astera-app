@@ -17,7 +17,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, .9), 0 0 8px currentColor;
+  text-shadow: 0 1px 5px var(--shadow, rgba(0, 0, 0, .9)), 0 0 8px currentColor;
 }
 
 @media (max-width: 760px) {

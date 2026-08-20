@@ -70,7 +70,7 @@
   gap: 12px;
 }
 .result-schema-warning {
-  border-color: var(--platform-danger, #b84b4b);
+  border-color: var(--platform-danger, var(--danger));
 }
 .result-control-grid {
   display: grid;

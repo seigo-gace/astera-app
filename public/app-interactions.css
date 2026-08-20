@@ -11,7 +11,7 @@
   margin: 8px 0 0;
   padding: 10px 0;
   border: 0;
-  border-top: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
+  border-top: 1px solid var(--border-color, rgba(127, 127, 127, 0.2));
   background: transparent;
   color: inherit;
   font: inherit;
@@ -48,7 +48,7 @@
   height: 28px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.25));
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.25));
   border-radius: 999px;
   font-size: 15px;
   opacity: 0.78;

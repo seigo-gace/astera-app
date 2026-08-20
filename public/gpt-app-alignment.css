@@ -6,7 +6,7 @@
 :root{
   --gpt-ui-hover:color-mix(in srgb,var(--ex-text) 7%,transparent);
   --gpt-ui-pressed:color-mix(in srgb,var(--ex-text) 11%,transparent);
-  --gpt-ui-focus:color-mix(in srgb,var(--platform-accent,#d3a15f) 78%,white 22%);
+  --gpt-ui-focus:color-mix(in srgb,var(--platform-accent,var(--accent,#d3a15f)) 78%,var(--text-primary) 22%);
 }
 
 /* Sidebar: quiet, compact, recent-aware, with profile/settings at the bottom. */
@@ -168,7 +168,7 @@ html.exterior-composer-route .canonical-composer-card{
   border-radius:26px!important;
   padding:9px 10px 8px!important;
   gap:2px!important;
-  box-shadow:0 8px 28px rgba(0,0,0,.28)!important;
+  box-shadow:0 8px 28px var(--shadow,rgba(0,0,0,.28))!important;
 }
 html.exterior-composer-route .canonical-files{order:1!important}
 html.exterior-composer-route .canonical-composer-card>.canonical-field{order:2!important}
@@ -273,7 +273,7 @@ html.exterior-composer-route .canonical-primary-actions a{
     width:min(88vw,360px)!important;
     padding:10px 8px calc(10px + env(safe-area-inset-bottom))!important;
     border-right:1px solid var(--ex-line)!important;
-    box-shadow:18px 0 54px rgba(0,0,0,.34)!important;
+    box-shadow:18px 0 54px var(--shadow,rgba(0,0,0,.34))!important;
   }
   .platform-mobile-drawer .platform-nav{margin-top:6px!important}
   .platform-mobile-drawer .platform-side-section{margin-top:12px;max-height:30dvh}
