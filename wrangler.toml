@@ -2,11 +2,10 @@ name = "astera-app-staging"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "dist"
 
-# D1: create via MCP, then set database_id below.
 [[d1_databases]]
 binding = "ASTERA_DB"
 database_name = "astera-app-staging"
-# database_id = "REPLACE_AFTER_MCP_PROVISIONING"
+database_id = "08a705ac-50f4-4592-b726-d50154a2a8cb"
 
 [[r2_buckets]]
 binding = "ASTERA_UPLOADS"
