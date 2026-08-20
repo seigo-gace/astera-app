@@ -154,24 +154,35 @@ function installExternalLinkBridge(): void {
   );
 }
 
+function resolvedDarkTheme(): boolean {
+  const theme = document.documentElement.dataset.theme;
+  if (theme === 'dark') return true;
+  if (theme === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 async function syncStatusBar(): Promise<void> {
-  const darkTheme = document.documentElement.dataset.theme !== 'light';
+  const darkTheme = resolvedDarkTheme();
 
   await Promise.allSettled([
     StatusBar.setOverlaysWebView({ overlay: false }),
     StatusBar.setStyle({ style: darkTheme ? Style.Light : Style.Dark }),
-    StatusBar.setBackgroundColor({ color: darkTheme ? '#0a0a0a' : '#f3efe8' }),
+    StatusBar.setBackgroundColor({ color: darkTheme ? '#000000' : '#ffffff' }),
   ]);
 }
 
 function observeThemeForStatusBar(): void {
-  const observer = new MutationObserver(() => {
-    void syncStatusBar();
-  });
+  const sync = () => { void syncStatusBar(); };
+  const observer = new MutationObserver(sync);
 
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['data-theme'],
+  });
+
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  systemTheme.addEventListener('change', () => {
+    if ((document.documentElement.dataset.theme ?? 'system') === 'system') sync();
   });
 }
 
