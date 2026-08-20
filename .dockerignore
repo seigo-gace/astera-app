@@ -1,0 +1,14 @@
+node_modules
+/dist
+.git
+.env
+.env.*
+!.env.example
+contabo/app-api/.env
+*.log
+.wrangler
+playwright-report
+test-results
+android
+ios
+coverage

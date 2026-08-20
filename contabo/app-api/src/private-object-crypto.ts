@@ -67,7 +67,7 @@ function additionalData(objectId: string, order: number): Uint8Array {
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
   return bytesToHex(new Uint8Array(digest));
 }
 
@@ -140,12 +140,12 @@ export class PrivateObjectCryptoSession {
     const encrypted = new Uint8Array(await crypto.subtle.encrypt(
       {
         name: 'AES-GCM',
-        iv: nonce,
-        additionalData: additionalData(this.objectId, order),
+        iv: nonce as BufferSource,
+        additionalData: additionalData(this.objectId, order) as BufferSource,
         tagLength: GCM_TAG_BITS,
       },
       this.key,
-      plaintext,
+      plaintext as BufferSource,
     ));
     if (encrypted.byteLength < GCM_TAG_BYTES) {
       throw new PrivateObjectCryptoError('PRIVATE_CHUNK_ENCRYPTION_INVALID', 'AES-GCM暗号化結果が不正です。');
@@ -182,8 +182,8 @@ export class PrivateObjectCryptoSession {
       const plaintext = await crypto.subtle.decrypt(
         {
           name: 'AES-GCM',
-          iv: nonce,
-          additionalData: additionalData(this.objectId, order),
+          iv: nonce as BufferSource,
+          additionalData: additionalData(this.objectId, order) as BufferSource,
           tagLength: GCM_TAG_BITS,
         },
         this.key,

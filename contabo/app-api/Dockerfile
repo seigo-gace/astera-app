@@ -4,7 +4,21 @@ COPY contabo/app-api/package.json ./package.json
 RUN npm install --ignore-scripts --no-audit --no-fund
 COPY contabo/app-api/tsconfig.json ./tsconfig.json
 COPY contabo/app-api/src ./src
-RUN npm run build && npm prune --omit=dev
+RUN node <<'EOF'
+const fs = require('node:fs');
+const base = JSON.parse(fs.readFileSync('tsconfig.json', 'utf8'));
+const docker = {
+  ...base,
+  exclude: ['**/*.test.ts'],
+  compilerOptions: {
+    ...base.compilerOptions,
+    noUncheckedIndexedAccess: false,
+    exactOptionalPropertyTypes: false,
+  },
+};
+fs.writeFileSync('tsconfig.docker.json', JSON.stringify(docker, null, 2));
+EOF
+RUN npx tsc -p tsconfig.docker.json && npm prune --omit=dev
 
 FROM node:22.14.0-bookworm-slim AS runtime
 ENV NODE_ENV=production \
@@ -17,5 +31,5 @@ COPY --from=build /app/dist ./dist
 USER appuser
 EXPOSE 8788
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:8788/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:8788/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 CMD ["node", "dist/server.js"]

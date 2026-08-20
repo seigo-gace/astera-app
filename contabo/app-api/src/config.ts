@@ -31,7 +31,7 @@ function integer(value: string | undefined, fallback: number, min: number, max: 
 
 function secureOrigin(value: string): string {
   const url = new URL(value);
-  if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '::1'].includes(url.hostname)) {
+  if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(url.hostname)) {
     throw new Error('INTERNAL_ORIGIN_HTTPS_REQUIRED');
   }
   url.pathname = url.pathname.replace(/\/+$/, '');
