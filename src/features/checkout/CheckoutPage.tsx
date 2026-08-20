@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nativeCallback, openExternalUrl } from '../../platform/external-navigation';
+import { resolvedApiBase } from '../../platform/api-client';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -10,7 +11,7 @@ type CheckoutState =
   | { status: 'submitting'; planName: string; priceLabel: string; currentPlan: string }
   | { status: 'error'; message: string };
 
-const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+const API_BASE = resolvedApiBase();
 const ACCOUNT_CATALOG_ENDPOINT = `${API_BASE}/api/account/catalog`;
 const CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/billing/checkout-intents`;
 const REQUEST_TIMEOUT_MS = 15_000;

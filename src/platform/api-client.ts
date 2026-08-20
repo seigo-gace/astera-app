@@ -14,7 +14,27 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+function trimSlash(value: string): string {
+  return value.replace(/\/$/, '');
+}
+
+export function isAbsoluteHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** 絶対 http(s) のみ。相対 `/api` は same-origin として空文字（パスは `/api/...` を維持）。 */
+export function resolvedApiBase(): string {
+  const raw = trimSlash((import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.trim() ?? '');
+  if (!raw) return '';
+  return isAbsoluteHttpUrl(raw) ? raw : '';
+}
+
+const API_BASE = resolvedApiBase();
 const HISTORY_SEARCH_DEBOUNCE_MS = 250;
 
 function isNativeRuntime(): boolean {

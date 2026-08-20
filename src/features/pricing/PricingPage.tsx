@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolvedApiBase } from '../../platform/api-client';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -17,7 +18,7 @@ type LoadState =
   | { status: 'ready'; plans: PublicPlan[]; version: string }
   | { status: 'error'; message: string };
 
-const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+const API_BASE = resolvedApiBase();
 const CATALOG_ENDPOINT = `${API_BASE}/api/catalog/public`;
 const CATALOG_TIMEOUT_MS = 12_000;
 

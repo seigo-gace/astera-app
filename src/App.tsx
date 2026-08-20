@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react';
+import { resolvedApiBase } from './platform/api-client';
 import { useTranslation } from 'react-i18next';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -116,7 +117,7 @@ type ApiPayload = {
 
 const STORAGE_KEY = 'astera-app-settings-v1';
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
-const API_BASE = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
+const API_BASE = resolvedApiBase();
 const HP_URL = (import.meta.env.VITE_ASTERA_HP_URL as string | undefined) ?? 'https://asterav8.jp/';
 const SUPPORT_DEVELOPMENT_URL =
   (import.meta.env.VITE_SUPPORT_DEVELOPMENT_URL as string | undefined) ??

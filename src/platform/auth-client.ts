@@ -1,9 +1,25 @@
 import { passkeyClient } from '@better-auth/passkey/client';
 import { createAuthClient } from 'better-auth/react';
 import { twoFactorClient } from 'better-auth/client/plugins';
+import { isAbsoluteHttpUrl } from './api-client';
 
-const configuredApiBase = (import.meta.env.VITE_ASTERA_API_BASE as string | undefined)?.replace(/\/$/, '');
-const baseURL = configuredApiBase || window.location.origin;
+function originFromEnv(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw || !isAbsoluteHttpUrl(raw)) return null;
+  return new URL(raw).origin;
+}
+
+function resolvedAuthBaseUrl(): string {
+  const betterAuth = originFromEnv(import.meta.env.VITE_BETTER_AUTH_URL as string | undefined);
+  if (betterAuth) return betterAuth;
+  const appUrl = originFromEnv(import.meta.env.VITE_APP_URL as string | undefined);
+  if (appUrl) return appUrl;
+  const apiOrigin = originFromEnv(import.meta.env.VITE_ASTERA_API_BASE as string | undefined);
+  if (apiOrigin) return apiOrigin;
+  return typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+}
+
+const baseURL = resolvedAuthBaseUrl();
 
 export const authClient = createAuthClient({
   baseURL,
