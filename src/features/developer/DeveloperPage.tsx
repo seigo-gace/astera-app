@@ -81,6 +81,19 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
     const primary = HOLD_PRIORITY.find((reason) => reasons.includes(reason));
     return primary ? holdLabel(primary) : text('stateActive');
   };
+  const statusLabel = (status: string): string => {
+    switch (status.toLowerCase()) {
+      case 'low': return text('statusLow');
+      case 'critical': return text('statusCritical');
+      case 'insufficient': return text('statusInsufficient');
+      case 'depleted': return text('statusDepleted');
+      case 'available': return text('statusAvailable');
+      case 'active': return text('stateActive');
+      case 'ready': return text('statusReady');
+      case 'unavailable': return text('statusUnavailable');
+      default: return status || text('statusUnknown');
+    }
+  };
 
   const createKey = async (event: FormEvent) => {
     event.preventDefault();
@@ -119,13 +132,13 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   const showCreditWarning = ['low', 'critical', 'insufficient', 'depleted'].some((value) => creditState.includes(value));
 
   return <ResponsivePageShell route={route} description={text('pageDescription')}>
-    {showCreditWarning && <div className="developer-credit-banner" role="status"><div><strong>{text('creditWarningTitle')}</strong><span>{creditState || text('creditCheck')}</span></div><a className="platform-button is-primary" href="/account/credit">{text('addCredit')}</a></div>}
+    {showCreditWarning && <div className="developer-credit-banner" role="status"><div><strong>{text('creditWarningTitle')}</strong><span>{statusLabel(creditState)}</span></div><a className="platform-button is-primary" href="/account/credit">{text('addCredit')}</a></div>}
 
     <Panel title={text('developerMode')}>
       <div className="platform-card-grid">
         <div className="platform-link-card"><strong>{text('api')}</strong><span>{text('available')}</span></div>
         <div className="platform-link-card"><strong>{text('webhook')}</strong><span>{text('available')}</span></div>
-        <div className="platform-link-card"><strong>{text('vault')}</strong><span>{text('vaultDescription')}</span><small>{vaultTarget ? recordText(vaultTarget, ['availability', 'status'], text('available')) : text('notCataloged')}</small></div>
+        <div className="platform-link-card"><strong>{text('vault')}</strong><span>{text('vaultDescription')}</span><small>{vaultTarget ? statusLabel(recordText(vaultTarget, ['availability', 'status'])) : text('notCataloged')}</small></div>
         <div className="platform-link-card"><strong>{text('docs')}</strong><span>{text('available')}</span></div>
       </div>
     </Panel>
@@ -144,7 +157,7 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
       {catalog.status === 'ready' && targetItems.length > 0 && <div className="developer-target-grid">{targetItems.map((item) => {
         const id = recordText(item, ['target_id', 'id']);
         const openapi = recordText(item, ['openapi_url', 'openapiUrl']);
-        return <article key={id}><header><strong>{recordText(item, ['display_name', 'name'], id)}</strong><span>{recordText(item, ['availability', 'status'], text('unknown'))}</span></header><p>{recordText(item, ['description']) || text('descriptionMissing')}</p><div className="platform-action-row">{openapi ? <a className="platform-button" href={openapi} target="_blank" rel="noreferrer">OpenAPI</a> : <button className="platform-button" type="button" disabled>{text('openApiMissing')}</button>}</div></article>;
+        return <article key={id}><header><strong>{recordText(item, ['display_name', 'name'], id)}</strong><span>{statusLabel(recordText(item, ['availability', 'status']))}</span></header><p>{recordText(item, ['description']) || text('descriptionMissing')}</p><div className="platform-action-row">{openapi ? <a className="platform-button" href={openapi} target="_blank" rel="noreferrer">{text('openApi')}</a> : <button className="platform-button" type="button" disabled>{text('openApiMissing')}</button>}</div></article>;
       })}</div>}
     </Panel>
 
@@ -170,7 +183,7 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             <div><dt>{text('target')}</dt><dd>{recordText(item, ['target_id', 'target'], '—')}</dd></div>
             <div><dt>{text('environment')}</dt><dd>{recordText(item, ['environment'], '—')}</dd></div>
             <div><dt>{text('scope')}</dt><dd>{scopes.join(', ') || '—'}</dd></div>
-            <div><dt>{text('controlStatus')}</dt><dd>{recordText(item, ['control_status', 'controlStatus', 'status'], '—')}</dd></div>
+            <div><dt>{text('controlStatus')}</dt><dd>{statusLabel(recordText(item, ['control_status', 'controlStatus', 'status']))}</dd></div>
             <div><dt>{text('runtimeHold')}</dt><dd>{reasons.map(holdLabel).join(' / ') || text('none')}</dd></div>
             <div><dt>{text('autoResume')}</dt><dd>{textValue(item.auto_resume_after_credit ?? item.autoResumeAfterCredit, '—')}</dd></div>
             <div><dt>{text('lastUsed')}</dt><dd>{recordText(item, ['last_used_at', 'last_used'], '—')}</dd></div>
