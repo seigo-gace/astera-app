@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useAppText } from '../../app-text';
 import { asArray, asRecord, recordText, textValue, type JsonObject } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, EmptyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
@@ -48,6 +49,7 @@ function scopedObject(record: JsonObject, keys: string[]): JsonObject {
 }
 
 export default function DeveloperPage({ route }: { route: RouteMatch }) {
+  const { text } = useAppText();
   const [account] = useResource('/api/account');
   const [credit] = useResource('/api/credit/balance');
   const [catalog] = useResource('/api/developer/catalog');
@@ -66,6 +68,10 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   const targetItems = catalog.status === 'ready' ? asArray(catalog.data, ['targets', 'catalog', 'items']).map(asRecord) : [];
   const keyItems = keys.status === 'ready' ? asArray(keys.data, ['keys', 'items']).map(asRecord) : [];
   const issuableTargets = targetItems.filter(targetCanIssue);
+  const vaultTarget = targetItems.find((item) => {
+    const value = `${recordText(item, ['target_id', 'id'])} ${recordText(item, ['display_name', 'name'])}`.toLowerCase();
+    return value.includes('libral') && value.includes('vault');
+  });
 
   useEffect(() => {
     if (!target && issuableTargets.length) setTarget(recordText(issuableTargets[0], ['target_id', 'id']));
@@ -109,6 +115,15 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
 
   return <ResponsivePageShell route={route} description="Account-linked API Catalog、Key状態、Runtime Hold、Credit、Usageを管理します。Public Key全文は発行直後だけ表示します。">
     {showCreditWarning && <div className="developer-credit-banner" role="status"><div><strong>Developer API Credit警告</strong><span>{creditState || 'Credit状態を確認してください。'}</span></div><a className="platform-button is-primary" href="/account/credit">Creditを追加</a></div>}
+
+    <Panel title={text('navDeveloper')}>
+      <div className="platform-card-grid">
+        <div className="platform-link-card"><strong>{text('developerApi')}</strong><span>{text('developerAvailable')}</span></div>
+        <div className="platform-link-card"><strong>{text('developerWebhook')}</strong><span>{text('developerAvailable')}</span></div>
+        <div className="platform-link-card"><strong>{text('developerVault')}</strong><span>{text('developerVaultDescription')}</span><small>{vaultTarget ? recordText(vaultTarget, ['availability', 'status'], text('developerAvailable')) : text('developerUnavailable')}</small></div>
+        <div className="platform-link-card"><strong>{text('developerDocs')}</strong><span>{text('developerAvailable')}</span></div>
+      </div>
+    </Panel>
 
     <Panel title="Developer Summary">
       {(account.status === 'loading' || credit.status === 'loading') && <BusyState />}
