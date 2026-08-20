@@ -9,7 +9,8 @@ export const APP_TEXT = {
     notificationCredit: 'Credit通知', notificationSystem: 'Asteraからのお知らせ', creditLow: 'Credit残量低下', creditCritical: 'Credit残量が危険域', creditInsufficient: 'Credit不足', creditPurchasePending: '購入処理中', creditCredited: 'Credit反映完了', creditResume: '実行再開可能', updateNotice: 'Astera Update', importantNotice: '重要なお知らせ', notificationChannel: '通知方法', appNotice: 'App内通知', emailNotice: 'Email通知', pushNotice: 'Push通知',
     legalTerms: '利用規約', legalPrivacy: 'プライバシーポリシー', legalCommerce: '特定商取引法表記', contact: '問い合わせ', help: 'Help / FAQ',
     searchTitle: '検索', searchDescription: '保存済みの履歴・Resultを検索します。', searchKeyword: 'キーワード', searchButton: '検索', planCreditTitle: 'プラン / クレジット', planCreditDescription: '契約PlanとCredit残高・購入を一つの入口から確認します。', planLink: 'プランを確認', creditLink: 'クレジットを確認・追加',
-    developerVault: 'Libral Vault API', developerVaultDescription: '暗号化、Vault操作、鍵管理、Permission、Usage / LogをDeveloper Modeから管理します。', developerApi: 'Astera API / API Key', developerWebhook: 'Webhook', developerDocs: 'Developer Documentation',
+    developerVault: 'Libral Vault API', developerVaultDescription: '暗号化、Vault操作、鍵管理、Permission、Usage / LogをDeveloper Modeから管理します。', developerApi: 'Astera API / API Key', developerWebhook: 'Webhook', developerDocs: 'Developer Documentation', developerAvailable: '利用可能', developerUnavailable: 'Catalog未登録',
+    loginConnections: 'ログイン連携', google: 'Google', github: 'GitHub', connected: '連携済み', notConnected: '未連携', link: '連携する', unlink: '連携解除', logout: 'ログアウト', accountDanger: 'アカウント管理', deleteAccount: 'アカウント削除', manageSecurity: 'セキュリティ設定を開く',
   },
   en: {
     navNew: 'New page', navSearch: 'Search', navProjects: 'Projects', navOptions: 'Options', navPlanCredit: 'Plan / Credits', navDeveloper: 'Developer Mode', navHistory: 'History', navAbout: 'What is ASTERA?', navSettings: 'Settings',
@@ -19,7 +20,8 @@ export const APP_TEXT = {
     notificationCredit: 'Credit notifications', notificationSystem: 'Astera notices', creditLow: 'Low credit', creditCritical: 'Credit critical', creditInsufficient: 'Insufficient credit', creditPurchasePending: 'Purchase pending', creditCredited: 'Credits added', creditResume: 'Execution can resume', updateNotice: 'Astera Update', importantNotice: 'Important notice', notificationChannel: 'Channels', appNotice: 'In-app', emailNotice: 'Email', pushNotice: 'Push',
     legalTerms: 'Terms of Service', legalPrivacy: 'Privacy Policy', legalCommerce: 'Commerce disclosure', contact: 'Contact', help: 'Help / FAQ',
     searchTitle: 'Search', searchDescription: 'Search saved history and results.', searchKeyword: 'Keyword', searchButton: 'Search', planCreditTitle: 'Plan / Credits', planCreditDescription: 'Review your plan and credit balance or purchases from one place.', planLink: 'View plan', creditLink: 'View / add credits',
-    developerVault: 'Libral Vault API', developerVaultDescription: 'Manage encryption, vault operations, keys, permissions, usage, and logs from Developer Mode.', developerApi: 'Astera API / API Keys', developerWebhook: 'Webhooks', developerDocs: 'Developer Documentation',
+    developerVault: 'Libral Vault API', developerVaultDescription: 'Manage encryption, vault operations, keys, permissions, usage, and logs from Developer Mode.', developerApi: 'Astera API / API Keys', developerWebhook: 'Webhooks', developerDocs: 'Developer Documentation', developerAvailable: 'Available', developerUnavailable: 'Not in catalog',
+    loginConnections: 'Login connections', google: 'Google', github: 'GitHub', connected: 'Connected', notConnected: 'Not connected', link: 'Connect', unlink: 'Disconnect', logout: 'Log out', accountDanger: 'Account management', deleteAccount: 'Delete account', manageSecurity: 'Open security settings',
   },
 } as const;
 
