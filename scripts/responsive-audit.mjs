@@ -9,6 +9,8 @@ const orientationCss = readFileSync(new URL('../src/orientation-stability.css', 
 const shell = readFileSync(new URL('../src/platform/ResponsivePageShell.tsx', import.meta.url), 'utf8');
 const settingsHome = readFileSync(new URL('../src/features/settings/SettingsHomePage.tsx', import.meta.url), 'utf8');
 const optionSettings = readFileSync(new URL('../src/features/settings/OptionSettingsPage.tsx', import.meta.url), 'utf8');
+const notificationSettings = readFileSync(new URL('../src/platform/canonical-notification-management.tsx', import.meta.url), 'utf8');
+const canonicalPages = readFileSync(new URL('../src/platform/CanonicalPages.tsx', import.meta.url), 'utf8');
 const customerAi = readFileSync(new URL('../public/customer-ai-bubble.js', import.meta.url), 'utf8');
 const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
@@ -66,6 +68,8 @@ check('settings home only owns real app settings', settingsHome.includes('/app/s
 check('data privacy belongs to options', optionSettings.includes('/app/settings/data-privacy') && optionSettings.includes('オプション関連の管理'), 'data/privacy must be reachable from Options');
 check('legacy settings aggregation disabled', !indexHtml.includes('/exterior-all-surfaces.js') && !indexHtml.includes('/canonical-interaction-contract.js'), 'legacy DOM mutation scripts must not rebuild Settings');
 check('global settings portal disabled', !main.includes('CanonicalSettingsExterior'), 'global Settings portal must not concatenate route pages');
+check('notification portal disabled', !main.includes('CanonicalNotificationManagement') && !notificationSettings.includes('createPortal(') && !notificationSettings.includes('MutationObserver'), 'notification settings must render as one routed page, not a portal');
+check('notification route owns one page', canonicalPages.includes("route.id === 'settings-notifications'") && canonicalPages.includes('<NotificationSettingsPage route={route} />'), 'notification route must dispatch directly to NotificationSettingsPage');
 check('official HP AI icon', customerAi.includes("'/assets/astera/ai-guide-robot.svg'") && !customerAi.includes('>✦<') && !customerAi.includes('aca-orbit'), 'customer AI must use the vendored HP robot icon, not the star/orbit mark');
 
 for (const item of checks) console.log(`${item.ok ? 'PASS' : 'FAIL'} ${item.name}`);
