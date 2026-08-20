@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } 
 import { useAppText } from '../app-text';
 import { useVerifiedAccountSession, previewWithoutAuth } from './account-session';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-client';
+import { usePlatformText } from './platform-text';
 import type { RouteMatch } from './route-registry';
 
 const APP_NAV = [
@@ -23,19 +24,21 @@ function Brand() {
   );
 }
 
-export function BusyState({ label = '確認しています…' }: { label?: string }) {
-  return <div className="platform-state" role="status"><span className="platform-spinner" />{label}</div>;
+export function BusyState({ label }: { label?: string }) {
+  const { text } = usePlatformText();
+  return <div className="platform-state" role="status"><span className="platform-spinner" />{label ?? text('checking')}</div>;
 }
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  const { text } = usePlatformText();
   const code = error instanceof ApiError ? error.code : 'UNKNOWN_ERROR';
-  const message = error instanceof Error ? error.message : '処理に失敗しました。';
+  const message = error instanceof Error ? error.message : text('processFailed');
   return (
     <div className="platform-state is-error" role="alert">
-      <strong>処理を完了できませんでした</strong>
+      <strong>{text('processFailedTitle')}</strong>
       <p>{message}</p>
       <code>{code}</code>
-      {onRetry && <button type="button" className="platform-button" onClick={onRetry}>再確認</button>}
+      {onRetry && <button type="button" className="platform-button" onClick={onRetry}>{text('retry')}</button>}
     </div>
   );
 }
@@ -139,13 +142,14 @@ function useSidebarRecent(enabled: boolean): SidebarRecentState {
 
 function CreditMeter({ enabled }: { enabled: boolean }) {
   const credit = useCreditProjection(enabled);
+  const { locale, text } = usePlatformText();
   if (!enabled) return null;
   if (credit.status !== 'ready') {
-    return <div className="platform-credit-layer" aria-live="polite"><div className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? 'Credit残高を確認中' : 'Credit残高を取得できません'}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{credit.status === 'loading' ? '…' : '—'}</strong></div></div>;
+    return <div className="platform-credit-layer" aria-live="polite"><div className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? text('creditLoading') : text('creditUnavailable')}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{credit.status === 'loading' ? '…' : '—'}</strong></div></div>;
   }
   const fill = credit.state === 'depleted' ? 0 : Math.max(3, Math.min(100, (credit.usable / credit.capacity) * 100));
   const meterStyle = { '--credit-fill': `${fill}%` } as CSSProperties;
-  return <div className="platform-credit-layer" aria-live="polite"><div className={`platform-credit-meter is-${credit.state}`} style={meterStyle} role="meter" aria-label={`利用可能Credit ${credit.usable.toLocaleString('ja-JP')}`} aria-valuemin={0} aria-valuemax={credit.capacity} aria-valuenow={credit.usable} title={credit.reserved > 0 ? `予約中 ${credit.reserved.toLocaleString('ja-JP')}` : '利用可能Credit'}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{Math.trunc(credit.usable).toLocaleString('ja-JP')}</strong></div></div>;
+  return <div className="platform-credit-layer" aria-live="polite"><div className={`platform-credit-meter is-${credit.state}`} style={meterStyle} role="meter" aria-label={`${text('usableCredit')} ${credit.usable.toLocaleString(locale)}`} aria-valuemin={0} aria-valuemax={credit.capacity} aria-valuenow={credit.usable} title={credit.reserved > 0 ? `${text('reservedCredit')} ${credit.reserved.toLocaleString(locale)}` : text('usableCredit')}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{Math.trunc(credit.usable).toLocaleString(locale)}</strong></div></div>;
 }
 
 function useSession(required: boolean): SessionState {
@@ -181,52 +185,56 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
   const [menuOpen, setMenuOpen] = useState(false);
   const session = useSession(route.access === 'authenticated');
   const recent = useSidebarRecent(route.access === 'authenticated');
-  const { text } = useAppText();
+  const { text: appText } = useAppText();
+  const { text: platformText, routeTitle } = usePlatformText();
+  const localizedTitle = routeTitle(route.id, route.title);
 
-  useEffect(() => { document.title = `${route.title} | Astera App`; setMenuOpen(false); }, [route.id, route.title]);
-  if (session.status === 'loading') return <BusyState label="AccountとSessionを確認しています…" />;
+  useEffect(() => { document.title = `${localizedTitle} | Astera App`; setMenuOpen(false); }, [localizedTitle, route.id]);
+  if (session.status === 'loading') return <BusyState label={platformText('accountSessionChecking')} />;
   if (session.status === 'error') return <ErrorState error={session.error} onRetry={() => window.location.reload()} />;
 
   const nav = <>
     <Brand />
-    <nav className="platform-nav" aria-label="Astera App navigation">
-      {APP_NAV.map((item) => <a key={item.key} href={item.href} aria-current={route.nav === item.key ? 'page' : undefined} onClick={() => setMenuOpen(false)}><span>{text(item.label)}</span></a>)}
+    <nav className="platform-nav" aria-label={platformText('appNavigation')}>
+      {APP_NAV.map((item) => <a key={item.key} href={item.href} aria-current={route.nav === item.key ? 'page' : undefined} onClick={() => setMenuOpen(false)}><span>{appText(item.label)}</span></a>)}
     </nav>
-    <section className="platform-side-section" aria-label={text('recent')}>
-      <div className="platform-side-section-title">{text('recent')}</div>
+    <section className="platform-side-section" aria-label={appText('recent')}>
+      <div className="platform-side-section-title">{appText('recent')}</div>
       <div className="platform-recent-list">
-        {recent.status === 'loading' && <span className="platform-recent-state">{text('recentLoading')}</span>}
-        {recent.status === 'error' && <a className="platform-recent-state" href="/app/history" onClick={() => setMenuOpen(false)}>{text('openHistory')}</a>}
-        {recent.status === 'ready' && recent.items.length === 0 && <span className="platform-recent-state">{text('recentEmpty')}</span>}
+        {recent.status === 'loading' && <span className="platform-recent-state">{appText('recentLoading')}</span>}
+        {recent.status === 'error' && <a className="platform-recent-state" href="/app/history" onClick={() => setMenuOpen(false)}>{appText('openHistory')}</a>}
+        {recent.status === 'ready' && recent.items.length === 0 && <span className="platform-recent-state">{appText('recentEmpty')}</span>}
         {recent.status === 'ready' && recent.items.map((item) => <a key={item.id} href={item.href} title={item.title} onClick={() => setMenuOpen(false)}><span>{item.title}</span></a>)}
       </div>
     </section>
     <div className="platform-side-meta">
-      <a href="/app/about" onClick={() => setMenuOpen(false)}>{text('navAbout')}</a>
-      <a href="/app/settings" className="exterior-settings-trigger" onClick={() => setMenuOpen(false)}>{text('navSettings')}</a>
+      <a href="/app/about" onClick={() => setMenuOpen(false)}>{appText('navAbout')}</a>
+      <a href="/app/settings" className="exterior-settings-trigger" onClick={() => setMenuOpen(false)}>{appText('navSettings')}</a>
     </div>
   </>;
 
   return <div className={`platform-shell${fullWidth ? ' is-full-width' : ''}`}>
     <CreditMeter enabled={route.access === 'authenticated'} />
     <header className="platform-mobile-header">
-      <button type="button" className="platform-menu-button" aria-expanded={menuOpen} aria-controls="platform-mobile-drawer" aria-label={text('openMenu')} onClick={() => setMenuOpen((value) => !value)}><span aria-hidden="true">☰</span><span className="sr-only">{text('openMenu')}</span></button>
+      <button type="button" className="platform-menu-button" aria-expanded={menuOpen} aria-controls="platform-mobile-drawer" aria-label={appText('openMenu')} onClick={() => setMenuOpen((value) => !value)}><span aria-hidden="true">☰</span><span className="sr-only">{appText('openMenu')}</span></button>
       <span className="platform-mobile-header-center" aria-hidden="true" />
       <span className="platform-mobile-account-actions">
-        <button className="platform-header-account platform-header-ai" type="button" onClick={openGuideAi} aria-label={text('openGuideAi')}><img src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true" /></button>
-        <a className="platform-header-account" href="/account" aria-label={text('account')}>◎</a>
+        <button className="platform-header-account platform-header-ai" type="button" onClick={openGuideAi} aria-label={appText('openGuideAi')}><img src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true" /></button>
+        <a className="platform-header-account" href="/account" aria-label={appText('account')}>◎</a>
       </span>
     </header>
     <aside className="platform-sidebar">{nav}</aside>
-    {menuOpen && <><button className="platform-backdrop" aria-label={text('closeMenu')} type="button" onClick={() => setMenuOpen(false)} /><aside id="platform-mobile-drawer" className="platform-mobile-drawer">{nav}</aside></>}
+    {menuOpen && <><button className="platform-backdrop" aria-label={appText('closeMenu')} type="button" onClick={() => setMenuOpen(false)} /><aside id="platform-mobile-drawer" className="platform-mobile-drawer">{nav}</aside></>}
     <main className="platform-main">
-      <section className="platform-page-head"><div><div className="platform-eyebrow">{eyebrow ?? route.group.toUpperCase()}</div><h1>{route.title}</h1>{description && <p>{description}</p>}</div>{actions && <div className="platform-head-actions">{actions}</div>}</section>
+      <section className="platform-page-head"><div><div className="platform-eyebrow">{eyebrow ?? route.group.toUpperCase()}</div><h1>{localizedTitle}</h1>{description && <p>{description}</p>}</div>{actions && <div className="platform-head-actions">{actions}</div>}</section>
       <div className="platform-page-content">{children}</div>
     </main>
   </div>;
 }
 
 export function PublicPageFrame({ route, children, description, actions }: { route: RouteMatch; children: ReactNode; description?: string; actions?: ReactNode }) {
-  useEffect(() => { document.title = `${route.title} | Astera App`; }, [route.title]);
-  return <main className="platform-public-page"><header className="platform-public-header"><Brand /><nav><a href="/pricing">料金</a><a href="/login">Login</a><a href="/register">登録</a></nav></header><section className="platform-public-hero"><div className="platform-eyebrow">ASTERA APP</div><h1>{route.title}</h1>{description && <p>{description}</p>}{actions && <div className="platform-head-actions">{actions}</div>}</section><div className="platform-public-content">{children}</div></main>;
+  const { text, routeTitle } = usePlatformText();
+  const localizedTitle = routeTitle(route.id, route.title);
+  useEffect(() => { document.title = `${localizedTitle} | Astera App`; }, [localizedTitle]);
+  return <main className="platform-public-page"><header className="platform-public-header"><Brand /><nav><a href="/pricing">{text('publicPricing')}</a><a href="/login">{text('publicLogin')}</a><a href="/register">{text('publicRegister')}</a></nav></header><section className="platform-public-hero"><div className="platform-eyebrow">ASTERA APP</div><h1>{localizedTitle}</h1>{description && <p>{description}</p>}{actions && <div className="platform-head-actions">{actions}</div>}</section><div className="platform-public-content">{children}</div></main>;
 }
