@@ -10,8 +10,7 @@
   root.setAttribute('aria-label', 'Astera 総合案内AI');
   root.innerHTML = `
     <button class="aca-launcher" type="button" aria-expanded="false" aria-controls="aca-panel" title="総合案内AIを開く">
-      <span class="aca-orbit" aria-hidden="true"></span>
-      <span class="aca-mark" aria-hidden="true">✦</span>
+      <img class="aca-guide-icon" src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true">
       <span class="aca-launcher-label">案内AI</span>
     </button>
     <div class="aca-panel" id="aca-panel" aria-hidden="true">
@@ -115,9 +114,6 @@
       input.focus();
     }
   });
-
-  // Canonical exterior rule: the launcher stays fixed beside the top-left
-  // navigation control. Dragging is intentionally disabled.
 
   window.AsteraCustomerAIUI = Object.assign(window.AsteraCustomerAIUI || {}, { open, close, root });
 })();
