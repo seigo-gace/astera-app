@@ -20,6 +20,9 @@ import {
   createRuntimeJob,
   type RuntimeEnv,
 } from '../../_runtime';
+import {
+  validateCreditReservationBeforeInsert,
+} from '../../_credit-reservation-validation';
 
 type Env = AsteraFunctionEnv & RuntimeEnv;
 type PagesContext = { request: Request; env: Env };
@@ -171,6 +174,17 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     };
 
     try {
+      await validateCreditReservationBeforeInsert(
+        context.env.ASTERA_DB,
+        {
+          creditAccountId: actor.credit.id,
+          estimatedAmount: Number(estimate.required_credits),
+          status: 'reserved',
+          expiresAt: reservationExpiresAt,
+        },
+        actor.credit.id,
+      );
+
       await context.env.ASTERA_DB.batch([
         context.env.ASTERA_DB.prepare(
           `INSERT INTO credit_reservations

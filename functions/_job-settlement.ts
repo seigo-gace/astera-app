@@ -2,6 +2,10 @@ import {
   FunctionHttpError,
   type AsteraFunctionEnv,
 } from './_account-projection';
+import {
+  validateCreditReservationCommitTransition,
+  validateCreditReservationReleaseTransition,
+} from './_credit-reservation-validation';
 import type { RuntimeJobEnvelope } from './_runtime';
 
 const RESULT_KEYS = [
@@ -167,6 +171,7 @@ export async function settleCompletedJob(
   if (!runtime.result) throw new FunctionHttpError(502, 'ASTERA_RUNTIME_RESULT_MISSING', 'RuntimeがCompletedを返しましたがResultがありません。');
   const normalized = normalizeRuntimeResult(runtime.result, job.id);
   const { committed, exceeded } = actualCredits(runtime, Number(job.reserved_credits));
+  validateCreditReservationCommitTransition('reserved', 'committed', Number(job.reserved_credits), committed);
   const completionState = exceeded || normalized.completion_state === 'partial' ? 'partially_completed' : 'completed';
   if (exceeded) normalized.warnings.push('Runtime usage exceeded the reservation. Billing was capped at the confirmed reservation.');
   const now = new Date().toISOString();
@@ -243,6 +248,7 @@ export async function releaseFailedJob(
   correlationId: string,
 ): Promise<JobRow> {
   if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(job.state)) return job;
+  validateCreditReservationReleaseTransition('reserved', 'released');
   const now = new Date().toISOString();
   await env.ASTERA_DB.batch([
     env.ASTERA_DB.prepare(
