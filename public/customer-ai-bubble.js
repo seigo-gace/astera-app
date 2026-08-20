@@ -5,7 +5,7 @@
   if (!transport || document.getElementById('astera-customer-ai')) return;
 
   // Exact AI guide icon used by the Astera HP. Do not substitute or generate another mark.
-  const HP_AI_ICON = 'https://raw.githubusercontent.com/seigo-gace/astera-hp/main/assets/icons/ai-guide-robot.svg';
+  const HP_AI_ICON = '/assets/astera/ai-guide-robot.svg';
 
   const root = document.createElement('section');
   root.id = 'astera-customer-ai';
