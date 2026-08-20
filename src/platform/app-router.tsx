@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import CheckoutPage from '../features/checkout/CheckoutPage';
-import CanonicalComposerPage from '../features/composer/CanonicalComposerPage';
+import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
 import { ApiError, apiRequest, asRecord, recordText } from './api-client';
@@ -8,6 +8,7 @@ import { CanonicalPage } from './CanonicalPages';
 import { BusyState, ErrorState } from './ResponsivePageShell';
 import { matchCanonicalRoute } from './route-registry';
 import './platform.css';
+import './platform-canonical-overrides.css';
 
 type GateState =
   | { status: 'loading' }
@@ -108,11 +109,10 @@ export default function AppRouter() {
   if (route.id === 'root') return <RootRedirect />;
   if (route.id === 'pricing') return <PricingPage />;
 
-  // Checkout owns an inline Login/Register gate so the selected plan and return context remain visible.
   if (route.id === 'account-checkout') return <CheckoutPage />;
 
   if (route.id === 'app' || route.id === 'new-run') {
-    return <AccountSessionGate><CanonicalComposerPage route={route} /></AccountSessionGate>;
+    return <AccountSessionGate><NativeComposerPage route={route} /></AccountSessionGate>;
   }
 
   const page = <CanonicalPage route={route} />;

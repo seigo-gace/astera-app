@@ -40,7 +40,16 @@ body,
 .platform-public-page,
 .platform-public-header,
 .platform-public-content,
-.checkout-page {
+.checkout-page,
+.native-composer-workspace,
+.native-timeline,
+.native-timeline-inner,
+.native-turn,
+.native-response,
+.native-result-sections,
+.native-result-section,
+.native-composer-dock,
+.native-composer {
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -49,7 +58,9 @@ body,
 .app-shell,
 .platform-shell,
 .platform-public-page,
-.checkout-page {
+.checkout-page,
+.native-composer-workspace,
+.native-timeline {
   overflow-x: hidden;
 }
 
@@ -57,7 +68,8 @@ body,
   .app-shell,
   .platform-shell,
   .platform-public-page,
-  .checkout-page {
+  .checkout-page,
+  .native-composer-workspace {
     overflow-x: clip;
   }
 }
@@ -95,7 +107,26 @@ body,
 .option-card,
 .user-message,
 .turn,
-.turn-meta {
+.turn-meta,
+.native-user-message,
+.native-user-message-trigger,
+.native-message-chips,
+.native-processing,
+.native-error,
+.native-response,
+.native-result-heading,
+.native-result-section,
+.native-composer-actions,
+.native-left-tools,
+.native-right-tools,
+.native-selected-chips,
+.native-file-queue,
+.native-picker,
+.native-picker-body,
+.native-confirm-sheet,
+.native-confirm-sheet dl,
+.native-sheet-actions,
+.native-fullscreen {
   min-width: 0;
   max-width: 100%;
 }
@@ -114,18 +145,26 @@ body,
 .select-row > *,
 .setting-row > *,
 .template-card > *,
-.option-card > * {
+.option-card > *,
+.native-processing > *,
+.native-error > *,
+.native-result-heading > *,
+.native-composer-actions > * {
   min-width: 0;
 }
 
-.selection-row {
+.selection-row,
+.native-selected-chips,
+.native-message-chips {
   max-width: 100%;
   flex-wrap: wrap;
   overflow-x: visible;
   overscroll-behavior-x: none;
 }
 
-.selection-chip {
+.selection-chip,
+.native-selected-chips span,
+.native-message-chips span {
   max-width: min(300px, 100%);
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -148,7 +187,9 @@ body,
 
 .mobile-backdrop,
 .platform-backdrop,
-.dialog-overlay {
+.dialog-overlay,
+.native-picker-backdrop,
+.native-sheet-backdrop {
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -161,9 +202,18 @@ body,
 
 .dialog-content,
 .settings-dialog,
-.fullscreen-dialog {
+.fullscreen-dialog,
+.native-picker,
+.native-confirm-sheet,
+.native-fullscreen {
   max-width: calc(100% - 16px);
   overflow-x: hidden;
+}
+
+.native-picker-backdrop .native-picker,
+.native-sheet-backdrop .native-confirm-sheet,
+.native-fullscreen {
+  max-width: 100%;
 }
 
 .toast {
@@ -188,7 +238,17 @@ body,
 .info-panel-body,
 .menu-note,
 .credit-summary,
-.dialog-notice {
+.dialog-notice,
+.native-timeline-inner,
+.native-user-message,
+.native-result-section,
+.native-result-section p,
+.native-result-section small,
+.native-processing,
+.native-error,
+.native-notice,
+.native-picker,
+.native-confirm-sheet {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -232,11 +292,15 @@ iframe {
   .platform-page-head,
   .platform-panel > header,
   .dialog-heading,
-  .fullscreen-actions {
+  .fullscreen-actions,
+  .native-composer-actions,
+  .native-result-heading {
     max-width: 100%;
   }
 
-  .select-row select {
+  .select-row select,
+  .native-picker select,
+  .native-picker input {
     min-width: 0;
     max-width: 100%;
   }
@@ -251,7 +315,14 @@ iframe {
   .toast,
   .dialog-content,
   .settings-dialog,
-  .fullscreen-dialog {
+  .fullscreen-dialog,
+  .native-picker,
+  .native-confirm-sheet {
     max-width: calc(100% - 12px);
+  }
+
+  .native-picker-backdrop .native-picker,
+  .native-sheet-backdrop .native-confirm-sheet {
+    max-width: 100%;
   }
 }

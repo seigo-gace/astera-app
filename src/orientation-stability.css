@@ -17,7 +17,14 @@ html.astera-rotating .platform-mobile-drawer,
 html.astera-rotating .platform-backdrop,
 html.astera-rotating .dialog-content,
 html.astera-rotating .fullscreen-dialog,
-html.astera-rotating .toast {
+html.astera-rotating .toast,
+html.astera-rotating .native-composer-workspace,
+html.astera-rotating .native-timeline,
+html.astera-rotating .native-composer-dock,
+html.astera-rotating .native-composer,
+html.astera-rotating .native-picker,
+html.astera-rotating .native-confirm-sheet,
+html.astera-rotating .native-fullscreen {
   transition: none !important;
   scroll-behavior: auto !important;
 }
@@ -37,7 +44,8 @@ html[data-astera-orientation='landscape'] .platform-public-header {
   padding-right: max(12px, env(safe-area-inset-right, 0px));
 }
 
-html[data-astera-orientation='landscape'] .composer-wrap {
+html[data-astera-orientation='landscape'] .composer-wrap,
+html[data-astera-orientation='landscape'] .native-composer-dock {
   padding-left: max(9px, env(safe-area-inset-left, 0px));
   padding-right: max(9px, env(safe-area-inset-right, 0px));
 }
@@ -59,18 +67,22 @@ html[data-astera-orientation='landscape'].astera-short-viewport .app-shell.sideb
   grid-template-rows: 52px minmax(0, 1fr);
 }
 
-html[data-astera-orientation='landscape'].astera-short-viewport .composer textarea {
+html[data-astera-orientation='landscape'].astera-short-viewport .composer textarea,
+html[data-astera-orientation='landscape'].astera-short-viewport .native-composer textarea {
   max-height: 88px;
 }
 
 html[data-astera-orientation='landscape'].astera-short-viewport .dialog-content,
-html[data-astera-orientation='landscape'].astera-short-viewport .fullscreen-dialog {
+html[data-astera-orientation='landscape'].astera-short-viewport .fullscreen-dialog,
+html[data-astera-orientation='landscape'].astera-short-viewport .native-picker,
+html[data-astera-orientation='landscape'].astera-short-viewport .native-confirm-sheet {
   max-height: calc(var(--app-viewport-height, 100vh) - 8px);
 }
 
 html[data-astera-orientation='landscape'].astera-short-viewport .platform-page-head,
 html[data-astera-orientation='landscape'].astera-short-viewport .platform-public-hero,
-html[data-astera-orientation='landscape'].astera-short-viewport .welcome-panel {
+html[data-astera-orientation='landscape'].astera-short-viewport .welcome-panel,
+html[data-astera-orientation='landscape'].astera-short-viewport .native-empty-state {
   min-height: 0;
 }
 
@@ -79,7 +91,11 @@ html[data-astera-orientation='landscape'].astera-short-viewport .welcome-panel {
   html.astera-rotating .main-column,
   html.astera-rotating .platform-shell,
   html.astera-rotating .dialog-content,
-  html.astera-rotating .fullscreen-dialog {
+  html.astera-rotating .fullscreen-dialog,
+  html.astera-rotating .native-composer-workspace,
+  html.astera-rotating .native-picker,
+  html.astera-rotating .native-confirm-sheet,
+  html.astera-rotating .native-fullscreen {
     animation: none !important;
   }
 }

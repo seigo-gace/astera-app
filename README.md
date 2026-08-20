@@ -132,6 +132,24 @@ Account
 
 `/`は`/app/new`へ解決します。未知Pathを汎用Appへ流す旧Fallbackは禁止し、明示的なNot Foundへ送ります。
 
+## Native GPT Workspace（/app /app/new）
+
+正式入口は `src/features/composer/NativeComposerPage.tsx` です。`CanonicalComposerPage` は残置しますが **メイン入口では使いません**。
+
+実行フロー：
+
+```text
+/api/jobs/estimate → Credit確認 → POST /api/jobs → GET /api/jobs/:id（poll）→ Result 8項目
+```
+
+Result 固定8項目：`true_purpose`, `missing_assumptions`, `fact_check`, `risk_detection`, `counter_view`, `alternatives`, `recommendation`, `next_prompt`
+
+UI：Desktop＝Sidebar + Timeline/Result + 下部固定 Composer／Tablet＝Drawer Sidebar／Mobile＝Top Bar + Bottom Sheet Composer。横スクロール禁止・Safe Area・Touch 44px+・Keyboard（visual viewport / 100dvh）。
+
+Revision：直前完了 Job から再実行するとき `revision_of_job_id` と `revision_base_prompt` を estimate/jobs payload にそのまま載せる（Frontend で billable 文字数を計算しない）。`revision-credit-bridge` は payload に既存 revision フィールドがある場合は削除・上書きしない。
+
+デザイン：Light＝白背景／Dark＝黒背景。Accent＝Blue/Cyan（`--accent: #0ea5e9` / `#38bdf8`）。Copper/Gold（`#d3a15f`）は native workspace では使わない。`html[data-theme="system"]` + light/dark 両方の theme-color。
+
 ## 全端末共通Architecture
 
 ```text
@@ -146,7 +164,7 @@ index.html
       └─ platform/app-router.tsx
           ├─ route-registry.ts
           ├─ API / Session Guard
-          ├─ Existing App execution UI
+          ├─ NativeComposerPage（/app /app/new 正式入口）
           ├─ Existing Pricing / Checkout
           └─ Canonical dedicated pages
               ├─ Auth
@@ -560,6 +578,7 @@ Release 阻害・未取得リストに加え、Staging 切り分けで判明し�
 
 ### Client / Mobile / CI（既存どおり）
 
+- Native Composer の **実機 Keyboard / visual viewport 最終目視は確認待ち**
 - Android／iOS 実機・Store 提出 **未実施**
 - GitHub Actions 実 Run／Log／Artifact **未取得**
 - WebKit／Chromium Matrix 実結果 **未取得**

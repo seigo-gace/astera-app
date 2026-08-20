@@ -125,6 +125,23 @@ function clearRevisionFields(payload: Record<string, unknown>): void {
   delete payload.revisionBasePrompt;
 }
 
+function hasRevisionFields(payload: Record<string, unknown>): boolean {
+  return Boolean(
+    text(payload.revision_of_job_id)
+    || text(payload.revisionOfJobId)
+    || text(payload.revision_base_prompt)
+    || text(payload.revisionBasePrompt),
+  );
+}
+
+function normalizeRevisionFields(payload: Record<string, unknown>): void {
+  const jobId = text(payload.revision_of_job_id) || text(payload.revisionOfJobId);
+  const basePrompt = text(payload.revision_base_prompt) || text(payload.revisionBasePrompt);
+  clearRevisionFields(payload);
+  if (jobId) payload.revision_of_job_id = jobId;
+  if (basePrompt) payload.revision_base_prompt = basePrompt;
+}
+
 function revisionContextFor(prompt: string, privateMode: boolean): RevisionBaseline | null {
   if (!revisionArmed || !baseline) return null;
   if (privateMode !== baseline.privateMode) return null;
@@ -133,6 +150,10 @@ function revisionContextFor(prompt: string, privateMode: boolean): RevisionBasel
 }
 
 function attachRevision(payload: Record<string, unknown>, context: RevisionBaseline | null): void {
+  if (hasRevisionFields(payload)) {
+    normalizeRevisionFields(payload);
+    return;
+  }
   clearRevisionFields(payload);
   if (!context) return;
   payload.revision_of_job_id = context.jobId;
