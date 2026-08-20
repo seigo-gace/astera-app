@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import CheckoutPage from '../features/checkout/CheckoutPage';
 import CanonicalComposerPage from '../features/composer/CanonicalComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
-import { AccountSessionProvider, type AccountSessionProjection } from './account-session';
+import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
 import { ApiError, apiRequest, asRecord, recordText } from './api-client';
 import { CanonicalPage } from './CanonicalPages';
 import { BusyState, ErrorState } from './ResponsivePageShell';
@@ -36,6 +36,13 @@ function accountContinuation(payload: unknown, returnTo: string): string | null 
 }
 
 function AccountSessionGate({ children }: { children: ReactNode }) {
+  if (previewWithoutAuth()) {
+    return <AccountSessionProvider value={PREVIEW_ACCOUNT_SESSION}>{children}</AccountSessionProvider>;
+  }
+  return <AccountSessionGateLive>{children}</AccountSessionGateLive>;
+}
+
+function AccountSessionGateLive({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
 

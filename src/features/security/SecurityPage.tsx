@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from '../../platform/api-client';
+import { previewWithoutAuth } from '../../platform/account-session';
 import { authClient, authErrorMessage } from '../../platform/auth-client';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import type { RouteMatch } from '../../platform/route-registry';
@@ -46,7 +47,8 @@ function normalizePasskeys(payload: unknown): PasskeyRecord[] {
 }
 
 export default function SecurityPage({ route }: { route: RouteMatch }) {
-  const [loading, setLoading] = useState(true);
+  const previewMode = previewWithoutAuth();
+  const [loading, setLoading] = useState(!previewMode);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [security, setSecurity] = useState<AccountSecurity>({ twoFactorEnabled: false, sessionId: '', sessionExpiresAt: '' });
   const [passkeys, setPasskeys] = useState<PasskeyRecord[]>([]);
@@ -55,6 +57,13 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
 
   const reload = useCallback(async () => {
+    if (previewWithoutAuth()) {
+      setSecurity({ twoFactorEnabled: false, sessionId: '', sessionExpiresAt: '' });
+      setPasskeys([]);
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     try {
@@ -82,6 +91,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const addPasskey = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (previewMode) return;
     const data = new FormData(event.currentTarget);
     const name = String(data.get('name') ?? '').trim();
     setFeedback({ type: 'working' });
@@ -99,6 +109,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   };
 
   const deletePasskey = async (id: string) => {
+    if (previewMode) return;
     setFeedback({ type: 'working' });
     try {
       betterAuthResult(await authClient.passkey.deletePasskey({ id }), 'Passkeyを削除できませんでした。');
@@ -111,6 +122,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const enableTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (previewMode) return;
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' });
     setBackupCodes([]);
@@ -130,6 +142,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const verifyTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (previewMode) return;
     const code = String(new FormData(event.currentTarget).get('code') ?? '').replace(/\s/g, '');
     setFeedback({ type: 'working' });
     try {
@@ -146,6 +159,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const disableTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (previewMode) return;
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' });
     try {
@@ -162,6 +176,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const regenerateBackupCodes = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (previewMode) return;
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' });
     try {
@@ -202,16 +217,16 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
         <div className="security-panel-head"><div><h2>Passkey</h2><p>端末の生体認証、PIN、Security Keyを利用できます。</p></div><span>{passkeys.length}件</span></div>
         <form className="security-inline-form" onSubmit={addPasskey}>
           <label><span>表示名（任意）</span><input name="name" maxLength={80} placeholder="例: Pixel Passkey" /></label>
-          <button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working'}>この端末へ追加</button>
+          <button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>この端末へ追加</button>
         </form>
-        {passkeys.length === 0 ? <p className="security-empty">登録済みPasskeyはありません。</p> : <ul className="security-list">{passkeys.map((passkey) => <li key={passkey.id}><div><strong>{passkey.name}</strong><span>{passkey.deviceType} / {passkey.backedUp ? '同期済み' : '端末保存'}</span><small>{passkey.createdAt || passkey.id}</small></div><button className="platform-button" type="button" onClick={() => void deletePasskey(passkey.id)} disabled={feedback.type === 'working'}>削除</button></li>)}</ul>}
+        {passkeys.length === 0 ? <p className="security-empty">登録済みPasskeyはありません。</p> : <ul className="security-list">{passkeys.map((passkey) => <li key={passkey.id}><div><strong>{passkey.name}</strong><span>{passkey.deviceType} / {passkey.backedUp ? '同期済み' : '端末保存'}</span><small>{passkey.createdAt || passkey.id}</small></div><button className="platform-button" type="button" onClick={() => void deletePasskey(passkey.id)} disabled={feedback.type === 'working' || previewMode}>削除</button></li>)}</ul>}
       </section>
 
       <section className="security-panel">
         <div className="security-panel-head"><div><h2>2段階認証</h2><p>AuthenticatorのTOTPと一度だけ使えるBackup Codeを使用します。</p></div><span className={security.twoFactorEnabled ? 'is-enabled' : ''}>{security.twoFactorEnabled ? '有効' : '無効'}</span></div>
-        {!security.twoFactorEnabled && !enrollment && <form className="security-inline-form" onSubmit={enableTwoFactor}><label><span>現在のPassword</span><input name="password" type="password" autoComplete="current-password" required /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working'}>2FA設定を開始</button></form>}
-        {enrollment && <div className="security-enrollment"><h3>Authenticator登録</h3><p>次の`otpauth://` URIをAuthenticatorへ登録し、6桁Codeを入力してください。</p><code>{enrollment.totpURI}</code><button type="button" className="platform-button" onClick={() => void copySecret(enrollment.totpURI, 'TOTP URIをコピーしました。')}>URIをコピー</button><form className="security-inline-form" onSubmit={verifyTwoFactor}><label><span>6桁Code</span><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,8}" required /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working'}>確認して有効化</button></form></div>}
-        {security.twoFactorEnabled && <div className="security-two-factor-actions"><form className="security-inline-form" onSubmit={regenerateBackupCodes}><label><span>Backup Code再発行用Password</span><input name="password" type="password" autoComplete="current-password" required /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working'}>Backup Codeを再発行</button></form><form className="security-inline-form is-danger" onSubmit={disableTwoFactor}><label><span>2FA無効化用Password</span><input name="password" type="password" autoComplete="current-password" required /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working'}>2FAを無効化</button></form></div>}
+        {!security.twoFactorEnabled && !enrollment && <form className="security-inline-form" onSubmit={enableTwoFactor}><label><span>現在のPassword</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>2FA設定を開始</button></form>}
+        {enrollment && <div className="security-enrollment"><h3>Authenticator登録</h3><p>次の`otpauth://` URIをAuthenticatorへ登録し、6桁Codeを入力してください。</p><code>{enrollment.totpURI}</code><button type="button" className="platform-button" onClick={() => void copySecret(enrollment.totpURI, 'TOTP URIをコピーしました。')}>URIをコピー</button><form className="security-inline-form" onSubmit={verifyTwoFactor}><label><span>6桁Code</span><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,8}" required disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>確認して有効化</button></form></div>}
+        {security.twoFactorEnabled && <div className="security-two-factor-actions"><form className="security-inline-form" onSubmit={regenerateBackupCodes}><label><span>Backup Code再発行用Password</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>Backup Codeを再発行</button></form><form className="security-inline-form is-danger" onSubmit={disableTwoFactor}><label><span>2FA無効化用Password</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>2FAを無効化</button></form></div>}
       </section>
 
       {backupCodes.length > 0 && <section className="security-panel security-backup-codes"><div className="security-panel-head"><div><h2>Backup Code</h2><p>この表示を閉じると再表示しません。安全な場所へ保存してください。</p></div><button type="button" className="platform-button" onClick={() => void copySecret(backupCodes.join('\n'), 'Backup Codeをコピーしました。')}>全てコピー</button></div><ol>{backupCodes.map((code) => <li key={code}><code>{code}</code></li>)}</ol><button type="button" className="platform-button" onClick={() => setBackupCodes([])}>保存したので閉じる</button></section>}

@@ -43,12 +43,14 @@ Android・iOS・Tablet用に別UIを複製しません。画面、状態、API�
 | `GET /api/status` | `operational` |
 | `GET /health` | `ok` |
 | `GET /api/account`（未ログイン） | `401` `SESSION_REQUIRED`（正常） |
-| 認証必須画面 | `/login?return_to=...` へリダイレクト |
+| 認証必須画面（通常） | `/login?return_to=...` へリダイレクト |
+| Staging UI preview | `.env` で `VITE_PREVIEW_WITHOUT_AUTH=true` をビルドに含めると、43 Route を **ログインなしで UI 閲覧可**（`AccountSessionGate` は `/api/account` を叩かない）。**API は 401 のまま**（成功に偽装しない） |
 
 デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
 
 ```bash
 cd /home/admin1/projects/astera-app
+# staging UI preview 用（gitignore の .env に VITE_PREVIEW_WITHOUT_AUTH=true）
 npm run build
 npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
 ```
@@ -211,6 +213,17 @@ Small   : 360px以下
 クライアント向け `VITE_BETTER_AUTH_URL` / `VITE_APP_URL` は `.env` に追加済み（gitignore）。`src/platform/api-client.ts` の `resolvedApiBase()` も同様に、相対 `/api` は same-origin として空文字扱いし、パスは `/api/...` を維持します（`/api/api/...` 二重化を防ぐ）。
 
 Google／GitHub OAuthのProvider Passwordを取得・流用しません。Social初回はAstera専用Password設定Routeへ接続します。
+
+### Staging UI preview（ログインなし閲覧）
+
+`VITE_PREVIEW_WITHOUT_AUTH=true` のときのみ（production 既定は `false`）：
+
+- `AccountSessionGate` は `/api/account` を呼ばず `PREVIEW_ACCOUNT_SESSION`（displayName: Preview）で即 ready
+- `/login?return_to=...` へ replace しない → **authenticated Route の UI をログインなしで開ける**（43 Route 目視用）
+- `ResponsivePageShell` / `SecurityPage` も preview 時は login redirect・全画面 ErrorState を避ける（Security の mutation は disabled／no-op）
+- **Backend API は未ログインのまま 401 `SESSION_REQUIRED`**。Frontend は API 成功を偽装しない
+
+フラグは `.env`（gitignore）で staging ビルドにのみ設定。`.env.example` は `false`。
 
 ## API接続方針
 
@@ -534,14 +547,15 @@ Release 阻害・未取得リストに加え、Staging 切り分けで判明し�
 
 ### Staging 運用・表示
 
+- 「ログイン必須のため他画面が見れない」問題は **`VITE_PREVIEW_WITHOUT_AUTH=true` の staging ビルドで UI 閲覧可**（API 401 は維持）
 - Zone キャッシュ全パージは API トークン権限不足で CLI から失敗しうる（Dashboard 手動 purge が必要な場合あり）
-- Cloudflare Pages **全 Route** の実ブラウザ表示は、`/`・`/app/new` と API 数本以外 **未確認**
-- ブラウザ確認（BetterAuthError 消滅・`#root` に UI 描画・Login リダイレクト）は **デプロイ済みだが作業者最終目視は確認待ち**（README では断定しない）
+- Cloudflare Pages **全 Route** の実ブラウザ表示は preview フラグ導入後も **目視確認待ち**
+- ブラウザ確認（BetterAuthError 消滅・`#root` に UI 描画）は **デプロイ済みだが作業者最終目視は確認待ち**（README では断定しない）
 - `public/customer-ai-bubble.js` は React 非依存。本体 JS が落ちても ✦ ランチャーだけ見える。**切り分け用であり完成 UI ではない**
 
 ### Auth / Billing（実動作）
 
-- Email／Passkey／Google／GitHub OAuth／2FA の End-to-End 実動作 **未確認**
+- Email／Passkey／Google／GitHub OAuth／2FA の End-to-End 実動作 **未確認**（preview モードは UI のみ。Security mutation は無効）
 - Square Checkout 復帰フロー **未確認**
 
 ### Client / Mobile / CI（既存どおり）

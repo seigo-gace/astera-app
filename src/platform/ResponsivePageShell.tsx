@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { useVerifiedAccountSession } from './account-session';
+import { useVerifiedAccountSession, previewWithoutAuth } from './account-session';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-client';
 import type { RouteMatch } from './route-registry';
 
@@ -214,10 +214,15 @@ function CreditMeter({ enabled }: { enabled: boolean }) {
 
 function useSession(required: boolean): SessionState {
   const verified = useVerifiedAccountSession();
-  const [state, setState] = useState<SessionState>(required && !verified ? { status: 'loading' } : { status: 'ready', displayName: verified?.displayName ?? '' });
+  const preview = previewWithoutAuth();
+  const [state, setState] = useState<SessionState>(
+    preview || !required || verified
+      ? { status: 'ready', displayName: verified?.displayName ?? (preview ? 'Preview' : '') }
+      : { status: 'loading' },
+  );
 
   useEffect(() => {
-    if (!required || verified) return;
+    if (preview || !required || verified) return;
     const controller = new AbortController();
     apiRequest('/api/account', { signal: controller.signal })
       .then((payload) => {
@@ -237,9 +242,13 @@ function useSession(required: boolean): SessionState {
         if (!controller.signal.aborted) setState({ status: 'error', error });
       });
     return () => controller.abort();
-  }, [required, verified]);
+  }, [required, verified, preview]);
 
-  return verified ? { status: 'ready', displayName: verified.displayName } : state;
+  if (preview || verified) {
+    return { status: 'ready', displayName: verified?.displayName ?? 'Preview' };
+  }
+
+  return state;
 }
 
 export function ResponsivePageShell({
