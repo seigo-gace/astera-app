@@ -11,7 +11,7 @@ const OPTION_DEFS: ReadonlyArray<{ key: OptionKey; label: string; description: s
   { key: 'translation', label: '高精度翻訳', description: '本文を翻訳する実行オプションです。要約・改善・校正・再構成は追加せず、翻訳先は入力欄の「@」から選びます。' },
   { key: 'agent_mode', label: 'エージェントモード', description: '実行ごとに低／中／高を選ぶオプションです。ここでは候補へ表示するかだけを設定します。' },
   { key: 'document', label: '書類作成', description: 'Astera公式テンプレート／個別テンプレートを使う書類作成オプションです。具体的なテンプレートは「@」から選びます。' },
-  { key: 'storage_transfer', label: '外部ストレージ転送', description: '接続済みの利用者ストレージへ成果物を転送します。転送先は「@」から選びます。' },
+  { key: 'storage_transfer', label: '外部ストレージ転送', description: '接続済みの利用者ストレージへ成果物を送る有料実行オプションです。接続だけでは課金せず、実行時のServer Estimate／Quoteを正本としてCreditを確定します。転送先は「@」から選びます。' },
 ];
 
 function Info({ label, text }: { label: string; text: string }) {
@@ -73,7 +73,7 @@ export default function OptionSettingsPage({ route }: { route: RouteMatch }) {
       <div className="settings-management-list">
         <a className="settings-management-card" href="/app/settings/data-privacy"><span><strong>データ・プライバシー</strong><small>保存、履歴、Export、削除、プライバシー境界</small></span><b>開く ›</b></a>
         <a className="settings-management-card" href="/app/settings/templates"><span><strong>個別テンプレート管理</strong><small>書類作成で使う個別テンプレート</small></span><b>開く ›</b></a>
-        <a className="settings-management-card" href="/app/settings/storage-destinations"><span><strong>外部ストレージ接続</strong><small>転送先の接続・再認証・管理</small></span><b>開く ›</b></a>
+        <a className="settings-management-card" href="/app/settings/storage-destinations"><span><strong>外部ストレージ接続</strong><small>接続・再認証・転送先管理だけを行います。実際の転送は有料Optionです。</small></span><b>開く ›</b></a>
         <a className="settings-management-card" href="/app/settings/astera-storage"><span><strong>Asteraストレージ</strong><small>容量、保存Object、Grace等を管理</small></span><b>開く ›</b></a>
         <a className="settings-management-card" href="/app/new"><span><strong>プライベートモード</strong><Info label="プライベートモード" text="入力画面を開くたび既定ONです。恒久OFF設定は設けません。本文・File・中間物・ResultをAstera側へ永続保存しません。" /></span><b>入力画面で管理 ›</b></a>
         <div className="settings-management-card is-static"><span><strong>暗号化・鍵管理（Libral Vault）</strong><Info label="Libral Vault" text="HTTPS/TLSと内部Secret保護を含む暗号化境界は常時有効です。暗号化OFF Toggleは作りません。" /></span><b>常時保護</b></div>
