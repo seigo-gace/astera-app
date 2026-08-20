@@ -6,6 +6,7 @@ import ProjectPage from '../features/projects/ProjectPage';
 import ResultPage from '../features/results/ResultPage';
 import SecurityPage from '../features/security/SecurityPage';
 import DataPrivacyPage from '../features/settings/DataPrivacyPage';
+import LanguageSettingsPage from '../features/settings/LanguageSettingsPage';
 import OptionSettingsPage from '../features/settings/OptionSettingsPage';
 import SettingsHomePage from '../features/settings/SettingsHomePage';
 import TemplateSettingsPage from '../features/settings/TemplateSettingsPage';
@@ -18,7 +19,7 @@ import { PublicPlatformPage } from './pages/PublicPages';
 import { WorkspacePage } from './pages/WorkspacePages';
 
 const authRoutes = new Set(['register', 'verify-email', 'forgot-password', 'reset-password', 'password-setup', 'two-factor']);
-const workspaceRoutes = new Set(['settings-language', 'settings-storage-destinations', 'settings-astera-storage']);
+const workspaceRoutes = new Set(['settings-storage-destinations', 'settings-astera-storage']);
 const accountRoutes = new Set(['account-subscription', 'account-credit', 'billing-status']);
 
 export function CanonicalPage({ route }: { route: RouteMatch }) {
@@ -30,6 +31,7 @@ export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'shares') return <ShareManagementPage route={route} />;
   if (route.id === 'settings') return <SettingsHomePage route={route} />;
   if (route.id === 'settings-options') return <OptionSettingsPage route={route} />;
+  if (route.id === 'settings-language') return <LanguageSettingsPage route={route} />;
   if (route.id === 'settings-templates') return <TemplateSettingsPage route={route} />;
   if (route.id === 'settings-data-privacy') return <DataPrivacyPage route={route} />;
   if (route.id === 'settings-notifications') return <NotificationSettingsPage route={route} />;
