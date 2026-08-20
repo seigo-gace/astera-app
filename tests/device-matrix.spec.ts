@@ -15,6 +15,7 @@ const canonicalPaths = [
   '/app/results/result-1',
   '/app/projects',
   '/app/history',
+  '/app/history?mode=search',
   '/app/about',
   '/app/settings',
   '/app/settings/options',
@@ -248,9 +249,9 @@ test('all canonical routes render without horizontal overflow or blocked control
     expect(state.scrollWidth, `${path}: horizontal overflow`).toBeLessThanOrEqual(state.viewportWidth + 2);
 
     if (path.includes('unknown-route')) {
-      expect(state.bodyText).toContain('Page Not Found');
+      expect(state.bodyText).toContain('ページが見つかりません');
     } else {
-      expect(state.bodyText).not.toContain('Page Not Found');
+      expect(state.bodyText).not.toContain('ページが見つかりません');
     }
 
     const blocked = await blockedInteractiveControls(page);
@@ -274,13 +275,26 @@ test('mobile drawer is visible and clickable on compact widths', async ({ page }
   const viewport = page.viewportSize();
   test.skip(!viewport || viewport.width > 760, 'Drawer is only used on compact widths');
   await page.goto('/app/projects');
-  const menu = page.getByRole('button', { name: 'Menu' });
+  const menu = page.getByRole('button', { name: 'メニュー' });
   await expect(menu).toBeVisible();
   await menu.click();
   const drawer = page.locator('#platform-mobile-drawer');
   await expect(drawer).toBeVisible();
-  await drawer.getByRole('link', { name: 'History' }).click();
+  await drawer.getByRole('link', { name: '履歴' }).click();
   await expect(page).toHaveURL(/\/app\/history$/);
+});
+
+test('sidebar keeps the decided Japanese navigation order and settings at the bottom', async ({ page }) => {
+  await page.goto('/app/projects');
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width <= 760) {
+    await page.getByRole('button', { name: 'メニュー' }).click();
+  }
+  const navRoot = viewport && viewport.width <= 760 ? page.locator('#platform-mobile-drawer') : page.locator('.platform-sidebar');
+  const labels = await navRoot.locator('.platform-nav a').allTextContents();
+  expect(labels.map((value) => value.trim())).toEqual(['新しいページ', '検索', 'プロジェクト', 'オプション', 'プラン/クレジット', '開発者モード', '履歴']);
+  const bottom = await navRoot.locator('.platform-side-meta a').allTextContents();
+  expect(bottom.map((value) => value.trim())).toEqual(['ASTERAとは？', '設定']);
 });
 
 test('email and password login remains clickable', async ({ page }) => {
