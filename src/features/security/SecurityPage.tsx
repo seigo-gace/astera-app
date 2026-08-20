@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from '../../platform/api-client';
 import { previewWithoutAuth } from '../../platform/account-session';
 import { authClient, authErrorMessage } from '../../platform/auth-client';
+import { AccountSecurityManagementSurface } from '../../platform/canonical-account-security-management';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import type { RouteMatch } from '../../platform/route-registry';
 import './security-page.css';
@@ -16,8 +17,6 @@ type PasskeyRecord = {
 
 type AccountSecurity = {
   twoFactorEnabled: boolean;
-  sessionId: string;
-  sessionExpiresAt: string;
 };
 
 type Enrollment = {
@@ -50,7 +49,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const previewMode = previewWithoutAuth();
   const [loading, setLoading] = useState(!previewMode);
   const [loadError, setLoadError] = useState<unknown>(null);
-  const [security, setSecurity] = useState<AccountSecurity>({ twoFactorEnabled: false, sessionId: '', sessionExpiresAt: '' });
+  const [security, setSecurity] = useState<AccountSecurity>({ twoFactorEnabled: false });
   const [passkeys, setPasskeys] = useState<PasskeyRecord[]>([]);
   const [feedback, setFeedback] = useState<Feedback>({ type: 'idle' });
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
@@ -58,7 +57,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const reload = useCallback(async () => {
     if (previewWithoutAuth()) {
-      setSecurity({ twoFactorEnabled: false, sessionId: '', sessionExpiresAt: '' });
+      setSecurity({ twoFactorEnabled: false });
       setPasskeys([]);
       setLoadError(null);
       setLoading(false);
@@ -74,8 +73,6 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       const account = asRecord(asRecord(accountPayload).account ?? accountPayload);
       setSecurity({
         twoFactorEnabled: account.two_factor_enabled === true || account.twoFactorEnabled === true,
-        sessionId: recordText(account, ['session_id', 'sessionId']),
-        sessionExpiresAt: recordText(account, ['session_expires_at', 'sessionExpiresAt']),
       });
       setPasskeys(normalizePasskeys(betterAuthResult(passkeyPayload, 'Passkey一覧を取得できませんでした。')));
     } catch (error) {
@@ -205,7 +202,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   if (loadError) return <ErrorState error={loadError} onRetry={() => void reload()} />;
 
   return (
-    <ResponsivePageShell route={route} description="Passkey、2FA、Backup Code、現在Sessionを実際の認証Runtimeで管理します。">
+    <ResponsivePageShell route={route} description="Password、Passkey、2段階認証、Backup Code、Google/GitHub Login連携、ログイン中の端末を1つのSecurity専用Pageで管理します。">
       {feedback.type !== 'idle' && (
         <div className={`security-feedback is-${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}>
           <strong>{feedback.type === 'working' ? '処理しています…' : feedback.message}</strong>
@@ -231,10 +228,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
       {backupCodes.length > 0 && <section className="security-panel security-backup-codes"><div className="security-panel-head"><div><h2>Backup Code</h2><p>この表示を閉じると再表示しません。安全な場所へ保存してください。</p></div><button type="button" className="platform-button" onClick={() => void copySecret(backupCodes.join('\n'), 'Backup Codeをコピーしました。')}>全てコピー</button></div><ol>{backupCodes.map((code) => <li key={code}><code>{code}</code></li>)}</ol><button type="button" className="platform-button" onClick={() => setBackupCodes([])}>保存したので閉じる</button></section>}
 
-      <section className="security-panel">
-        <div className="security-panel-head"><div><h2>現在Session</h2><p>Session IDは一部だけ表示し、Secret Tokenは表示しません。</p></div></div>
-        <dl className="security-session"><div><dt>Session</dt><dd>{security.sessionId ? `${security.sessionId.slice(0, 8)}…` : '取得不可'}</dd></div><div><dt>有効期限</dt><dd>{security.sessionExpiresAt || '取得不可'}</dd></div></dl>
-      </section>
+      <AccountSecurityManagementSurface disabled={previewMode} />
     </ResponsivePageShell>
   );
 }
