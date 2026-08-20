@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import './i18n';
 import './styles.css';
 import AppRouter from './platform/app-router';
-import { CanonicalAccountSecurityManagement } from './platform/canonical-account-security-management';
 import { CanonicalSubscriptionManagement } from './platform/canonical-subscription-management';
 import { CanonicalCreditManagement } from './platform/canonical-credit-management';
 import './device-compatibility.css';
@@ -26,7 +25,6 @@ if (!runtimeUnsupported) {
   createRoot(root).render(
     <StrictMode>
       <AppRouter />
-      <CanonicalAccountSecurityManagement />
       <CanonicalSubscriptionManagement />
       <CanonicalCreditManagement />
     </StrictMode>,
