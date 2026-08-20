@@ -3,11 +3,6 @@ import { createRoot } from 'react-dom/client';
 import './i18n';
 import './styles.css';
 import AppRouter from './platform/app-router';
-import { CanonicalSettingsExterior } from './platform/canonical-settings-exterior';
-import { CanonicalAccountSecurityManagement } from './platform/canonical-account-security-management';
-import { CanonicalSubscriptionManagement } from './platform/canonical-subscription-management';
-import { CanonicalNotificationManagement } from './platform/canonical-notification-management';
-import { CanonicalCreditManagement } from './platform/canonical-credit-management';
 import './device-compatibility.css';
 import './horizontal-stability.css';
 import './orientation-stability.css';
@@ -25,5 +20,9 @@ if (!runtimeUnsupported) {
   if (!nativeComposerRoute) initializeRevisionCreditBridge();
   initializeDeviceCompatibility();
   void initializeNativeShell();
-  createRoot(root).render(<StrictMode><AppRouter /><CanonicalSettingsExterior /><CanonicalAccountSecurityManagement /><CanonicalSubscriptionManagement /><CanonicalNotificationManagement /><CanonicalCreditManagement /></StrictMode>);
+  createRoot(root).render(
+    <StrictMode>
+      <AppRouter />
+    </StrictMode>,
+  );
 }
