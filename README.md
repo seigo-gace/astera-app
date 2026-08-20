@@ -23,7 +23,7 @@ Android・iOS・Tablet用に別UIを複製しません。画面、状態、API�
 | 領域 | Source状態 | 完成判定 |
 |---|---|---|
 | Canonical画面 | Notion 10〜43の34画面を43 Route Patternへ実装 | Source Coverage実装済み |
-| Web Browser | 共通Router・Responsive Shell・API Client実装 | GitHub Actions／Cloudflare実表示未確認 |
+| Web Browser | 共通Router・Responsive Shell・API Client実装 | Staging Pages到達・API数本確認済み。全Route実Browser・BetterAuthError解消は確認待ち |
 | Tablet | 幅・Pointer・Orientation・Visual Viewportで対応 | 実Tablet操作未確認 |
 | Smartphone Web | Drawer、Safe Area、Touch Target、Keyboard対策 | 実Browser端末未確認 |
 | Android | Phone／Tablet／Foldable／Multi-window設定とSmoke Workflow | APK実Build・実機未確認 |
@@ -33,6 +33,31 @@ Android・iOS・Tablet用に別UIを複製しません。画面、状態、API�
 | Store Release | 未実施 | Google Play／App Store NO-GO |
 
 **Sourceへ画面が存在すること、Workflowが存在すること、Productionで機能が成立したことを同一扱いしません。**
+
+## Staging 稼働（Cloudflare Pages + Pages Functions）
+
+| 項目 | 状態 |
+|---|---|
+| Custom Domain | https://staging.asterav8.jp |
+| Pages URL | https://astera-app-staging.pages.dev |
+| `GET /api/status` | `operational` |
+| `GET /health` | `ok` |
+| `GET /api/account`（未ログイン） | `401` `SESSION_REQUIRED`（正常） |
+| 認証必須画面 | `/login?return_to=...` へリダイレクト |
+
+デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
+
+```bash
+cd /home/admin1/projects/astera-app
+npm run build
+npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
+```
+
+Pages Functions env（公開情報のみ）：
+
+- `wrangler.toml` `[vars]`：`BETTER_AUTH_URL`（公開 URL）
+- Pages secret：`BETTER_AUTH_SECRET` のみ
+- `BETTER_AUTH_URL` を Pages secret にすると `wrangler.toml` vars と Binding 名が衝突し Functions に届かない。**secret 化しない**
 
 ## 対応OS・機種制限Policy
 
@@ -170,6 +195,21 @@ Small   : 360px以下
 - API Base未設定：安全停止
 - API Error：成功表示を生成しない
 
+### Better Auth Client（Web）
+
+`src/platform/auth-client.ts` の `createAuthClient` は **絶対 http(s) origin のみ** を `baseURL` に渡します。`basePath: /api/auth` は固定です。
+
+優先順：
+
+1. `VITE_BETTER_AUTH_URL`（絶対 http(s) なら `.origin`）
+2. `VITE_APP_URL`（同上）
+3. 絶対の `VITE_ASTERA_API_BASE` なら `.origin`（パス `/api` は捨て origin のみ）
+4. `window.location.origin`（SSR ビルド時は `http://localhost`）
+
+**相対 `/api` は Better Auth baseURL に使いません。** Vite は `vite build` でも `.env.local` を読みます。`.env.local` の `VITE_ASTERA_API_BASE=/api`（ローカル proxy 用）がインラインされると `Invalid base URL: /api` でモジュール初期化が throw し、`#root` が空のまま `customer-ai-bubble` の ✦ だけ残ります。コード側で相対値を無視する修正済みです。`.env.local` はローカル用として残してよいです。
+
+クライアント向け `VITE_BETTER_AUTH_URL` / `VITE_APP_URL` は `.env` に追加済み（gitignore）。`src/platform/api-client.ts` の `resolvedApiBase()` も同様に、相対 `/api` は same-origin として空文字扱いし、パスは `/api/...` を維持します（`/api/api/...` 二重化を防ぐ）。
+
 Google／GitHub OAuthのProvider Passwordを取得・流用しません。Social初回はAstera専用Password設定Routeへ接続します。
 
 ## API接続方針
@@ -295,10 +335,17 @@ tests/
 ```bash
 npm install
 cp .env.example .env
-npm run dev
 ```
 
-全Source Gate：
+**workspace ではホスト常駐の `npm run dev` / `vite` / `npm start` は禁止**です。ローカル確認は `docker compose` / `Dockerfile` を正とします（`docker-compose.yml` に Frontend `astera-app` と API `astera-app-api` あり）。
+
+```bash
+docker compose up --build
+# Frontend: http://localhost:8080
+# API:      http://localhost:8788
+```
+
+TypeScript／Lint／Build Gate（ホストで一時実行可。常駐しない）：
 
 ```bash
 npm run platform:audit
@@ -329,15 +376,18 @@ npm run build
 npm run preview
 ```
 
-Cloudflare Pages：
+Cloudflare Pages（Staging 正本）：
 
 ```text
+Project       : astera-app-staging
+Branch        : main
 Build Command : npm run build
 Output        : dist
 Node.js       : 22.12
+Custom Domain : staging.asterav8.jp
 ```
 
-Cloudflareでは全Canonical PathをSPA EntryへRewriteし、API PathはFunctions／Workerへ分離する必要があります。
+Cloudflareでは全Canonical PathをSPA EntryへRewriteし、API PathはFunctions／Workerへ分離する必要があります。`dist/_redirects` は `/* /index.html 200` です。
 
 ## Android／iOS
 
@@ -450,6 +500,14 @@ Sourceへ追加済み：
 - Generated Native機種制限監査
 - Strict TypeScript／Vite Build Gate
 
+Staging（2026-08 時点・API／到達性のみ。UI目視は下記「残業」）：
+
+- https://staging.asterav8.jp および Pages URL 到達
+- `GET /api/status` → operational
+- `GET /health` → ok
+- `GET /api/account` 未ログイン → 401 SESSION_REQUIRED
+- Better Auth baseURL 相対 `/api` インライン問題のコード修正・再デプロイ済み
+
 未取得：
 
 - 最新GitHub Actionsの実Run／Log／Artifact
@@ -458,16 +516,44 @@ Sourceへ追加済み：
 - Android Phone／Tablet Emulator実結果
 - iPhone／iPad Simulator実結果
 - iOS 15実Version Simulator／実機
-- Cloudflare Pages全Route実表示
+- Cloudflare Pages全Route実表示（Staging API 数本と `/`・`/app/new` 以外は未確認）
 - Backend Sandbox全Endpoint
 - Smartphone／Tablet／Foldable実機
-- OAuth／Passkey／2FA
-- Square Checkout復帰
+- OAuth／Passkey／2FA（Staging 実動作未確認）
+- Square Checkout復帰（未確認）
 - Store署名・審査
+
+## 既知の欠落・残作業（残業）
+
+Release 阻害・未取得リストに加え、Staging 切り分けで判明した項目です。**実装済みと書いても、ここにあるものは未確認・未設定・未完了のまま残します。**
+
+### Backend / Functions env
+
+- `AUTH_EMAIL_*` / `GOOGLE_*` / `SQUARE_*` など Pages Functions 追加 env は未設定の可能性が高い
+- メール認証・OAuth Provider・Square 決済は **未確認／未稼働の可能性**
+
+### Staging 運用・表示
+
+- Zone キャッシュ全パージは API トークン権限不足で CLI から失敗しうる（Dashboard 手動 purge が必要な場合あり）
+- Cloudflare Pages **全 Route** の実ブラウザ表示は、`/`・`/app/new` と API 数本以外 **未確認**
+- ブラウザ確認（BetterAuthError 消滅・`#root` に UI 描画・Login リダイレクト）は **デプロイ済みだが作業者最終目視は確認待ち**（README では断定しない）
+- `public/customer-ai-bubble.js` は React 非依存。本体 JS が落ちても ✦ ランチャーだけ見える。**切り分け用であり完成 UI ではない**
+
+### Auth / Billing（実動作）
+
+- Email／Passkey／Google／GitHub OAuth／2FA の End-to-End 実動作 **未確認**
+- Square Checkout 復帰フロー **未確認**
+
+### Client / Mobile / CI（既存どおり）
+
+- Android／iOS 実機・Store 提出 **未実施**
+- GitHub Actions 実 Run／Log／Artifact **未取得**
+- WebKit／Chromium Matrix 実結果 **未取得**
+- `package-lock.json` **未 Commit**（Release 阻害要因として継続）
 
 ## Release阻害要因
 
-- `package-lock.json`未Commit
+- `package-lock.json`未Commit（2026-08 時点：リポジトリ内 untracked のまま）
 - GitHub Actions結果未取得
 - Backend Canonical API実結合未確認
 - Cloudflare SPA Rewrite未確認
