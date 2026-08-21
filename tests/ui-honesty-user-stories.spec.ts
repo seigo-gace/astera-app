@@ -35,15 +35,20 @@ async function openComposerMenu(page: import('@playwright/test').Page) {
 }
 
 test('STORY-UI-001 Purpose selection remains single even after choosing another option', async ({ page }) => {
-  const menuItems = await openComposerMenu(page);
-  await menuItems.nth(1).click();
-
-  const options = page.locator('.dialog-content .option-grid:not(.paid-option-grid) .option-card');
+  await page.getByRole('button', { name: 'Purposeを選択' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Purpose選択' });
+  await expect(dialog).toBeVisible();
+  const options = dialog.locator('button');
   await expect(options).toHaveCount(8);
-  await options.nth(0).click();
-  await options.nth(1).click();
 
-  await expect(options.filter({ has: page.locator('.selected-mark') })).toHaveCount(1);
+  await options.nth(0).click();
+  await page.getByRole('button', { name: 'Purposeを選択' }).click();
+  await expect(dialog).toBeVisible();
+  await options.nth(1).click();
+  await page.getByRole('button', { name: 'Purposeを選択' }).click();
+  await expect(dialog).toBeVisible();
+
+  await expect(dialog.locator('button.is-selected')).toHaveCount(1);
   await expect(options.nth(0)).not.toHaveClass(/is-selected/);
   await expect(options.nth(1)).toHaveClass(/is-selected/);
 });

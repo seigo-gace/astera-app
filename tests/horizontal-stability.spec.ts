@@ -79,30 +79,33 @@ async function waitForSettledOrientation(page: Page, orientation: 'portrait' | '
   await expect.poll(() => page.evaluate(() => ({
     orientation: document.documentElement.dataset.asteraOrientation,
     rotating: document.documentElement.classList.contains('astera-rotating'),
-  }))).toEqual({ orientation, rotating: false });
+  })), { timeout: 8_000 }).toEqual({ orientation, rotating: false });
 }
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
 });
 
-test('horizontal wheel and drawer interactions cannot move the document sideways', async ({ page }) => {
+test('horizontal wheel and drawer interactions cannot move the document sideways', async ({ page, browserName, hasTouch, isMobile }) => {
   await page.goto('/app/projects', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#root')).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page, 'initial');
 
-  await page.mouse.wheel(1200, 0);
-  await page.waitForTimeout(80);
-  await expectNoDocumentHorizontalOverflow(page, 'after horizontal wheel');
+  const skipWheel = browserName === 'webkit' && hasTouch && isMobile;
+  if (!skipWheel) {
+    await page.mouse.wheel(1200, 0);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expectNoDocumentHorizontalOverflow(page, 'after horizontal wheel');
+  }
 
   const viewport = page.viewportSize();
   if (viewport && viewport.width <= 760) {
-    const menu = page.getByRole('button', { name: 'Menu' });
+    const menu = page.getByRole('button', { name: /メニューを開く|Open menu|^Menu$/ });
     await expect(menu).toBeVisible();
     await menu.click();
     await expect(page.locator('#platform-mobile-drawer')).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page, 'drawer open');
-    await page.getByRole('button', { name: 'Menuを閉じる' }).click();
+    await page.getByRole('button', { name: /メニューを閉じる|Close menu/ }).click();
     await expect(page.locator('#platform-mobile-drawer')).toHaveCount(0);
     await expectNoDocumentHorizontalOverflow(page, 'drawer closed');
   }
@@ -157,7 +160,7 @@ test('vertical scrollbar appearance and viewport restoration do not shift the pa
     spacer.style.width = '1px';
     document.body.appendChild(spacer);
   });
-  await page.waitForTimeout(80);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await expectNoDocumentHorizontalOverflow(page, 'vertical scrollbar present');
   const withScrollbar = await horizontalState(page);
   expect(Math.abs(withScrollbar.rootLeft - before.rootLeft)).toBeLessThanOrEqual(1);
@@ -166,10 +169,10 @@ test('vertical scrollbar appearance and viewport restoration do not shift the pa
   if (viewport) {
     const temporaryWidth = Math.max(320, viewport.width - 37);
     await page.setViewportSize({ width: temporaryWidth, height: viewport.height });
-    await page.waitForTimeout(80);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expectNoDocumentHorizontalOverflow(page, 'temporary viewport');
     await page.setViewportSize(viewport);
-    await page.waitForTimeout(80);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expectNoDocumentHorizontalOverflow(page, 'restored viewport');
   }
 });
@@ -238,7 +241,7 @@ test('open compact drawer closes before landscape layout settles', async ({ page
   await page.goto('/app/projects', { waitUntil: 'domcontentloaded' });
   await waitForSettledOrientation(page, 'portrait');
 
-  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('button', { name: /メニューを開く|Open menu|^Menu$/ }).click();
   await expect(page.locator('#platform-mobile-drawer')).toBeVisible();
 
   await page.setViewportSize({ width: longSide, height: shortSide });

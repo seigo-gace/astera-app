@@ -239,7 +239,7 @@ test('all canonical routes render without horizontal overflow or blocked control
   for (const path of canonicalPaths) {
     await page.goto(path, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#root')).toBeVisible();
-    await page.waitForTimeout(40);
+    await expect.poll(() => page.locator('html').getAttribute('data-astera-device-compatibility'), { timeout: 5_000 }).toBe('ready');
 
     const state = await layoutState(page);
     expect(state.compatibility, `${path}: compatibility runtime`).toBe('ready');
@@ -274,12 +274,12 @@ test('mobile drawer is visible and clickable on compact widths', async ({ page }
   const viewport = page.viewportSize();
   test.skip(!viewport || viewport.width > 760, 'Drawer is only used on compact widths');
   await page.goto('/app/projects');
-  const menu = page.getByRole('button', { name: 'Menu' });
+  const menu = page.getByRole('button', { name: /メニューを開く|Open menu|^Menu$/ });
   await expect(menu).toBeVisible();
   await menu.click();
   const drawer = page.locator('#platform-mobile-drawer');
   await expect(drawer).toBeVisible();
-  await drawer.getByRole('link', { name: 'History' }).click();
+  await drawer.getByRole('link', { name: /履歴|History/ }).click();
   await expect(page).toHaveURL(/\/app\/history$/);
 });
 
@@ -287,7 +287,7 @@ test('email and password login remains clickable', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Email').fill('device@example.test');
   await page.getByLabel('Password').fill('device-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page).toHaveURL(/\/app\/new$/);
   await expect(page.locator('#root')).toBeVisible();
 });

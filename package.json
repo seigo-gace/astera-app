@@ -28,7 +28,7 @@
     "notion:audit": "node scripts/notion-repository-audit.mjs",
     "notion:audit:strict": "node scripts/notion-repository-audit.mjs --strict",
     "platform:audit": "npm run route:audit && npm run responsive:audit && npm run device:audit && npm run mobile:audit",
-    "e2e:devices": "playwright test",
+    "e2e:devices": "playwright test --workers=4",
     "e2e:stories": "playwright test tests/user-journey-stories.spec.ts",
     "verify": "npm run platform:audit && npm run story:audit:strict && npm run contract:check && npm run build && npm run contabo:build && npm run contabo:test && npm run cloudflare:functions:build && npm run notion:audit:strict",
     "mobile:bootstrap": "node scripts/mobile-bootstrap.mjs",

@@ -36,7 +36,7 @@ test('STORY-LOGIN-005 authentication routes cannot become post-Login return targ
   await page.goto('/login?return_to=%2Flogin%3Freturn_to%3D%252Flogin');
   await page.getByLabel('Email').fill('commercial@example.test');
   await page.getByLabel('Password').fill('commercial-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page).toHaveURL(/\/app\/new$/);
 });
 
@@ -76,11 +76,9 @@ test('STORY-HISTORY-001 rapid typing produces one debounced search request for t
   });
 
   await page.goto('/app/history');
-  const search = page.getByLabel('Keyword');
+  const search = page.getByLabel(/Keyword|キーワード/);
   await search.pressSequentially('final query', { delay: 15 });
-  await page.waitForTimeout(500);
-
-  expect(searchRequests).toBe(1);
+  await expect.poll(() => searchRequests, { timeout: 2_000 }).toBe(1);
   expect(finalQuery).toBe('final query');
 });
 

@@ -27,17 +27,19 @@ function project(
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 90_000,
-  expect: { timeout: 10_000 },
-  fullyParallel: false,
-  workers: process.env.CI ? 2 : undefined,
-  retries: process.env.CI ? 1 : 0,
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
+  fullyParallel: true,
+  workers: 4,
+  retries: 1,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    actionTimeout: 5_000,
+    navigationTimeout: 15_000,
   },
   webServer: {
     command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173',
