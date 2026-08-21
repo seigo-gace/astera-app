@@ -22,13 +22,14 @@ test('upload adds service auth and forwards only technical storage metadata', as
     const result = await client.upload({ objectId: 'object-1', userId: 'user-1', fileName: 'a b.txt', fileSize: 3, body });
     assert.equal(result.topic_id, 10);
     assert.ok(captured);
-    const headers = new Headers(captured!.init?.headers);
+    const request = captured as { input: string; init?: RequestInit & { duplex?: string } };
+    const headers = new Headers(request.init?.headers);
     assert.equal(headers.get('authorization'), 'Bearer storage-secret');
     assert.equal(headers.get('x-astera-user-id'), 'user-1');
     assert.equal(headers.get('x-astera-private-mode'), '0');
     assert.equal(headers.get('x-astera-file-size'), '3');
-    assert.equal(captured!.init?.method, 'PUT');
-    assert.equal((captured!.init as { duplex?: string }).duplex, 'half');
+    assert.equal(request.init?.method, 'PUT');
+    assert.equal((request.init as { duplex?: string }).duplex, 'half');
   } finally { globalThis.fetch = originalFetch; }
 });
 

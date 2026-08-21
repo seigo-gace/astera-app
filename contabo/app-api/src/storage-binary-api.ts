@@ -103,7 +103,8 @@ export function registerStorageBinaryApi(
       const topicId = positiveInt(requiredHeader(h, 'x-astera-topic-id', 'STORAGE_TOPIC_ID_REQUIRED'), 'STORAGE_TOPIC_ID_INVALID');
       const messageId = positiveInt(requiredHeader(h, 'x-astera-message-id', 'STORAGE_MESSAGE_ID_REQUIRED'), 'STORAGE_MESSAGE_ID_INVALID');
       const fileName = requiredHeader(h, 'x-astera-file-name', 'STORAGE_FILE_NAME_REQUIRED').slice(0, 240);
-      const mimeType = (h.get('x-astera-mime-type') || 'application/octet-stream').split(';')[0].trim().slice(0, 160);
+      const mimeHeader = h.get('x-astera-mime-type') || 'application/octet-stream';
+      const mimeType = (mimeHeader.split(';')[0] ?? 'application/octet-stream').trim().slice(0, 160);
       const fileSize = nonNegativeInt(requiredHeader(h, 'x-astera-file-size', 'STORAGE_FILE_SIZE_REQUIRED'), 'STORAGE_FILE_SIZE_INVALID');
       const expectedSha256 = sha(requiredHeader(h, 'x-astera-sha256', 'STORAGE_SHA256_REQUIRED'));
       if (requiredHeader(h, 'x-astera-encryption-profile', 'STORAGE_ENCRYPTION_PROFILE_REQUIRED') !== 'AES-256-GCM') throw new StorageApiError(422, 'STORAGE_ENCRYPTION_PROFILE_INVALID', 'Encryption profile is invalid.');

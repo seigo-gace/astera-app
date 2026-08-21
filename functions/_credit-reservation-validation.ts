@@ -1,4 +1,4 @@
-import { FunctionHttpError } from './_account-projection';
+import { FunctionHttpError, type D1Database } from './_account-projection';
 
 export type CreditReservationInsertInput = {
   creditAccountId: string;

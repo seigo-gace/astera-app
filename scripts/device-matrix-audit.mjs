@@ -24,6 +24,50 @@ function check(name, condition, detail) {
   if (!condition) failures.push(`${name}: ${detail}`);
 }
 
+function splitCssRules(css) {
+  const rules = [];
+  let i = 0;
+  while (i < css.length) {
+    const start = i;
+    let braceStart = -1;
+    let depth = 0;
+    for (let j = i; j < css.length; j++) {
+      if (css[j] === '{') {
+        if (depth === 0) braceStart = j;
+        depth++;
+      } else if (css[j] === '}') {
+        depth--;
+        if (depth === 0 && braceStart >= 0) {
+          rules.push({
+            selector: css.slice(start, braceStart).trim(),
+            block: css.slice(braceStart + 1, j),
+          });
+          i = j + 1;
+          break;
+        }
+      }
+    }
+    if (braceStart < 0) break;
+  }
+  return rules;
+}
+
+function selectorIncludesSelectionRow(selector) {
+  return selector.split(',').some((part) => {
+    const token = part.trim();
+    return /^\.selection-row$/.test(token) || /^\.selection-row(?:$|[\s:>+~\[.])/.test(token);
+  });
+}
+
+function cssRuleHasSelectionRowWrap(css) {
+  return splitCssRules(css).some(
+    (rule) =>
+      selectorIncludesSelectionRow(rule.selector) &&
+      /flex-wrap:\s*wrap/.test(rule.block) &&
+      /overflow-x:\s*visible/.test(rule.block),
+  );
+}
+
 check('viewport fit cover', index.includes('viewport-fit=cover'), 'notch and safe area support is required');
 check('interactive keyboard viewport', index.includes('interactive-widget=resizes-content'), 'Android keyboard must resize content');
 check('zoom remains available', !/user-scalable\s*=\s*no|maximum-scale\s*=\s*1(?:\.0)?(?:[,"'])/i.test(index), 'do not disable accessibility zoom');
@@ -65,7 +109,7 @@ check('document horizontal lock', horizontalCss.includes('overscroll-behavior-x:
 check('overflow clip enhancement', horizontalCss.includes('@supports (overflow: clip)') && horizontalCss.includes('overflow-x: clip'), 'modern engines must clip transformed off-canvas content');
 check('stable desktop scrollbar gutter', horizontalCss.includes('scrollbar-gutter: stable'), 'vertical scrollbar appearance must not shift the layout');
 check('viewport based drawer width', horizontalCss.includes("var(--app-layout-width, 100%)") && horizontalCss.includes('.mobile-sidebar'), 'drawers must not size from raw 100vw');
-check('chip row wraps', /\.selection-row\s*\{[^}]*flex-wrap:\s*wrap[^}]*overflow-x:\s*visible/s.test(horizontalCss), 'selection chips must wrap instead of creating a horizontal scroller');
+check('chip row wraps', cssRuleHasSelectionRowWrap(horizontalCss), 'selection chips must wrap instead of creating a horizontal scroller');
 check('long content wraps', horizontalCss.includes('overflow-wrap: anywhere') && horizontalCss.includes('word-break: break-word'), 'long URLs and identifiers must not widen the document');
 check('fixed overlays constrained', horizontalCss.includes('.dialog-content') && horizontalCss.includes('.toast') && horizontalCss.includes('max-width: calc(100% - 24px)'), 'dialogs and toasts must remain inside the viewport');
 check('tables remain inside page', horizontalCss.includes('table-layout: fixed') && horizontalCss.includes('td {'), 'table content must wrap without page overflow');
