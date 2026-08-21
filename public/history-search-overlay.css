@@ -26,7 +26,7 @@ html.history-search-open{overflow:hidden}
 .history-search-result-mark{position:relative;width:22px;height:18px;border:1.5px solid currentColor;border-radius:50%;opacity:.8}
 .history-search-result-mark:after{content:"";position:absolute;left:2px;bottom:-3px;width:6px;height:6px;border-left:1.5px solid currentColor;transform:rotate(-28deg)}
 .history-search-state{min-height:180px;display:grid;place-items:center;align-content:center;gap:12px;padding:24px;color:var(--ex-muted,var(--platform-muted));text-align:center}
-.history-search-state.is-error{color:var(--platform-danger,var(--danger))}
+.history-search-state.is-error{display:none!important}
 .history-search-state button{min-height:40px;border:1px solid var(--ex-line,var(--platform-border));border-radius:10px;background:transparent;color:inherit;padding:0 14px;cursor:pointer}
 .platform-shell.exterior-sidebar-collapsed .history-search-trigger{top:58px;right:18px}
 .platform-shell.exterior-sidebar-collapsed .platform-nav{margin-top:48px!important}
