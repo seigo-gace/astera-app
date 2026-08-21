@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 export const APP_TEXT = {
   ja: {
-    navNew: '新しいページ', navSearch: '検索', navProjects: 'プロジェクト', navOptions: 'オプション', navPlanCredit: 'プラン / クレジット', navDeveloper: '開発者モード', navHistory: '履歴', navAbout: 'ASTERAとは？', navSettings: '設定',
+    navNew: '新しいページ', navSearch: '検索', navProjects: 'プロジェクト', navOptions: 'オプション', navPlanCredit: 'プラン・クレジット', navDeveloper: '開発者モード', navHistory: '履歴', navAbout: 'Asteraについて', navSettings: '設定',
     recent: '最近の履歴', recentLoading: '読み込み中…', recentEmpty: 'まだ履歴がありません', openHistory: '履歴を開く', openMenu: 'メニューを開く', closeMenu: 'メニューを閉じる', account: 'アカウント', openGuideAi: 'Astera案内AIを開く',
     settingsTitle: '設定', settingsDescription: '必要な設定だけを分けて管理します。', accountTitle: 'アカウント', accountDescription: '登録情報とGoogle / GitHubのログイン連携、ログアウト、アカウント管理。', securityTitle: 'セキュリティ', securityDescription: 'Password、Passkey、2段階認証、Backup Code、Session管理。', languageTitle: '言語', languageDescription: 'Astera Appで使用する表示言語だけを設定します。', notificationsTitle: '通知', notificationsDescription: 'Credit枯渇・購入・Update・重要なお知らせだけを管理します。', privacyTitle: 'プライバシー・データ', privacyDescription: '保存、Export、削除、Data Rightsを管理します。', legalSupportTitle: '法務・サポート', legalSupportDescription: '利用規約、Privacy Policy、特定商取引法表記、問い合わせ、Help。',
     languageSelect: '表示言語', japanese: '日本語', english: 'English', saved: '保存しました。', save: '保存',

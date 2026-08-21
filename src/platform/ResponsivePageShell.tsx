@@ -7,7 +7,11 @@ import type { RouteMatch } from './route-registry';
 
 const APP_NAV = [
   { href: '/app/new', label: 'navNew', key: 'new' },
+  { href: '/app/search', label: 'navSearch', key: 'search' },
   { href: '/app/projects', label: 'navProjects', key: 'projects' },
+  { href: '/app/settings/options', label: 'navOptions', key: 'options' },
+  { href: '/app/plan-credit', label: 'navPlanCredit', key: 'plan-credit' },
+  { href: '/app/developer', label: 'navDeveloper', key: 'developer' },
   { href: '/app/history', label: 'navHistory', key: 'history' },
 ] as const;
 
