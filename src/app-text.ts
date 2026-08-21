@@ -40,7 +40,7 @@ export type AppTextKey = keyof typeof APP_TEXT.ja;
 
 export function useAppText() {
   const { i18n } = useTranslation();
-  const language = i18n.resolvedLanguage?.toLowerCase().startsWith('en') ? 'en' : 'ja';
+  const language: 'en' | 'ja' = i18n.resolvedLanguage?.toLowerCase().startsWith('en') ? 'en' : 'ja';
   const text = useCallback((key: AppTextKey) => APP_TEXT[language][key], [language]);
   const setLanguage = useCallback(async (next: 'ja' | 'en') => {
     localStorage.setItem('astera-language', next);
