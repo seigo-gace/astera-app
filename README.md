@@ -46,13 +46,21 @@ Android・iOS・Tablet用に別UIを複製しません。画面、状態、API�
 | 認証必須画面（通常） | `/login?return_to=...` へリダイレクト |
 | Staging UI preview | `.env` で `VITE_PREVIEW_WITHOUT_AUTH=true` をビルドに含めると、43 Route を **ログインなしで UI 閲覧可**（`AccountSessionGate` は `/api/account` を叩かない）。**API は 401 のまま**（成功に偽装しない） |
 
-**Cloudflare Pages（Git 連動）:** project `astera-app-github` — GitHub `seigo-gace/astera-app` の `main` へ push すると Cloudflare が build/deploy する。URL: https://astera-app-github.pages.dev
+**正規 Staging 公開経路:**
 
-**Cloudflare Pages（Direct Upload）:** 既存 `astera-app-staging`（`staging.asterav8.jp`）は Direct Upload のまま。Git Provider なし（自動 Git deploy ではない）。
+```text
+seigo-gace/astera-app main push
+  → .github/workflows/pages-staging.yml
+  → wrangler pages deploy
+  → Cloudflare Pages astera-app-staging（Direct Upload）
+  → https://staging.asterav8.jp
+```
+
+GitHub repository secret `CLOUDFLARE_API_TOKEN` が必要です。
 
 デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
 
-**自動（推奨）:** `main` へ push すると `.github/workflows/pages-staging.yml` が Cloudflare Pages `astera-app-staging`（`staging.asterav8.jp`）へ `wrangler pages deploy` します。GitHub repository secret `CLOUDFLARE_API_TOKEN` が必要です。
+**自動:** 上記正規経路（`main` push で `pages-staging.yml` が `astera-app-staging` へ deploy）。
 
 **手動:**
 
