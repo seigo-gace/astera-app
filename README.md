@@ -56,7 +56,7 @@ seigo-gace/astera-app main push
   → https://staging.asterav8.jp
 ```
 
-GitHub repository secret `CLOUDFLARE_API_TOKEN` が必要です。
+GitHub repository secret `CLOUDFLAREACCOUNTAPI` が必要です（workflow 内で wrangler 用 `CLOUDFLARE_API_TOKEN` へ渡されます）。
 
 デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
 

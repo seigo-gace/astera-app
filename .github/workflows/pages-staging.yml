@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 20
     env:
       VITE_PREVIEW_WITHOUT_AUTH: 'true'
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
       - name: Require Cloudflare token
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
-            echo "CLOUDFLARE_API_TOKEN secret is empty" >&2
+            echo "CLOUDFLAREACCOUNTAPI secret is empty" >&2
             exit 1
           fi
       - name: Install dependencies
