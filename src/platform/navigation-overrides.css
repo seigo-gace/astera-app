@@ -1,54 +1,72 @@
 .platform-mobile-header-left{display:flex;align-items:center;gap:4px;min-width:0}
 .platform-mobile-account-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
 .platform-mobile-header{position:relative!important}
-.platform-mobile-header .platform-header-ai{
-  position:absolute!important;
-  top:50%!important;
-  right:54px!important;
-  transform:translateY(-50%)!important;
-  z-index:4!important;
+
+/* The customer-AI shell owns the only visible guide trigger. */
+.platform-header-ai{display:none!important}
+html .aca-shell{
+  left:auto!important;
+  right:16px!important;
+  top:calc(env(safe-area-inset-top) + 11px)!important;
+  bottom:auto!important;
+}
+html .aca-shell .aca-launcher{
+  display:grid!important;
   width:40px!important;
   height:40px!important;
   min-width:40px!important;
   min-height:40px!important;
-  margin:0!important;
   padding:0!important;
-  overflow:visible!important;
   border:0!important;
   border-radius:0!important;
   outline:0!important;
-  background-color:transparent!important;
-  background-image:url("data:image/png;base64,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")!important;
-  background-position:center!important;
-  background-repeat:no-repeat!important;
-  background-size:32px 28px!important;
+  background:transparent!important;
   box-shadow:none!important;
-  appearance:none!important;
-  -webkit-appearance:none!important;
+  cursor:pointer!important;
+  touch-action:manipulation!important;
+  place-items:center!important;
 }
-.platform-mobile-header .platform-header-ai:hover,
-.platform-mobile-header .platform-header-ai:active,
-.platform-mobile-header .platform-header-ai:focus{
+html .aca-shell .aca-launcher:hover,
+html .aca-shell .aca-launcher:active,
+html .aca-shell .aca-launcher:focus{
   border:0!important;
-  background-color:transparent!important;
-  background-image:inherit!important;
-  background-position:center!important;
-  background-repeat:no-repeat!important;
-  background-size:32px 28px!important;
+  background:transparent!important;
   box-shadow:none!important;
 }
-.platform-mobile-header .platform-header-ai img{display:none!important}
-.platform-mobile-header .platform-header-ai::before{content:none!important;display:none!important}
+html .aca-shell .aca-guide-icon{
+  display:block!important;
+  width:32px!important;
+  height:auto!important;
+  max-width:32px!important;
+  max-height:30px!important;
+  object-fit:contain!important;
+  margin:auto!important;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+html .aca-shell .aca-launcher-label{
+  left:auto!important;
+  right:46px!important;
+}
+@media(min-width:601px){
+  html .aca-shell .aca-panel{
+    left:auto!important;
+    right:0!important;
+    top:52px!important;
+    bottom:auto!important;
+    transform-origin:100% 0!important;
+  }
+}
+
 .platform-side-meta .exterior-settings-trigger{display:flex;align-items:center;width:100%;border:0;background:transparent;color:inherit;text-decoration:none;cursor:pointer;font:inherit;text-align:left;padding:0 10px}
 @media(max-width:1100px){
   .platform-mobile-header{grid-template-columns:auto minmax(0,1fr) auto}
   .platform-mobile-account-actions .platform-header-account{width:40px;height:40px;min-width:40px}
-  .aca-launcher{display:none!important}
+  html .aca-shell{left:auto!important;right:58px!important;top:calc(env(safe-area-inset-top) + 11px)!important}
 }
 @media(max-width:600px){
   .platform-mobile-account-actions{gap:2px}
-  .platform-mobile-header .platform-header-ai{right:52px!important;background-size:30px 26px!important}
-  .platform-mobile-header .platform-header-ai:hover,
-  .platform-mobile-header .platform-header-ai:active,
-  .platform-mobile-header .platform-header-ai:focus{background-size:30px 26px!important}
+  html .aca-shell{right:56px!important}
+  html .aca-shell .aca-guide-icon{width:30px!important;max-width:30px!important;max-height:28px!important}
 }
