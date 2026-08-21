@@ -8,12 +8,9 @@ import { FormResult, Panel, submitForm, useResource, type SubmitState } from '..
 const SETTINGS_LINKS = [
   ['/account', 'accountTitle', 'accountDescription'],
   ['/account/security', 'securityTitle', 'securityDescription'],
-  ['/app/settings/options', 'navOptions', 'optionPageDescription'],
   ['/app/settings/language', 'languageTitle', 'languageDescription'],
-  ['/app/settings/templates', 'templatesTitle', 'templatesDescription'],
-  ['/app/settings/storage-destinations', 'storageDestinationsTitle', 'storageDestinationsDescription'],
-  ['/app/settings/astera-storage', 'optionAsteraStorage', 'optionAsteraStorageDescription'],
   ['/app/settings/notifications', 'notificationsTitle', 'notificationsDescription'],
+  ['/app/settings/data-privacy', 'privacyTitle', 'privacyDescription'],
   ['/app/settings/legal-support', 'legalSupportTitle', 'legalSupportDescription'],
 ] as const;
 
