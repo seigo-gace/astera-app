@@ -46,6 +46,10 @@ Android・iOS・Tablet用に別UIを複製しません。画面、状態、API�
 | 認証必須画面（通常） | `/login?return_to=...` へリダイレクト |
 | Staging UI preview | `.env` で `VITE_PREVIEW_WITHOUT_AUTH=true` をビルドに含めると、43 Route を **ログインなしで UI 閲覧可**（`AccountSessionGate` は `/api/account` を叩かない）。**API は 401 のまま**（成功に偽装しない） |
 
+**Cloudflare Pages（Git 連動）:** project `astera-app-github` — GitHub `seigo-gace/astera-app` の `main` へ push すると Cloudflare が build/deploy する。URL: https://astera-app-github.pages.dev
+
+**Cloudflare Pages（Direct Upload）:** 既存 `astera-app-staging`（`staging.asterav8.jp`）は Direct Upload のまま。Git Provider なし（自動 Git deploy ではない）。
+
 デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
 
 **自動（推奨）:** `main` へ push すると `.github/workflows/pages-staging.yml` が Cloudflare Pages `astera-app-staging`（`staging.asterav8.jp`）へ `wrangler pages deploy` します。GitHub repository secret `CLOUDFLARE_API_TOKEN` が必要です。
