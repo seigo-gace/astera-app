@@ -4,19 +4,11 @@ import { asArray, asRecord, recordText } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { FormResult, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
-
-const SETTINGS_LINKS = [
-  ['/account', 'accountTitle', 'accountDescription'],
-  ['/account/security', 'securityTitle', 'securityDescription'],
-  ['/app/settings/language', 'languageTitle', 'languageDescription'],
-  ['/app/settings/notifications', 'notificationsTitle', 'notificationsDescription'],
-  ['/app/settings/data-privacy', 'privacyTitle', 'privacyDescription'],
-  ['/app/settings/legal-support', 'legalSupportTitle', 'legalSupportDescription'],
-] as const;
+import { SettingsSurface } from './SettingsSurface';
 
 export function SettingsIndexPage({ route }: { route: RouteMatch }) {
   const { text } = useAppText();
-  return <ResponsivePageShell route={route} description={text('settingsDescription')}><div className="platform-card-grid">{SETTINGS_LINKS.map(([href, title, description]) => <a className="platform-link-card" href={href} key={href}><strong>{text(title)}</strong><span>{text(description)}</span><b>›</b></a>)}</div></ResponsivePageShell>;
+  return <ResponsivePageShell route={route} description={text('settingsDescription')}><SettingsSurface variant="page" /></ResponsivePageShell>;
 }
 
 export function LanguageSettingsPage({ route }: { route: RouteMatch }) {

@@ -20,7 +20,8 @@ html[data-theme="light"] {
   --platform-border: color-mix(in srgb, var(--border-color) 90%, transparent);
   --platform-shadow: 0 22px 70px var(--platform-shadow-color);
 }
-.platform-brand img { filter: var(--logo-filter); }
+.exterior-settings-panel{display:flex;flex-direction:column}
+.exterior-settings-panel .settings-surface-host{flex:1;min-height:0;overflow:auto}
 *{box-sizing:border-box}html,body,#root{width:100%;min-width:0;max-width:100%;min-height:100%;overflow-x:hidden}body{margin:0;background:var(--platform-bg);color:var(--platform-text)}button,input,select,textarea{font:inherit}a{color:inherit}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .platform-shell{width:100%;max-width:100vw;min-height:100dvh;display:grid;grid-template-columns:264px minmax(0,1fr);background:radial-gradient(circle at 80% 0,rgba(188,116,48,.11),transparent 28%),var(--platform-bg);padding:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);overflow-x:hidden}
 .platform-sidebar{position:sticky;top:var(--safe-top);height:calc(100dvh - var(--safe-top) - var(--safe-bottom));display:flex;flex-direction:column;border-right:1px solid var(--platform-border);background:color-mix(in srgb,var(--platform-bg) 91%,transparent);backdrop-filter:blur(20px);padding:22px 16px;z-index:20}

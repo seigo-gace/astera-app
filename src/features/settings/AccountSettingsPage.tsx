@@ -4,7 +4,8 @@ import { apiRequest, asArray, asRecord, recordText } from '../../platform/api-cl
 import { nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
-import { FormResult, KeyValueGrid, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
+import { FormResult, KeyValueGrid, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
+import './settings-dedicated.css';
 
 type LinkedAccount = { id: string; provider: string };
 
@@ -57,21 +58,45 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
 
   return (
     <ResponsivePageShell route={route} description={text('accountDescription')}>
-      <Panel title={text('accountTitle')}>
-        {account.status === 'loading' && <BusyState />}
-        {account.status === 'error' && <ErrorState error={account.error} />}
-        {account.status === 'ready' && <KeyValueGrid value={asRecord(account.data).account ?? asRecord(account.data).data ?? account.data} />}
-      </Panel>
-      <Panel title={text('loginConnections')}>
-        {connectionLoading ? <BusyState /> : <div className="platform-card-grid">
-          {(['google','github'] as const).map((provider) => <div className="platform-link-card" key={provider}>
-            <strong>{text(provider)}</strong><span>{connected(provider) ? text('connected') : text('notConnected')}</span>
-            <button className="platform-button" type="button" onClick={() => void (connected(provider) ? disconnect(provider) : connect(provider))} disabled={state.type === 'working' || (connected(provider) && connections.length <= 1)}>{connected(provider) ? text('unlink') : text('link')}</button>
-          </div>)}
-        </div>}
-      </Panel>
-      <Panel title={text('securityTitle')}><a className="platform-button" href="/account/security">{text('manageSecurity')}</a></Panel>
-      <Panel title={text('accountDanger')}><div className="platform-action-row"><button className="platform-button" type="button" onClick={() => void logout()} disabled={state.type === 'working'}>{text('logout')}</button><a className="platform-button" href="/app/settings/data-privacy">{text('deleteAccount')}</a></div><FormResult state={state} /></Panel>
+      <div className="settings-account-page">
+        <section className="settings-account-section">
+          <h2>{text('accountTitle')}</h2>
+          {account.status === 'loading' && <BusyState />}
+          {account.status === 'error' && <ErrorState error={account.error} />}
+          {account.status === 'ready' && <KeyValueGrid value={asRecord(account.data).account ?? asRecord(account.data).data ?? account.data} />}
+        </section>
+        <div className="settings-surface-separator" role="separator" />
+        <section className="settings-account-section">
+          <h2>{text('loginConnections')}</h2>
+          {connectionLoading ? <BusyState /> : (
+            <div className="settings-account-rows">
+              {(['google', 'github'] as const).map((provider) => (
+                <div className="settings-account-row" key={provider}>
+                  <div>
+                    <strong>{text(provider)}</strong>
+                    <span>{connected(provider) ? text('connected') : text('notConnected')}</span>
+                  </div>
+                  <button className="platform-button" type="button" onClick={() => void (connected(provider) ? disconnect(provider) : connect(provider))} disabled={state.type === 'working' || (connected(provider) && connections.length <= 1)}>{connected(provider) ? text('unlink') : text('link')}</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <div className="settings-surface-separator" role="separator" />
+        <section className="settings-account-section">
+          <h2>{text('securityTitle')}</h2>
+          <a className="platform-button" href="/account/security">{text('manageSecurity')}</a>
+        </section>
+        <div className="settings-surface-separator" role="separator" />
+        <section className="settings-account-section">
+          <h2>{text('accountDanger')}</h2>
+          <div className="platform-action-row">
+            <button className="platform-button" type="button" onClick={() => void logout()} disabled={state.type === 'working'}>{text('logout')}</button>
+            <a className="platform-button" href="/app/settings/data-privacy">{text('deleteAccount')}</a>
+          </div>
+          <FormResult state={state} />
+        </section>
+      </div>
     </ResponsivePageShell>
   );
 }

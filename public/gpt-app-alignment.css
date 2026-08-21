@@ -158,7 +158,9 @@
     border-radius:18px!important;
   }
   .exterior-settings-panel nav{padding:10px!important}
-  .exterior-settings-panel nav a{
+  .exterior-settings-panel .settings-surface-host{padding:10px!important}
+  .exterior-settings-panel nav a,
+  .exterior-settings-panel .settings-surface-row.is-link{
     min-height:48px!important;
     border-radius:10px!important;
   }
@@ -301,8 +303,10 @@ html.exterior-composer-route .canonical-primary-actions a{
     padding-bottom:env(safe-area-inset-bottom)!important;display:flex!important;flex-direction:column!important;
   }
   html.exterior-settings-open .exterior-settings-panel header{flex:none}
-  html.exterior-settings-open .exterior-settings-panel nav{flex:1;min-height:0;overflow:auto;padding:8px 8px calc(16px + env(safe-area-inset-bottom))!important}
-  html.exterior-settings-open .exterior-settings-panel nav a{min-height:52px!important;border-radius:10px!important}
+  html.exterior-settings-open .exterior-settings-panel nav,
+  html.exterior-settings-open .exterior-settings-panel .settings-surface-host{flex:1;min-height:0;overflow:auto;padding:8px 8px calc(16px + env(safe-area-inset-bottom))!important}
+  html.exterior-settings-open .exterior-settings-panel nav a,
+  html.exterior-settings-open .exterior-settings-panel .settings-surface-row.is-link{min-height:52px!important;border-radius:10px!important}
   .platform-mobile-drawer{width:min(92vw,340px)!important}
   .aca-panel{border-radius:18px!important}
   .exterior-picker{border-radius:20px 20px 0 0!important}

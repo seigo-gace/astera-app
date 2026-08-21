@@ -1,15 +1,23 @@
-.security-feedback,
-.security-panel {
-  border: 1px solid var(--platform-border, var(--border-color));
-  border-radius: 16px;
-  background: var(--platform-surface, color-mix(in srgb, var(--text-primary) 4%, transparent));
-  padding: clamp(15px, 2vw, 24px);
+.security-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--platform-border, var(--border-color));
 }
-.security-feedback { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.security-feedback.is-error { background: color-mix(in srgb, var(--danger) 14%, transparent); }
-.security-feedback.is-success { background: color-mix(in srgb, var(--success) 14%, transparent); }
+.security-feedback.is-error { color: var(--danger, #ef4444); }
+.security-feedback.is-success { color: var(--success, #22c55e); }
 .security-feedback code { font-size: .75rem; }
-.security-panel { display: grid; gap: 16px; }
+.security-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--platform-border, var(--border-color));
+  background: transparent;
+  border-radius: 0;
+}
+.security-panel:last-child { border-bottom: 0; }
 .security-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
 .security-panel-head h2,
 .security-panel-head p { margin: 0; }
@@ -31,13 +39,14 @@
   font: inherit;
 }
 .security-inline-form.is-danger { border-top: 1px solid var(--platform-border, var(--border-color)); padding-top: 14px; }
-.security-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 9px; }
-.security-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--platform-border, var(--border-color)); border-radius: 11px; padding: 12px; }
+.security-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; }
+.security-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--platform-border, var(--border-color)); padding: 12px 0; }
+.security-list li:last-child { border-bottom: 0; }
 .security-list li > div { display: grid; gap: 3px; }
 .security-list li span,
 .security-list li small { opacity: .68; font-size: .8rem; }
 .security-empty { opacity: .68; margin: 0; }
-.security-enrollment { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--platform-border, var(--border-color)); border-radius: 12px; }
+.security-enrollment { display: grid; gap: 12px; padding: 14px 0; border-top: 1px solid var(--platform-border, var(--border-color)); }
 .security-enrollment h3,
 .security-enrollment p { margin: 0; }
 .security-enrollment > code { display: block; overflow-wrap: anywhere; padding: 11px; border-radius: 9px; background: color-mix(in srgb, var(--bg-primary) 72%, transparent); }
@@ -45,7 +54,8 @@
 .security-backup-codes ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin: 0; padding-left: 28px; }
 .security-backup-codes li { padding: 7px 0; }
 .security-session { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
-.security-session > div { padding: 12px; border: 1px solid var(--platform-border, var(--border-color)); border-radius: 11px; }
+.security-session > div { padding: 12px 0; border-bottom: 1px solid var(--platform-border, var(--border-color)); }
+.security-session > div:last-child { border-bottom: 0; }
 .security-session dt { opacity: .65; font-size: .78rem; }
 .security-session dd { margin: 6px 0 0; overflow-wrap: anywhere; }
 @media (max-width: 680px) {

@@ -4,6 +4,7 @@ import { useVerifiedAccountSession, previewWithoutAuth } from './account-session
 import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-client';
 import { usePlatformText } from './platform-text';
 import type { RouteMatch } from './route-registry';
+import { SettingsSurface } from '../features/settings/SettingsSurface';
 
 const APP_NAV = [
   { href: '/app/new', label: 'navNew', key: 'new' },
@@ -13,15 +14,6 @@ const APP_NAV = [
   { href: '/app/plan-credit', label: 'navPlanCredit', key: 'plan-credit' },
   { href: '/app/developer', label: 'navDeveloper', key: 'developer' },
   { href: '/app/history', label: 'navHistory', key: 'history' },
-] as const;
-
-const SETTINGS_OVERLAY_LINKS = [
-  { href: '/account', label: 'accountTitle' },
-  { href: '/account/security', label: 'securityTitle' },
-  { href: '/app/settings/language', label: 'languageTitle' },
-  { href: '/app/settings/notifications', label: 'notificationsTitle' },
-  { href: '/app/settings/data-privacy', label: 'privacyTitle' },
-  { href: '/app/settings/legal-support', label: 'legalSupportTitle' },
 ] as const;
 
 function focusableElements(root: HTMLElement): HTMLElement[] {
@@ -325,14 +317,12 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
         </div>
         <button type="button" aria-label={appText('closeMenu')} onClick={closeSettings}>×</button>
       </header>
-      <nav>
-        {SETTINGS_OVERLAY_LINKS.map((item) => (
-          <a key={item.href} href={item.href} onClick={() => { closeSettings(); setMenuOpen(false); }}>
-            <span>{appText(item.label)}</span>
-            <span aria-hidden="true">›</span>
-          </a>
-        ))}
-      </nav>
+      <div className="settings-surface-host">
+        <SettingsSurface
+          variant="overlay"
+          onNavigate={() => { closeSettings(); setMenuOpen(false); }}
+        />
+      </div>
     </section>
   </> : null;
 
