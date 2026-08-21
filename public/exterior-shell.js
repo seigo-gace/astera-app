@@ -4,7 +4,6 @@
   const ROUTE = window.location.pathname.replace(/\/+$/, '') || '/';
   const isComposer = ROUTE === '/app' || ROUTE === '/app/new';
   let picker = null;
-  let settingsReturnFocus = null;
   let mobileMenuReturnFocus = null;
   let mobileMenuWasOpen = false;
 
@@ -60,74 +59,6 @@ html.exterior-settings-open{overflow:hidden!important}
   .platform-mobile-drawer .platform-nav{margin-top:0!important}
 }`;
     document.head.append(style);
-  }
-
-  function openSettings(trigger = null) {
-    if (document.querySelector('[data-exterior-settings-overlay]')) return;
-    ensureCanonicalExteriorStyle();
-    settingsReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const backdrop = button('', 'exterior-settings-backdrop');
-    backdrop.dataset.exteriorSettingsOverlay = 'true';
-    backdrop.setAttribute('aria-label', 'Settingsを閉じる');
-    const panel = document.createElement('section');
-    panel.className = 'exterior-settings-panel';
-    panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-modal', 'true');
-    panel.setAttribute('aria-label', 'Settings');
-    panel.innerHTML = `<header><div><strong>Settings</strong><small>Astera App</small></div><button type="button" aria-label="閉じる">×</button></header><nav>
-      <a href="/app/settings/options">Option設定<span>›</span></a>
-      <a href="/app/settings/language">表示・言語<span>›</span></a>
-      <a href="/app/settings/notifications">通知・Credit警告<span>›</span></a>
-      <a href="/app/developer">開発者モード<span>›</span></a>
-      <a href="/account/security">Account・Security<span>›</span></a>
-      <a href="/account/subscription">Plan・Subscription<span>›</span></a>
-      <a href="/account/credit">Credit・購入<span>›</span></a>
-      <a href="/app/settings/data-privacy">Data・Privacy<span>›</span></a>
-    </nav>`;
-    const close = () => {
-      backdrop.remove();
-      panel.remove();
-      document.documentElement.classList.remove('exterior-settings-open');
-      const target = settingsReturnFocus;
-      settingsReturnFocus = null;
-      if (target?.isConnected) target.focus();
-    };
-    backdrop.addEventListener('click', close);
-    panel.querySelector('header button')?.addEventListener('click', close);
-    panel.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        close();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const focusable = focusableElements(panel);
-      if (!focusable.length) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    });
-    document.documentElement.classList.add('exterior-settings-open');
-    document.body.append(backdrop, panel);
-    panel.querySelector('a,button')?.focus();
-  }
-
-  function enhanceSettingsTriggers(root = document) {
-    root.querySelectorAll('[data-exterior-settings-trigger]').forEach((trigger) => {
-      if (!(trigger instanceof HTMLButtonElement) || trigger.dataset.exteriorSettingsBound === 'true') return;
-      trigger.dataset.exteriorSettingsBound = 'true';
-      trigger.addEventListener('click', () => openSettings(trigger));
-    });
   }
 
   function enhanceMobileNavigation() {
@@ -385,14 +316,13 @@ html.exterior-settings-open{overflow:hidden!important}
   function refresh() {
     document.documentElement.dataset.asteraExterior = 'gpt';
     ensureCanonicalExteriorStyle();
-    enhanceSettingsTriggers();
     enhanceMobileNavigation();
     enhanceDesktopCollapse();
     enhanceComposer();
     refreshChips();
   }
 
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closePicker(); document.querySelector('[data-exterior-settings-overlay]')?.click(); } });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePicker(); });
   let scheduled = false;
   const observer = new MutationObserver(() => {
     if (scheduled) return;

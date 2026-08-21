@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useAppText } from '../app-text';
 import { useVerifiedAccountSession, previewWithoutAuth } from './account-session';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-client';
@@ -7,19 +7,33 @@ import type { RouteMatch } from './route-registry';
 
 const APP_NAV = [
   { href: '/app/new', label: 'navNew', key: 'new' },
-  { href: '/app/search', label: 'navSearch', key: 'search' },
   { href: '/app/projects', label: 'navProjects', key: 'projects' },
-  { href: '/app/settings/options', label: 'navOptions', key: 'options' },
-  { href: '/app/plan-credit', label: 'navPlanCredit', key: 'plan-credit' },
-  { href: '/app/developer', label: 'navDeveloper', key: 'developer' },
   { href: '/app/history', label: 'navHistory', key: 'history' },
 ] as const;
 
+const SETTINGS_OVERLAY_LINKS = [
+  { href: '/account', label: 'accountTitle' },
+  { href: '/account/security', label: 'securityTitle' },
+  { href: '/app/settings/language', label: 'languageTitle' },
+  { href: '/app/settings/notifications', label: 'notificationsTitle' },
+  { href: '/app/settings/data-privacy', label: 'privacyTitle' },
+  { href: '/app/settings/legal-support', label: 'legalSupportTitle' },
+] as const;
+
+function focusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
+    .filter((node) => {
+      if (node.hasAttribute('hidden') || node.getAttribute('aria-hidden') === 'true') return false;
+      const style = window.getComputedStyle(node);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+}
+
 function Brand() {
   return (
-    <a className="platform-brand" href="/app/new" aria-label="Astera App">
+    <a className="platform-brand" href="/app/new" aria-label="ASTERA">
       <img src="/logo-mark.svg" alt="" style={{ filter: 'var(--logo-filter)' }} />
-      <span><strong>ASTERA</strong><small>APP</small></span>
+      <span><strong>ASTERA</strong></span>
     </a>
   );
 }
@@ -183,13 +197,77 @@ function openGuideAi() {
 
 export function ResponsivePageShell({ route, children, eyebrow, description, actions, fullWidth = false }: { route: RouteMatch; children: ReactNode; eyebrow?: string; description?: string; actions?: ReactNode; fullWidth?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const settingsPanelRef = useRef<HTMLElement>(null);
+  const settingsReturnFocusRef = useRef<HTMLElement | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const session = useSession(route.access === 'authenticated');
   const recent = useSidebarRecent(route.access === 'authenticated');
   const { text: appText } = useAppText();
   const { text: platformText, routeTitle } = usePlatformText();
   const localizedTitle = routeTitle(route.id, route.title);
 
-  useEffect(() => { document.title = `${localizedTitle} | Astera App`; setMenuOpen(false); }, [localizedTitle, route.id]);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    const target = settingsReturnFocusRef.current ?? settingsTriggerRef.current;
+    settingsReturnFocusRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (target?.isConnected) {
+        target.focus();
+        return;
+      }
+      if (settingsTriggerRef.current?.isConnected) {
+        settingsTriggerRef.current.focus();
+        return;
+      }
+      menuButtonRef.current?.focus();
+    });
+  }, []);
+
+  const openSettings = useCallback((trigger?: HTMLElement | null) => {
+    settingsReturnFocusRef.current = trigger ?? settingsTriggerRef.current;
+    setMenuOpen(false);
+    setSettingsOpen(true);
+  }, []);
+
+  useEffect(() => { document.title = `${localizedTitle} | ASTERA`; setMenuOpen(false); }, [localizedTitle, route.id]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    document.documentElement.classList.add('exterior-settings-open');
+    window.requestAnimationFrame(() => focusableElements(settingsPanelRef.current ?? document.body)[0]?.focus());
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const panel = settingsPanelRef.current;
+      if (!panel) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSettings();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      if (!panel.contains(document.activeElement)) return;
+      const focusable = focusableElements(panel);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.documentElement.classList.remove('exterior-settings-open');
+    };
+  }, [settingsOpen, closeSettings]);
   if (session.status === 'loading') return <BusyState label={platformText('accountSessionChecking')} />;
   if (session.status === 'error') return <ErrorState error={session.error} onRetry={() => window.location.reload()} />;
 
@@ -209,22 +287,66 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
     </section>
     <div className="platform-side-meta">
       <a href="/app/about" onClick={() => setMenuOpen(false)}>{appText('navAbout')}</a>
-      <a href="/app/settings" className="exterior-settings-trigger" onClick={() => setMenuOpen(false)}>{appText('navSettings')}</a>
+      <button
+        type="button"
+        ref={settingsTriggerRef}
+        className="exterior-settings-trigger"
+        onClick={(event) => { openSettings(event.currentTarget); setMenuOpen(false); }}
+      >
+        {appText('navSettings')}
+      </button>
     </div>
   </>;
+
+  const settingsOverlay = settingsOpen ? <>
+    <button
+      type="button"
+      className="exterior-settings-backdrop"
+      aria-label={appText('closeMenu')}
+      tabIndex={-1}
+      data-exterior-settings-overlay="true"
+      onClick={closeSettings}
+    />
+    <section
+      ref={settingsPanelRef}
+      className="exterior-settings-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label={appText('settingsTitle')}
+    >
+      <header>
+        <div>
+          <strong>{appText('settingsTitle')}</strong>
+          <small>ASTERA</small>
+        </div>
+        <button type="button" aria-label={appText('closeMenu')} onClick={closeSettings}>×</button>
+      </header>
+      <nav>
+        {SETTINGS_OVERLAY_LINKS.map((item) => (
+          <a key={item.href} href={item.href} onClick={() => { closeSettings(); setMenuOpen(false); }}>
+            <span>{appText(item.label)}</span>
+            <span aria-hidden="true">›</span>
+          </a>
+        ))}
+      </nav>
+    </section>
+  </> : null;
 
   return <div className={`platform-shell${fullWidth ? ' is-full-width' : ''}`}>
     <CreditMeter enabled={route.access === 'authenticated'} />
     <header className="platform-mobile-header">
-      <button type="button" className="platform-menu-button" aria-expanded={menuOpen} aria-controls="platform-mobile-drawer" aria-label={appText('openMenu')} onClick={() => setMenuOpen((value) => !value)}><span aria-hidden="true">☰</span><span className="sr-only">{appText('openMenu')}</span></button>
+      <div className="platform-mobile-header-left">
+        <button type="button" ref={menuButtonRef} className="platform-menu-button" aria-expanded={menuOpen} aria-controls="platform-mobile-drawer" aria-label={appText('openMenu')} onClick={() => setMenuOpen((value) => !value)}><span aria-hidden="true">☰</span><span className="sr-only">{appText('openMenu')}</span></button>
+        <button className="platform-header-account platform-header-ai" type="button" onClick={openGuideAi} aria-label={appText('openGuideAi')}><img src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true" /></button>
+      </div>
       <span className="platform-mobile-header-center" aria-hidden="true" />
       <span className="platform-mobile-account-actions">
-        <button className="platform-header-account platform-header-ai" type="button" onClick={openGuideAi} aria-label={appText('openGuideAi')}><img src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true" /></button>
         <a className="platform-header-account" href="/account" aria-label={appText('account')}>◎</a>
       </span>
     </header>
     <aside className="platform-sidebar">{nav}</aside>
     {menuOpen && <><button className="platform-backdrop" aria-label={appText('closeMenu')} type="button" onClick={() => setMenuOpen(false)} /><aside id="platform-mobile-drawer" className="platform-mobile-drawer">{nav}</aside></>}
+    {settingsOverlay}
     <main className="platform-main">
       <section className="platform-page-head"><div><div className="platform-eyebrow">{eyebrow ?? route.group.toUpperCase()}</div><h1>{localizedTitle}</h1>{description && <p>{description}</p>}</div>{actions && <div className="platform-head-actions">{actions}</div>}</section>
       <div className="platform-page-content">{children}</div>
