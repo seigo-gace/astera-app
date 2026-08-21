@@ -2,8 +2,7 @@ name: Pages Staging Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -19,20 +18,22 @@ jobs:
     timeout-minutes: 20
     env:
       VITE_PREVIEW_WITHOUT_AUTH: 'true'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.12'
+      - name: Require Cloudflare token
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
+            echo "CLOUDFLARE_API_TOKEN secret is empty" >&2
+            exit 1
+          fi
       - name: Install dependencies
-        run: npm install --no-fund --no-audit
+        run: npm install --no-audit
       - name: Build frontend
         run: npm run build
-      - name: Build Cloudflare Pages Functions
-        run: npm run cloudflare:functions:build
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: 6749a1289acc6c158a4621c26c3fbe08
-          command: pages deploy dist --project-name=astera-app-staging --branch=main
+        run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
