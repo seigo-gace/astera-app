@@ -48,6 +48,10 @@ Android・iOS・Tablet用に別UIを複製しません。画面、状態、API�
 
 デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
 
+**自動（推奨）:** `main` へ push すると `.github/workflows/pages-staging.yml` が Cloudflare Pages `astera-app-staging`（`staging.asterav8.jp`）へ `wrangler pages deploy` します。GitHub repository secret `CLOUDFLARE_API_TOKEN` が必要です。
+
+**手動:**
+
 ```bash
 cd /home/admin1/projects/astera-app
 # staging UI preview 用（gitignore の .env に VITE_PREVIEW_WITHOUT_AUTH=true）

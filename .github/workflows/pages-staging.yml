@@ -1,0 +1,38 @@
+name: Pages Staging Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VITE_PREVIEW_WITHOUT_AUTH: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Build frontend
+        run: npm run build
+      - name: Build Cloudflare Pages Functions
+        run: npm run cloudflare:functions:build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 6749a1289acc6c158a4621c26c3fbe08
+          command: pages deploy dist --project-name=astera-app-staging --branch=main
