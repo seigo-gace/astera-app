@@ -10,7 +10,7 @@
   root.setAttribute('aria-label', 'Astera 総合案内AI');
   root.innerHTML = `
     <button class="aca-launcher" type="button" aria-expanded="false" aria-controls="aca-panel" title="総合案内AIを開く">
-      <img class="aca-guide-icon" src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true">
+      <img class="aca-guide-icon" src="/guide-ai.png" alt="" aria-hidden="true">
       <span class="aca-launcher-label">案内AI</span>
     </button>
     <div class="aca-panel" id="aca-panel" aria-hidden="true">
