@@ -6,3 +6,9 @@
 
 /guide-ai.png
   Cache-Control: no-cache, no-store, must-revalidate
+
+/history-search-overlay.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/history-search-overlay.css
+  Cache-Control: no-cache, no-store, must-revalidate
