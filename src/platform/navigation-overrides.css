@@ -2,38 +2,32 @@
 .platform-mobile-account-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;min-width:0}
 .platform-mobile-header{position:relative!important}
 
-/* The customer-AI shell owns the only visible guide trigger. */
-.platform-header-ai{display:none!important}
-html .aca-shell{
-  left:auto!important;
-  right:16px!important;
-  top:calc(env(safe-area-inset-top) + 11px)!important;
-  bottom:auto!important;
-}
-html .aca-shell .aca-launcher{
+.platform-header-ai{
   display:grid!important;
+  place-items:center!important;
   width:40px!important;
   height:40px!important;
   min-width:40px!important;
   min-height:40px!important;
+  margin:0!important;
   padding:0!important;
   border:0!important;
   border-radius:0!important;
   outline:0!important;
   background:transparent!important;
   box-shadow:none!important;
+  appearance:none!important;
+  -webkit-appearance:none!important;
   cursor:pointer!important;
-  touch-action:manipulation!important;
-  place-items:center!important;
 }
-html .aca-shell .aca-launcher:hover,
-html .aca-shell .aca-launcher:active,
-html .aca-shell .aca-launcher:focus{
+.platform-header-ai:hover,
+.platform-header-ai:active,
+.platform-header-ai:focus{
   border:0!important;
   background:transparent!important;
   box-shadow:none!important;
 }
-html .aca-shell .aca-guide-icon{
+.platform-header-ai img{
   display:block!important;
   width:32px!important;
   height:auto!important;
@@ -45,28 +39,13 @@ html .aca-shell .aca-guide-icon{
   background:transparent!important;
   box-shadow:none!important;
 }
-html .aca-shell .aca-launcher-label{
-  left:auto!important;
-  right:46px!important;
-}
-@media(min-width:601px){
-  html .aca-shell .aca-panel{
-    left:auto!important;
-    right:0!important;
-    top:52px!important;
-    bottom:auto!important;
-    transform-origin:100% 0!important;
-  }
-}
 
 .platform-side-meta .exterior-settings-trigger{display:flex;align-items:center;width:100%;border:0;background:transparent;color:inherit;text-decoration:none;cursor:pointer;font:inherit;text-align:left;padding:0 10px}
 @media(max-width:1100px){
   .platform-mobile-header{grid-template-columns:auto minmax(0,1fr) auto}
   .platform-mobile-account-actions .platform-header-account{width:40px;height:40px;min-width:40px}
-  html .aca-shell{left:auto!important;right:58px!important;top:calc(env(safe-area-inset-top) + 11px)!important}
 }
 @media(max-width:600px){
   .platform-mobile-account-actions{gap:2px}
-  html .aca-shell{right:56px!important}
-  html .aca-shell .aca-guide-icon{width:30px!important;max-width:30px!important;max-height:28px!important}
+  .platform-header-ai img{width:30px!important;max-width:30px!important;max-height:28px!important}
 }
