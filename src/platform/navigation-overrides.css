@@ -62,6 +62,36 @@
   padding:0 10px;
 }
 
+/* Sidebar navigation always has a visual symbol; labels remain the semantic name. */
+.platform-nav a,
+.platform-side-meta>a[href="/app/about"],
+.platform-side-meta .exterior-settings-trigger{
+  gap:10px;
+}
+.platform-nav a::before,
+.platform-side-meta>a[href="/app/about"]::before,
+.platform-side-meta .exterior-settings-trigger::before{
+  content:"";
+  display:block;
+  width:20px;
+  height:20px;
+  min-width:20px;
+  flex:0 0 20px;
+  background:currentColor;
+  -webkit-mask:var(--platform-nav-icon) center/20px 20px no-repeat;
+  mask:var(--platform-nav-icon) center/20px 20px no-repeat;
+  opacity:.9;
+}
+.platform-nav a[href="/app/new"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20h9' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/search"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='8' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='m21 21-4.35-4.35' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/projects"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6h6l2 2h10v11H3Z' fill='none' stroke='black' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/settings/options"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/plan-credit"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='5' width='18' height='14' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M3 10h18' stroke='black' stroke-width='2'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/developer"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/history"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 12a9 9 0 1 0 3-6.7L3 8' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M3 3v5h5M12 7v5l3 2' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.platform-side-meta>a[href="/app/about"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M9.8 9a2.4 2.4 0 1 1 3.7 2c-1 .65-1.5 1.1-1.5 2M12 17h.01' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")}
+.platform-side-meta .exterior-settings-trigger{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='3' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.1A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3V9.6h.1A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.35.3.56.65.6 1.1v3.8c-.04.45-.25.8-.6 1.1Z' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+
 /* Single responsive shell boundary: desktop/tablet remains sidebar layout through 761px. */
 @media (min-width:761px){
   html .platform-shell,
@@ -79,10 +109,46 @@
   html .platform-sidebar{
     display:flex!important;
   }
-  html .platform-mobile-header,
   html .platform-backdrop,
   html .platform-mobile-drawer{
     display:none!important;
+  }
+  /* Reuse the existing header AI/account controls on desktop instead of creating duplicates. */
+  html .platform-mobile-header{
+    display:flex!important;
+    position:fixed!important;
+    top:var(--safe-top)!important;
+    right:calc(var(--safe-right) + 12px)!important;
+    bottom:auto!important;
+    left:auto!important;
+    width:auto!important;
+    height:64px!important;
+    min-height:64px!important;
+    padding:0!important;
+    border:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+    backdrop-filter:none!important;
+    align-items:center!important;
+    z-index:48!important;
+    pointer-events:none!important;
+  }
+  html .platform-mobile-header-left,
+  html .platform-mobile-header-center{
+    display:none!important;
+  }
+  html .platform-mobile-account-actions{
+    display:flex!important;
+    pointer-events:auto!important;
+  }
+  html .platform-header-account{
+    width:40px!important;
+    height:40px!important;
+    min-width:40px!important;
+    display:grid!important;
+    place-items:center!important;
+    border-radius:10px!important;
+    text-decoration:none!important;
   }
   html .exterior-sidebar-collapse{
     display:block!important;
@@ -106,6 +172,61 @@
   html .platform-shell.exterior-sidebar-collapsed .platform-credit-layer{
     left:calc(var(--ex-compact) + (100vw - var(--ex-compact))/2)!important;
     width:clamp(220px,28vw,340px)!important;
+  }
+
+  /* Collapsed sidebar keeps complete logo and functional icon-only navigation. */
+  html .platform-shell.exterior-sidebar-collapsed .platform-brand{
+    width:48px!important;
+    min-width:48px!important;
+    height:48px!important;
+    min-height:48px!important;
+    margin:2px auto 8px!important;
+    padding:4px!important;
+    justify-content:center!important;
+    overflow:visible!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-brand img{
+    width:40px!important;
+    max-width:40px!important;
+    height:40px!important;
+    max-height:40px!important;
+    object-fit:contain!important;
+    object-position:center!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-brand span{
+    display:none!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-nav a{
+    justify-content:center!important;
+    padding-inline:0!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-nav a span{
+    display:inline!important;
+    width:0!important;
+    max-width:0!important;
+    height:0!important;
+    overflow:hidden!important;
+    font-size:0!important;
+    line-height:0!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-nav a::before{
+    margin:0!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-side-meta>a[href="/app/about"],
+  html .platform-shell.exterior-sidebar-collapsed .platform-side-meta .exterior-settings-trigger{
+    display:flex!important;
+    justify-content:center!important;
+    width:100%!important;
+    padding-inline:0!important;
+    font-size:0!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .platform-side-meta>a[href="/app/about"]::before,
+  html .platform-shell.exterior-sidebar-collapsed .platform-side-meta .exterior-settings-trigger::before{
+    margin:0!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed .exterior-sidebar-collapse{
+    right:-14px!important;
+    z-index:30!important;
   }
 }
 
@@ -132,6 +253,7 @@
     gap:4px!important;
     padding:0 10px!important;
     z-index:50!important;
+    pointer-events:auto!important;
   }
   html .platform-mobile-header-left{
     grid-column:1;
