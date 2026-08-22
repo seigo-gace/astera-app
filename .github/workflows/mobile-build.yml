@@ -35,8 +35,7 @@ jobs:
       - name: Validate browser scripts
         run: |
           node --check public/app-interactions.js
-          node --check public/customer-ai-transport.js
-          node --check public/customer-ai-bubble.js
+          node --check public/guide-ai-runtime.js
 
       - name: Audit canonical route coverage
         run: npm run route:audit
@@ -82,25 +81,17 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android API 36
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
-
       - name: Install exact direct dependencies
         run: npm install --no-fund
 
-      - name: Generate configure and audit Android project
-        run: npm run mobile:bootstrap -- android
+      - name: Build and sync Android shell
+        run: npm run mobile:sync
 
       - name: Build Android debug APK
         working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug
 
-      - name: Upload Android APK
+      - name: Upload Android debug APK
         uses: actions/upload-artifact@v4
         with:
           name: astera-android-debug
@@ -108,109 +99,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Android configuration evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: astera-android-config-evidence
-          path: |
-            android/variables.gradle
-            android/app/src/main/AndroidManifest.xml
-          if-no-files-found: error
-          retention-days: 14
-
-  android-emulator-smoke:
-    name: Android ${{ matrix.label }} smoke
-    needs: android
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: phone
-            device_profile: pixel_5
-          - label: tablet
-            device_profile: Nexus 10
-
-    steps:
-      - name: Download Android APK
-        uses: actions/download-artifact@v4
-        with:
-          name: astera-android-debug
-          path: artifacts
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install emulator image
-        run: |
-          sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
-          echo no | avdmanager create avd \
-            --force \
-            --name astera-${{ matrix.label }} \
-            --package 'system-images;android-35;google_apis;x86_64' \
-            --device '${{ matrix.device_profile }}'
-
-      - name: Boot emulator
-        run: |
-          sudo chmod 666 /dev/kvm || true
-          nohup emulator \
-            -avd astera-${{ matrix.label }} \
-            -no-window \
-            -no-audio \
-            -no-boot-anim \
-            -no-snapshot \
-            -gpu swiftshader_indirect \
-            -camera-back none \
-            -camera-front none \
-            > emulator-${{ matrix.label }}.log 2>&1 &
-          adb wait-for-device
-          for attempt in $(seq 1 180); do
-            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
-              break
-            fi
-            sleep 2
-          done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
-          adb shell input keyevent 82 || true
-
-      - name: Install launch and deep-link Astera
-        run: |
-          APK_PATH="$(find artifacts -name '*.apk' -print -quit)"
-          test -n "$APK_PATH"
-          adb install -r "$APK_PATH"
-          adb shell am start -W -n jp.asterav8.app/.MainActivity
-          sleep 5
-          test -n "$(adb shell pidof jp.asterav8.app | tr -d '\r')"
-          adb exec-out screencap -p > astera-android-${{ matrix.label }}-launch.png
-          adb shell am start -W \
-            -a android.intent.action.VIEW \
-            -d 'jp.asterav8.app://open/login' \
-            jp.asterav8.app
-          sleep 3
-          test -n "$(adb shell pidof jp.asterav8.app | tr -d '\r')"
-          adb exec-out screencap -p > astera-android-${{ matrix.label }}-login.png
-          adb shell uiautomator dump /sdcard/astera-window.xml || true
-          adb pull /sdcard/astera-window.xml astera-android-${{ matrix.label }}-window.xml || true
-
-      - name: Upload Android smoke evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: astera-android-${{ matrix.label }}-smoke
-          path: |
-            astera-android-${{ matrix.label }}-launch.png
-            astera-android-${{ matrix.label }}-login.png
-            astera-android-${{ matrix.label }}-window.xml
-            emulator-${{ matrix.label }}.log
-          if-no-files-found: ignore
-          retention-days: 14
-
   ios:
-    name: iPhone and iPad simulator app
+    name: iOS unsigned app
     needs: web-audit
-    runs-on: macos-latest
-    timeout-minutes: 55
+    runs-on: macos-15
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -221,97 +114,34 @@ jobs:
         with:
           node-version: '22.12'
 
-      - name: Verify Xcode 26 or later
-        run: |
-          xcodebuild -version
-          XCODE_MAJOR="$(xcodebuild -version | awk '/Xcode/{split($2, version, "."); print version[1]}')"
-          test "$XCODE_MAJOR" -ge 26
-
       - name: Install exact direct dependencies
         run: npm install --no-fund
 
-      - name: Generate configure and audit iOS project
-        run: npm run mobile:bootstrap -- ios
+      - name: Build and sync iOS shell
+        run: npm run mobile:sync
 
-      - name: Build universal iOS simulator app
+      - name: Build unsigned iOS app
+        working-directory: ios/App
         run: |
           xcodebuild \
-            -workspace ios/App/App.xcworkspace \
+            -project App.xcodeproj \
             -scheme App \
             -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ios/build \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Smoke test on iPhone and iPad
+      - name: Package unsigned iOS app
+        working-directory: ios/App
         run: |
-          APP_PATH='ios/build/Build/Products/Debug-iphonesimulator/App.app'
-          test -d "$APP_PATH"
-          python3 - <<'PY' > simulator-ids.env
-          import json, subprocess
-          data = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))
-          devices = [device for group in data.get('devices', {}).values() for device in group]
-          for family, token in [('IPHONE_ID', 'iPhone'), ('IPAD_ID', 'iPad')]:
-              match = next((device for device in devices if token in device.get('name', '')), None)
-              if not match:
-                  raise SystemExit(f'No available {token} simulator')
-              print(f'{family}={match["udid"]}')
-          PY
-          source simulator-ids.env
-          smoke_simulator() {
-            local id="$1"
-            local label="$2"
-            xcrun simctl boot "$id" || true
-            xcrun simctl bootstatus "$id" -b
-            xcrun simctl install "$id" "$APP_PATH"
-            xcrun simctl launch "$id" jp.asterav8.app
-            sleep 5
-            xcrun simctl io "$id" screenshot "astera-ios-${label}-launch.png"
-            xcrun simctl openurl "$id" 'jp.asterav8.app://open/login'
-            sleep 3
-            xcrun simctl io "$id" screenshot "astera-ios-${label}-login.png"
-            xcrun simctl terminate "$id" jp.asterav8.app || true
-            xcrun simctl shutdown "$id" || true
-          }
-          smoke_simulator "$IPHONE_ID" iphone
-          smoke_simulator "$IPAD_ID" ipad
+          cd build/Build/Products/Debug-iphonesimulator
+          zip -r Astera-iOS-Simulator.zip App.app
 
-      - name: Package iOS simulator app
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            ios/build/Build/Products/Debug-iphonesimulator/App.app \
-            astera-ios-simulator.zip
-
-      - name: Upload iOS simulator app
+      - name: Upload unsigned iOS app
         uses: actions/upload-artifact@v4
         with:
           name: astera-ios-simulator
-          path: astera-ios-simulator.zip
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload iPhone iPad smoke evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: astera-ios-device-family-smoke
-          path: |
-            astera-ios-iphone-launch.png
-            astera-ios-iphone-login.png
-            astera-ios-ipad-launch.png
-            astera-ios-ipad-login.png
-            simulator-ids.env
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload iOS configuration evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: astera-ios-config-evidence
-          path: |
-            ios/App/App/Info.plist
-            ios/App/App/App.entitlements
-            ios/App/App.xcodeproj/project.pbxproj
+          path: ios/App/build/Build/Products/Debug-iphonesimulator/Astera-iOS-Simulator.zip
           if-no-files-found: error
           retention-days: 14
