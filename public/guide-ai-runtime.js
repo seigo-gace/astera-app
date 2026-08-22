@@ -269,6 +269,9 @@
     const value = element?.getBoundingClientRect?.().height;
     return Number.isFinite(value) && value > 0 ? Math.ceil(value) : fallback;
   }
+  function setOpenerExpanded(expanded) {
+    document.querySelectorAll('.platform-header-ai').forEach((opener) => opener.setAttribute('aria-expanded', String(expanded)));
+  }
   function syncLayout() {
     if (panel.hidden || panel.classList.contains('is-minimized')) {
       panel.style.removeProperty('--ai-viewport-top');
@@ -283,18 +286,35 @@
     panel.style.setProperty('--ai-top-dock-space', `${measuredHeight(topDock, 118)}px`);
     panel.style.setProperty('--ai-bottom-dock-space', `${measuredHeight(composerDock, 86)}px`);
   }
-  function open() {
+  function show() {
     panel.hidden = false;
     panel.classList.remove('is-minimized');
     minimize.textContent = '－';
     minimize.setAttribute('aria-label', '案内AIを最小化');
+    setOpenerExpanded(true);
     window.requestAnimationFrame(syncLayout);
   }
   function close() {
     panel.hidden = true;
     panel.classList.remove('is-minimized');
+    setOpenerExpanded(false);
     textarea.blur?.();
     syncLayout();
+  }
+  function toggle() {
+    if (panel.hidden) {
+      show();
+      return;
+    }
+    if (panel.classList.contains('is-minimized')) {
+      panel.classList.remove('is-minimized');
+      minimize.textContent = '－';
+      minimize.setAttribute('aria-label', '案内AIを最小化');
+      setOpenerExpanded(true);
+      window.setTimeout(syncLayout, 0);
+      return;
+    }
+    close();
   }
   function clearLocalConversation() {
     timeline.querySelectorAll('.ai-message').forEach((item) => item.remove());
@@ -317,7 +337,7 @@
     textarea.disabled = false;
     connection?.classList.remove('is-working');
     clearLocalConversation();
-    if (keepOpen) open(); else close();
+    if (keepOpen) show(); else close();
     if (oldSession) void deleteSession(oldSession);
   }
 
@@ -369,6 +389,7 @@
         textarea.disabled = false;
         connection?.classList.remove('is-working');
         syncLayout();
+        textarea.focus();
       }
     }
   }
@@ -376,6 +397,7 @@
   restoreHistory();
   renderMode();
   resizeInput();
+  setOpenerExpanded(false);
 
   modeSelect.addEventListener('change', () => {
     if (!Object.hasOwn(RESPONSE_MODES, modeSelect.value)) return;
@@ -395,6 +417,7 @@
   });
   sendButton.addEventListener('click', () => void send());
   textarea.addEventListener('input', () => { resizeInput(); syncLayout(); });
+  textarea.addEventListener('focus', syncLayout);
   textarea.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
@@ -405,8 +428,9 @@
     if (event.key === 'Escape' && !panel.hidden) close();
   });
   window.addEventListener('resize', syncLayout);
+  window.addEventListener('orientationchange', () => window.setTimeout(syncLayout, 0));
   window.visualViewport?.addEventListener('resize', syncLayout);
   window.visualViewport?.addEventListener('scroll', syncLayout);
 
-  window.AsteraCustomerAIUI = { open, close, root: panel };
+  window.AsteraCustomerAIUI = { open: toggle, show, close, toggle, root: panel };
 })();
