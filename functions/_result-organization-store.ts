@@ -106,12 +106,8 @@ export async function patchResultOrganization(
 
   if (hasArchived) {
     archivedAt = body.archived === true ? (archivedAt || now) : null;
-    if (body.archived === true) pinnedAt = null;
   }
   if (hasPinned) {
-    if (body.pinned === true && archivedAt) {
-      throw new ResultOrganizationStoreError(409, 'ARCHIVED_RESULT_CANNOT_BE_PINNED', 'アーカイブ中のResultはピン留めできません。');
-    }
     pinnedAt = body.pinned === true ? (pinnedAt || now) : null;
   }
 
