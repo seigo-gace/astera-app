@@ -187,8 +187,7 @@ function useSession(required: boolean): SessionState {
 
 function openGuideAi() {
   const ui = (window as Window & { AsteraCustomerAIUI?: { open?: () => void } }).AsteraCustomerAIUI;
-  if (ui?.open) { ui.open(); return; }
-  document.querySelector<HTMLButtonElement>('.aca-launcher')?.click();
+  ui?.open?.();
 }
 
 export function ResponsivePageShell({ route, children, eyebrow, description, actions, fullWidth = false }: { route: RouteMatch; children: ReactNode; eyebrow?: string; description?: string; actions?: ReactNode; fullWidth?: boolean }) {
@@ -331,10 +330,10 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
     <header className="platform-mobile-header">
       <div className="platform-mobile-header-left">
         <button type="button" ref={menuButtonRef} className="platform-menu-button" aria-expanded={menuOpen} aria-controls="platform-mobile-drawer" aria-label={appText('openMenu')} onClick={() => setMenuOpen((value) => !value)}><span aria-hidden="true">☰</span><span className="sr-only">{appText('openMenu')}</span></button>
-        <button className="platform-header-account platform-header-ai" type="button" onClick={openGuideAi} aria-label={appText('openGuideAi')}><img src="https://asterav8.jp/assets/icons/ai-guide-robot.svg" alt="" aria-hidden="true" /></button>
       </div>
       <span className="platform-mobile-header-center" aria-hidden="true" />
       <span className="platform-mobile-account-actions">
+        <button className="platform-header-ai" type="button" onClick={openGuideAi} aria-label={appText('openGuideAi')}><img src="/guide-ai.png?v=ai-guide-20260822-2" alt="" aria-hidden="true" /></button>
         <a className="platform-header-account" href="/account" aria-label={appText('account')}>◎</a>
       </span>
     </header>
