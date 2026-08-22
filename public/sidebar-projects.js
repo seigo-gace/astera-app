@@ -9,22 +9,22 @@
   const locale = () => (document.documentElement.lang || navigator.language || 'ja').toLowerCase().startsWith('en') ? 'en' : 'ja';
   const copy = () => locale() === 'en'
     ? {
-        projects: 'Projects',
+        projects: 'Folders',
         loading: 'Loading…',
-        empty: 'No projects yet',
-        historyEmpty: 'No history in this project',
+        empty: 'No folders yet',
+        historyEmpty: 'No history in this folder',
         moreHistory: 'Show more',
-        moreProjects: 'Show more projects',
-        openProject: 'Open project',
+        moreProjects: 'Show more folders',
+        openProject: 'Open folders',
       }
     : {
-        projects: 'プロジェクト',
+        projects: 'フォルダー',
         loading: '読み込み中…',
-        empty: 'まだプロジェクトはありません',
-        historyEmpty: 'このプロジェクトには履歴がありません',
+        empty: 'まだフォルダーはありません',
+        historyEmpty: 'このフォルダーには履歴がありません',
         moreHistory: 'もっと見る',
         moreProjects: 'さらに表示',
-        openProject: 'プロジェクトを開く',
+        openProject: 'フォルダー一覧を開く',
       };
 
   function arrayFrom(payload, keys) {
@@ -179,8 +179,21 @@
     return details;
   }
 
+  function moveAboutLink(sidebar) {
+    if (!(sidebar instanceof HTMLElement)) return;
+    const nav = sidebar.querySelector('.platform-nav');
+    if (!(nav instanceof HTMLElement)) return;
+    const newPage = nav.querySelector('a[href="/app/new"]');
+    const about = sidebar.querySelector('a[href="/app/about"]');
+    if (!(newPage instanceof HTMLElement) || !(about instanceof HTMLElement)) return;
+    if (newPage.nextElementSibling === about) return;
+    newPage.after(about);
+  }
+
   function install(sidebar) {
-    if (!(sidebar instanceof HTMLElement) || sidebar.querySelector('[data-sidebar-project-section]')) return;
+    if (!(sidebar instanceof HTMLElement)) return;
+    moveAboutLink(sidebar);
+    if (sidebar.querySelector('[data-sidebar-project-section]')) return;
     const nav = sidebar.querySelector('.platform-nav');
     if (!(nav instanceof HTMLElement)) return;
     const developer = nav.querySelector('a[href="/app/developer"]');
@@ -198,7 +211,6 @@
     heading.href = '/app/projects';
     heading.setAttribute('aria-label', copy().openProject);
     if (legacyProject?.getAttribute('aria-current') === 'page') heading.setAttribute('aria-current', 'page');
-    heading.append(folderIcon());
     const headingText = document.createElement('span');
     headingText.textContent = copy().projects;
     heading.append(headingText);
