@@ -1,5 +1,17 @@
-/* GPT-style Project navigation: Project section sits directly below Developer Mode. */
+/* GPT-style folder navigation: folder section sits directly below Developer Mode. */
 .platform-nav > a[href="/app/projects"][hidden]{display:none!important}
+.platform-nav > a[href="/app/about"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/circle-question-mark.svg");
+}
+.platform-sidebar{
+  height:100dvh!important;
+  max-height:100dvh!important;
+  min-height:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+}
 .sidebar-project-section{
   display:grid;
   gap:2px;
@@ -112,6 +124,8 @@
   padding:0;
   font-size:0;
 }
-.platform-shell.exterior-sidebar-collapsed .sidebar-project-heading .sidebar-project-folder-icon{margin:0}
 .platform-mobile-drawer .sidebar-project-section{margin-top:2px}
+@media(max-width:760px){
+  .platform-sidebar{height:auto!important;max-height:none!important;overflow:hidden!important}
+}
 @media(prefers-reduced-motion:reduce){.sidebar-project-chevron{transition:none}}
