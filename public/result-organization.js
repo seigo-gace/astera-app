@@ -14,8 +14,8 @@
 
   const locale = () => (document.documentElement.lang || navigator.language || 'ja').toLowerCase().startsWith('en') ? 'en' : 'ja';
   const copy = () => locale() === 'en'
-    ? { organize:'Organize', pin:'Pin', unpin:'Unpin', archive:'Archive', unarchive:'Unarchive', moveFolder:'Move to folder', removeFolder:'Remove from folder', pageMove:'Move page', pageRemove:'Remove page', folderDelete:'Delete folder', pageDelete:'Delete page', createFolder:'Create folder', folderName:'Folder name', create:'Create', cancel:'Cancel', unavailable:'Organization data is not ready', failed:'Could not update organization', pageDeleteConfirm:'Delete this page?', folderDeleteConfirm:'Delete this folder? Pages inside it will be moved out of the folder.' }
-    : { organize:'整理', pin:'ピン留め', unpin:'ピン留めを解除', archive:'アーカイブ', unarchive:'アーカイブ解除', moveFolder:'フォルダーに移動', removeFolder:'フォルダーから削除', pageMove:'ページの移動', pageRemove:'ページを外す', folderDelete:'フォルダーの削除', pageDelete:'ページの削除', createFolder:'フォルダーを作成', folderName:'フォルダー名', create:'作成', cancel:'キャンセル', unavailable:'整理機能のD1反映待ち', failed:'整理状態を更新できませんでした', pageDeleteConfirm:'このページを削除しますか？', folderDeleteConfirm:'このフォルダーを削除しますか？ フォルダー内のページは未所属へ戻ります。' };
+    ? { organize:'Organize', createPage:'Create page', pin:'Pin', unpin:'Unpin', archive:'Archive', unarchive:'Unarchive', moveFolder:'Move to folder', removeFolder:'Remove from folder', pageMove:'Move page', pageRemove:'Remove page', folderDelete:'Delete folder', pageDelete:'Delete page', createFolder:'Create folder', folderName:'Folder name', create:'Create', cancel:'Cancel', unavailable:'Organization data is not ready', failed:'Could not update organization', pageDeleteConfirm:'Delete this page?', folderDeleteConfirm:'Delete this folder? Pages inside it will be moved out of the folder.' }
+    : { organize:'整理', createPage:'ページ作成', pin:'ピン留め', unpin:'ピン留めを解除', archive:'アーカイブ', unarchive:'アーカイブ解除', moveFolder:'フォルダーに移動', removeFolder:'フォルダーから外す', pageMove:'ページの移動', pageRemove:'ページを外す', folderDelete:'フォルダーの削除', pageDelete:'ページの削除', createFolder:'フォルダーを作成', folderName:'フォルダー名', create:'作成', cancel:'キャンセル', unavailable:'整理機能のD1反映待ち', failed:'整理状態を更新できませんでした', pageDeleteConfirm:'このページを削除しますか？', folderDeleteConfirm:'このフォルダーを削除しますか？ フォルダー内のページは未所属へ戻ります。' };
 
   function resultIdFromPath(){ const m=location.pathname.match(/^\/app\/results\/([^/?#]+)$/); return m?decodeURIComponent(m[1]):''; }
   function csrfToken(){ const meta=document.querySelector('meta[name="csrf-token"]'); if(meta instanceof HTMLMetaElement&&meta.content.trim())return meta.content.trim(); const cookie=document.cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('csrf_token=')); return cookie?decodeURIComponent(cookie.slice('csrf_token='.length)):''; }
@@ -25,17 +25,60 @@
   function resultProjectId(payload){ const root=payload&&typeof payload==='object'?payload:{}; const result=root.result&&typeof root.result==='object'?root.result:root.data&&typeof root.data==='object'?root.data:root; return typeof result.project_id==='string'?result.project_id:''; }
   function inferMenuMode(trigger){ return trigger instanceof Element && trigger.closest('.sidebar-project-section') ? 'folder' : 'page'; }
   function setPopoverPosition(root,trigger){ root.style.left=''; root.style.right=''; root.style.top=''; const anchor=trigger instanceof HTMLElement?trigger:document.querySelector('.platform-header-organize'); const margin=8; const rect=anchor instanceof HTMLElement?anchor.getBoundingClientRect():null; requestAnimationFrame(()=>{if(root.hidden)return; const width=root.offsetWidth||300; const height=root.offsetHeight||260; const left=rect?Math.max(margin,Math.min(innerWidth-width-margin,rect.right-width)):Math.max(margin,innerWidth-width-12); const preferred=rect?rect.bottom+6:58; const top=Math.max(margin,Math.min(innerHeight-height-margin,preferred)); root.style.left=`${Math.round(left)}px`; root.style.top=`${Math.round(top)}px`;}); }
+  function startPageCreate(){
+    const inheritedProjectId=currentResultId&&resultReady?state.projectId:'';
+    closeAll();
+    location.assign(inheritedProjectId?`/app/new?folder=${encodeURIComponent(inheritedProjectId)}`:'/app/new');
+  }
+  function applyFolderContextToNewPage(){
+    if(location.pathname!=='/app/new')return;
+    const folderId=new URLSearchParams(location.search).get('folder')?.trim()||'';
+    if(!folderId)return;
+    const started=Date.now();
+    let opened=false;
+    let done=false;
+    let observer=null;
+    const finish=()=>{if(done)return;done=true;observer?.disconnect();history.replaceState(history.state,'','/app/new');};
+    const attempt=()=>{
+      if(done)return true;
+      if(Date.now()-started>10000){finish();return true;}
+      const labels=[...document.querySelectorAll('.native-picker-field')];
+      const projectLabel=labels.find(label=>{const title=label.querySelector('span')?.textContent?.trim()||'';return title==='Project'||title==='フォルダー';});
+      const select=projectLabel?.querySelector('select');
+      if(select instanceof HTMLSelectElement&&[...select.options].some(option=>option.value===folderId)){
+        const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value')?.set;
+        if(setter)setter.call(select,folderId);else select.value=folderId;
+        select.dispatchEvent(new Event('input',{bubbles:true}));
+        select.dispatchEvent(new Event('change',{bubbles:true}));
+        const apply=document.querySelector('.native-picker-apply');
+        if(apply instanceof HTMLButtonElement)apply.click();
+        finish();
+        return true;
+      }
+      if(!opened){
+        const trigger=document.querySelector('button[aria-label="具体対象を選択"]');
+        if(trigger instanceof HTMLButtonElement){opened=true;trigger.click();}
+      }
+      return false;
+    };
+    observer=new MutationObserver(attempt);
+    observer.observe(document.documentElement,{childList:true,subtree:true});
+    attempt();
+    setTimeout(()=>finish(),10000);
+  }
 
   function ensureMainMenu(){
     if(mainMenu?.root?.isConnected)return mainMenu;
     const root=document.createElement('div'); root.className='result-organization-popover'; root.setAttribute('role','menu'); root.setAttribute('aria-label',copy().organize); root.hidden=true;
+    const createPage=document.createElement('button'); createPage.type='button'; createPage.className='result-organization-popover-action';
     const pin=document.createElement('button'); pin.type='button'; pin.className='result-organization-popover-action';
     const archive=document.createElement('button'); archive.type='button'; archive.className='result-organization-popover-action';
     const moveFolder=document.createElement('button'); moveFolder.type='button'; moveFolder.className='result-organization-popover-action';
     const removeFolder=document.createElement('button'); removeFolder.type='button'; removeFolder.className='result-organization-popover-action';
     const destructive=document.createElement('button'); destructive.type='button'; destructive.className='result-organization-popover-action is-danger';
     const status=document.createElement('div'); status.className='result-organization-popover-status'; status.setAttribute('role','status'); status.hidden=true;
-    root.append(pin,archive,moveFolder,removeFolder,destructive,status); document.body.append(root);
+    root.append(createPage,pin,archive,moveFolder,removeFolder,destructive,status); document.body.append(root);
+    createPage.addEventListener('click',()=>{if(menuMode==='page'&&(!currentResultId||resultReady))startPageCreate();});
     pin.addEventListener('click',async()=>{if(currentResultId&&organizationReady)await patchOrganization({pinned:!state.pinned});});
     archive.addEventListener('click',async()=>{if(currentResultId&&organizationReady)await patchOrganization({archived:!state.archived});});
     moveFolder.addEventListener('click',()=>{if(!currentResultId||!resultReady)return; const anchor=mainAnchor; closeMainMenu(); openFolderPicker(anchor,false);});
@@ -61,7 +104,7 @@
       try{await requestJson(`/api/results/${encodeURIComponent(currentResultId)}`,{method:'DELETE',body:{}}); closeAll(); location.reload();}
       catch{showStatus(copy().failed); setBusy(false); renderMainMenu();}
     });
-    mainMenu={root,pin,archive,moveFolder,removeFolder,destructive,status}; return mainMenu;
+    mainMenu={root,createPage,pin,archive,moveFolder,removeFolder,destructive,status}; return mainMenu;
   }
 
   function ensureFolderPicker(){
@@ -84,8 +127,8 @@
 
   function clearStatus(){const ui=ensureMainMenu(); ui.status.textContent=''; ui.status.hidden=true;}
   function showStatus(message){const ui=ensureMainMenu(); ui.status.textContent=message; ui.status.hidden=!message;}
-  function setBusy(busy){const ui=ensureMainMenu(); ui.pin.disabled=busy||!organizationReady; ui.archive.disabled=busy||!organizationReady; ui.moveFolder.disabled=busy||!resultReady; ui.removeFolder.disabled=busy||!resultReady||!state.projectId; ui.destructive.disabled=busy||!resultReady||(menuMode==='folder'&&!state.projectId);}
-  function renderMainMenu(){const ui=ensureMainMenu(); ui.root.setAttribute('aria-label',copy().organize); ui.pin.textContent=state.pinned?copy().unpin:copy().pin; ui.archive.textContent=state.archived?copy().unarchive:copy().archive; ui.moveFolder.textContent=menuMode==='folder'?copy().pageMove:copy().moveFolder; ui.removeFolder.textContent=menuMode==='folder'?copy().pageRemove:copy().removeFolder; ui.destructive.textContent=menuMode==='folder'?copy().folderDelete:copy().pageDelete; setBusy(false);}
+  function setBusy(busy){const ui=ensureMainMenu(); ui.createPage.disabled=busy||menuMode==='folder'||Boolean(currentResultId&&!resultReady); ui.pin.disabled=busy||!organizationReady; ui.archive.disabled=busy||!organizationReady; ui.moveFolder.disabled=busy||!resultReady; ui.removeFolder.disabled=busy||!resultReady||!state.projectId; ui.destructive.disabled=busy||!resultReady||(menuMode==='folder'&&!state.projectId);}
+  function renderMainMenu(){const ui=ensureMainMenu(); ui.root.setAttribute('aria-label',copy().organize); ui.createPage.textContent=copy().createPage; ui.createPage.hidden=menuMode==='folder'; ui.pin.textContent=state.pinned?copy().unpin:copy().pin; ui.archive.textContent=state.archived?copy().unarchive:copy().archive; ui.moveFolder.textContent=menuMode==='folder'?copy().pageMove:copy().moveFolder; ui.removeFolder.textContent=menuMode==='folder'?copy().pageRemove:copy().removeFolder; ui.destructive.textContent=menuMode==='folder'?copy().folderDelete:copy().pageDelete; setBusy(false);}
   async function setProject(projectId){const ui=ensureMainMenu(); setBusy(true); clearStatus(); try{await requestJson(`/api/results/${encodeURIComponent(currentResultId)}`,{method:'PATCH',body:{project_id:projectId}}); state.projectId=projectId||''; dispatchEvent(new CustomEvent('astera:result-organization-changed',{detail:{resultId:currentResultId,...state}}));}catch{showStatus(copy().failed);}finally{setBusy(false); renderMainMenu();}}
   async function patchOrganization(body){const ui=ensureMainMenu(); setBusy(true); clearStatus(); try{const payload=await requestJson(`/api/results/${encodeURIComponent(currentResultId)}/organization`,{method:'PATCH',body}); state.pinned=payload?.pinned===true; state.archived=payload?.archived===true; if(typeof payload?.project_id==='string')state.projectId=payload.project_id; dispatchEvent(new CustomEvent('astera:result-organization-changed',{detail:{resultId:currentResultId,...state}}));}catch(error){showStatus(error?.code==='RESULT_ORGANIZATION_MIGRATION_REQUIRED'?copy().unavailable:copy().failed);}finally{setBusy(false); renderMainMenu();}}
   async function loadMainState(){currentResultId=resultIdFromPath(); organizationReady=false; resultReady=false; state={pinned:false,archived:false,projectId:''}; clearStatus(); renderMainMenu(); if(!currentResultId)return; const [orgRes,resultRes]=await Promise.allSettled([requestJson(`/api/results/${encodeURIComponent(currentResultId)}/organization`),requestJson(`/api/results/${encodeURIComponent(currentResultId)}`)]); if(resultRes.status==='fulfilled'){resultReady=true; state.projectId=resultProjectId(resultRes.value);} if(orgRes.status==='fulfilled'){organizationReady=true; state.pinned=orgRes.value?.pinned===true; state.archived=orgRes.value?.archived===true; if(typeof orgRes.value?.project_id==='string')state.projectId=orgRes.value.project_id;}else{const error=orgRes.reason; if(currentResultId)showStatus(error?.code==='RESULT_ORGANIZATION_MIGRATION_REQUIRED'?copy().unavailable:copy().failed);} renderMainMenu();}
@@ -101,4 +144,5 @@
   document.addEventListener('click',event=>{const target=event.target; if(!(target instanceof Element))return; const trigger=target.closest('.platform-header-organize'); if(trigger){event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();toggleMainMenu(trigger,'page');return;} if(mainOpen&&!target.closest('.result-organization-popover'))closeMainMenu(); if(pickerOpen&&!target.closest('.result-folder-picker-popover'))closeFolderPicker();},true);
   document.addEventListener('keydown',event=>{if(event.key!=='Escape')return; if(pickerOpen){event.preventDefault(); const anchor=folderPicker?.anchor; closeFolderPicker(); anchor?.focus?.(); return;} if(mainOpen){event.preventDefault(); const anchor=mainAnchor; closeMainMenu(); anchor?.focus?.();}});
   addEventListener('popstate',closeAll); addEventListener('resize',closeAll);
+  applyFolderContextToNewPage();
 })();
