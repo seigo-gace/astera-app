@@ -1,6 +1,9 @@
 /customer-ai-bubble.js
   Cache-Control: no-cache, no-store, must-revalidate
 
+/customer-ai-transport.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
 /customer-ai-bubble.css
   Cache-Control: no-cache, no-store, must-revalidate
 
