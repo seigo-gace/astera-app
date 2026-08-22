@@ -57,29 +57,7 @@
     return icon;
   }
 
-  function toggleOrganizationMenu() {
-    const details = document.querySelector('.result-organization-menu, .result-summary-actions .result-more');
-    if (details instanceof HTMLDetailsElement) details.open = !details.open;
-  }
-
-  function ensureHeaderTrigger() {
-    const host = document.querySelector('.platform-mobile-account-actions');
-    if (!(host instanceof HTMLElement)) return;
-    if (host.querySelector('.platform-header-organize')) return;
-
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'platform-header-organize result-organization-global-trigger';
-    trigger.setAttribute('aria-label', copy().organize);
-    trigger.title = copy().organize;
-    trigger.append(folderIcon());
-    trigger.addEventListener('click', toggleOrganizationMenu);
-    host.append(trigger);
-  }
-
   function install() {
-    ensureHeaderTrigger();
-
     const id = resultIdFromPath();
     if (!id) return;
     const details = document.querySelector('.result-summary-actions .result-more');
