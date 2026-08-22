@@ -1,17 +1,24 @@
 (() => {
   'use strict';
 
-  let refreshQueued = false;
+  let menu = null;
+  let menuOpen = false;
+  let currentResultId = '';
+  let organizationReady = false;
+  let resultReady = false;
+  let state = { pinned: false, archived: false, projectId: '' };
 
   const locale = () => (document.documentElement.lang || navigator.language || 'ja').toLowerCase().startsWith('en') ? 'en' : 'ja';
   const copy = () => locale() === 'en'
     ? {
         organize: 'Organize', pin: 'Pin', unpin: 'Unpin', archive: 'Archive', unarchive: 'Unarchive',
-        folder: 'Folder', unassigned: 'No folder', unavailable: 'Organization data is not ready', failed: 'Could not update organization',
+        folder: 'Folder', unassigned: 'No folder', remove: 'Delete', unavailable: 'Organization data is not ready',
+        failed: 'Could not update organization', noResult: 'Open a saved result to organize it.', loading: 'Loading…', deleteConfirm: 'Delete this result?'
       }
     : {
         organize: '整理', pin: 'ピン留め', unpin: 'ピン留めを解除', archive: 'アーカイブ', unarchive: 'アーカイブ解除',
-        folder: 'フォルダー', unassigned: 'フォルダーなし', unavailable: '整理機能のD1反映待ち', failed: '整理状態を更新できませんでした',
+        folder: 'フォルダー', unassigned: 'フォルダーなし', remove: '削除', unavailable: '整理機能のD1反映待ち',
+        failed: '整理状態を更新できませんでした', noResult: '保存済みResultを開くと整理できます。', loading: '読み込み中…', deleteConfirm: 'このResultを削除予定状態にしますか？'
       };
 
   function resultIdFromPath() {
@@ -19,12 +26,25 @@
     return match ? decodeURIComponent(match[1]) : '';
   }
 
+  function csrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta instanceof HTMLMetaElement && meta.content.trim()) return meta.content.trim();
+    const cookie = document.cookie.split(';').map((entry) => entry.trim()).find((entry) => entry.startsWith('csrf_token='));
+    return cookie ? decodeURIComponent(cookie.slice('csrf_token='.length)) : '';
+  }
+
   async function requestJson(url, options = {}) {
+    const method = options.method || 'GET';
+    const headers = { Accept: 'application/json', ...(options.headers || {}) };
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    const csrf = csrfToken();
+    if (csrf && method !== 'GET') headers['X-CSRF-Token'] = csrf;
     const response = await fetch(url, {
+      method,
       credentials: 'include',
       cache: 'no-store',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.headers || {}) },
-      ...options,
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
@@ -36,164 +56,233 @@
   }
 
   async function loadProjects() {
-    try {
-      const payload = await requestJson('/api/projects?status=active', { method: 'GET' });
-      const source = Array.isArray(payload?.projects) ? payload.projects : Array.isArray(payload?.items) ? payload.items : [];
-      return source.flatMap((item) => {
-        if (!item || typeof item !== 'object') return [];
-        const id = String(item.project_id || item.id || '').trim();
-        if (!id) return [];
-        return [{ id, name: String(item.name || item.title || id).trim() }];
-      });
-    } catch {
-      return [];
-    }
+    const payload = await requestJson('/api/projects?status=active');
+    const source = Array.isArray(payload?.projects) ? payload.projects : Array.isArray(payload?.items) ? payload.items : [];
+    return source.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const id = String(item.project_id || item.id || '').trim();
+      if (!id) return [];
+      return [{ id, name: String(item.name || item.title || id).trim() }];
+    });
   }
 
-  function folderIcon() {
-    const icon = document.createElement('span');
-    icon.className = 'result-organization-folder-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    return icon;
+  function resultProjectId(payload) {
+    const root = payload && typeof payload === 'object' ? payload : {};
+    const result = root.result && typeof root.result === 'object' ? root.result : root.data && typeof root.data === 'object' ? root.data : root;
+    return typeof result.project_id === 'string' ? result.project_id : '';
   }
 
-  function install() {
-    const id = resultIdFromPath();
-    if (!id) return;
-    const details = document.querySelector('.result-summary-actions .result-more');
-    if (!(details instanceof HTMLDetailsElement) || details.dataset.organizationInstalled === 'true') return;
-    const summary = details.querySelector(':scope > summary');
-    const menu = details.querySelector(':scope > div');
-    if (!(summary instanceof HTMLElement) || !(menu instanceof HTMLElement)) return;
-    details.dataset.organizationInstalled = 'true';
-    details.classList.add('result-organization-menu');
-    summary.classList.add('result-organization-trigger');
-    summary.replaceChildren(folderIcon());
-    summary.setAttribute('aria-label', copy().organize);
-    summary.title = copy().organize;
+  function ensureMenu() {
+    if (menu?.root?.isConnected) return menu;
 
-    const organization = document.createElement('div');
-    organization.className = 'result-organization-controls';
+    const root = document.createElement('div');
+    root.className = 'result-organization-popover';
+    root.setAttribute('role', 'menu');
+    root.setAttribute('aria-label', copy().organize);
+    root.hidden = true;
 
     const pin = document.createElement('button');
     pin.type = 'button';
-    pin.className = 'result-organization-pin';
+    pin.className = 'result-organization-popover-action';
 
     const archive = document.createElement('button');
     archive.type = 'button';
-    archive.className = 'result-organization-archive';
+    archive.className = 'result-organization-popover-action';
 
     const folderLabel = document.createElement('label');
-    folderLabel.className = 'result-organization-folder';
+    folderLabel.className = 'result-organization-popover-folder';
     const folderText = document.createElement('span');
     folderText.textContent = copy().folder;
     const folderSelect = document.createElement('select');
     folderSelect.setAttribute('aria-label', copy().folder);
-    const emptyOption = document.createElement('option');
-    emptyOption.value = '';
-    emptyOption.textContent = copy().unassigned;
-    folderSelect.append(emptyOption);
     folderLabel.append(folderText, folderSelect);
 
-    const status = document.createElement('span');
-    status.className = 'result-organization-status';
-    status.hidden = true;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'result-organization-popover-action is-danger';
+    remove.textContent = copy().remove;
 
-    organization.append(pin, archive, folderLabel, status);
-    menu.prepend(organization);
+    const status = document.createElement('div');
+    status.className = 'result-organization-popover-status';
+    status.setAttribute('role', 'status');
 
-    let state = { pinned: false, archived: false, projectId: '' };
-    let ready = false;
+    root.append(pin, archive, folderLabel, remove, status);
+    document.body.append(root);
 
-    const render = () => {
-      pin.textContent = state.pinned ? copy().unpin : copy().pin;
-      archive.textContent = state.archived ? copy().unarchive : copy().archive;
-      pin.disabled = !ready || state.archived;
-      archive.disabled = !ready;
-      folderSelect.disabled = !ready;
-      folderSelect.value = state.projectId || '';
-    };
+    pin.addEventListener('click', async () => {
+      if (!currentResultId || !organizationReady) return;
+      await patchOrganization({ pinned: !state.pinned });
+    });
 
-    const patch = async (body) => {
-      if (!ready) return;
-      pin.disabled = true;
-      archive.disabled = true;
-      folderSelect.disabled = true;
-      status.hidden = true;
+    archive.addEventListener('click', async () => {
+      if (!currentResultId || !organizationReady) return;
+      await patchOrganization({ archived: !state.archived });
+    });
+
+    folderSelect.addEventListener('change', async () => {
+      if (!currentResultId || !resultReady) return;
+      const target = folderSelect.value || null;
+      setBusy(true);
+      status.textContent = '';
       try {
-        const payload = await requestJson(`/api/results/${encodeURIComponent(id)}/organization`, {
-          method: 'PATCH', body: JSON.stringify(body),
-        });
-        state = {
-          pinned: payload?.pinned === true,
-          archived: payload?.archived === true,
-          projectId: state.projectId,
-        };
-        window.dispatchEvent(new CustomEvent('astera:result-organization-changed', { detail: { resultId: id, ...state } }));
+        await requestJson(`/api/results/${encodeURIComponent(currentResultId)}`, { method: 'PATCH', body: { project_id: target } });
+        state.projectId = target || '';
+        window.dispatchEvent(new CustomEvent('astera:result-organization-changed', { detail: { resultId: currentResultId, ...state } }));
       } catch {
         status.textContent = copy().failed;
-        status.hidden = false;
       } finally {
+        setBusy(false);
         render();
       }
-    };
+    });
 
-    pin.addEventListener('click', () => void patch({ pinned: !state.pinned }));
-    archive.addEventListener('click', () => void patch({ archived: !state.archived }));
-    folderSelect.addEventListener('change', async () => {
-      if (!ready) return;
-      const target = folderSelect.value || null;
-      folderSelect.disabled = true;
-      status.hidden = true;
+    remove.addEventListener('click', async () => {
+      if (!currentResultId || !resultReady) return;
+      if (!window.confirm(copy().deleteConfirm)) return;
+      setBusy(true);
+      status.textContent = '';
       try {
-        await requestJson(`/api/results/${encodeURIComponent(id)}`, {
-          method: 'PATCH', body: JSON.stringify({ project_id: target }),
-        });
-        state.projectId = target || '';
+        await requestJson(`/api/results/${encodeURIComponent(currentResultId)}`, { method: 'DELETE', body: {} });
+        closeMenu();
         window.location.reload();
       } catch {
         status.textContent = copy().failed;
-        status.hidden = false;
+        setBusy(false);
         render();
       }
     });
 
-    Promise.all([
-      requestJson(`/api/results/${encodeURIComponent(id)}/organization`, { method: 'GET' }),
+    menu = { root, pin, archive, folderSelect, remove, status };
+    return menu;
+  }
+
+  function setBusy(busy) {
+    const ui = ensureMenu();
+    ui.pin.disabled = busy || !organizationReady || state.archived;
+    ui.archive.disabled = busy || !organizationReady;
+    ui.folderSelect.disabled = busy || !resultReady;
+    ui.remove.disabled = busy || !resultReady;
+  }
+
+  function render() {
+    const ui = ensureMenu();
+    ui.root.setAttribute('aria-label', copy().organize);
+    ui.pin.textContent = state.pinned ? copy().unpin : copy().pin;
+    ui.archive.textContent = state.archived ? copy().unarchive : copy().archive;
+    ui.remove.textContent = copy().remove;
+    ui.folderSelect.value = state.projectId || '';
+    setBusy(false);
+  }
+
+  async function patchOrganization(body) {
+    const ui = ensureMenu();
+    setBusy(true);
+    ui.status.textContent = '';
+    try {
+      const payload = await requestJson(`/api/results/${encodeURIComponent(currentResultId)}/organization`, { method: 'PATCH', body });
+      state.pinned = payload?.pinned === true;
+      state.archived = payload?.archived === true;
+      if (state.archived) state.pinned = false;
+      if (typeof payload?.project_id === 'string') state.projectId = payload.project_id;
+      window.dispatchEvent(new CustomEvent('astera:result-organization-changed', { detail: { resultId: currentResultId, ...state } }));
+    } catch (error) {
+      ui.status.textContent = error?.code === 'RESULT_ORGANIZATION_MIGRATION_REQUIRED' ? copy().unavailable : copy().failed;
+    } finally {
+      setBusy(false);
+      render();
+    }
+  }
+
+  async function loadMenuState() {
+    const ui = ensureMenu();
+    currentResultId = resultIdFromPath();
+    organizationReady = false;
+    resultReady = false;
+    state = { pinned: false, archived: false, projectId: '' };
+    ui.status.textContent = currentResultId ? copy().loading : copy().noResult;
+    ui.folderSelect.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = copy().unassigned;
+    ui.folderSelect.append(empty);
+    render();
+
+    if (!currentResultId) return;
+
+    const [organizationResult, projectsResult, resultResult] = await Promise.allSettled([
+      requestJson(`/api/results/${encodeURIComponent(currentResultId)}/organization`),
       loadProjects(),
-    ]).then(([payload, projects]) => {
-      for (const project of projects) {
+      requestJson(`/api/results/${encodeURIComponent(currentResultId)}`),
+    ]);
+
+    if (projectsResult.status === 'fulfilled') {
+      for (const project of projectsResult.value) {
         const option = document.createElement('option');
         option.value = project.id;
         option.textContent = project.name;
-        folderSelect.append(option);
+        ui.folderSelect.append(option);
       }
-      state = {
-        pinned: payload?.pinned === true,
-        archived: payload?.archived === true,
-        projectId: typeof payload?.project_id === 'string' ? payload.project_id : '',
-      };
-      ready = true;
-      render();
-    }).catch((error) => {
-      ready = false;
-      status.textContent = error?.code === 'RESULT_ORGANIZATION_MIGRATION_REQUIRED' ? copy().unavailable : copy().failed;
-      status.hidden = false;
-      render();
-    });
+    }
 
+    if (resultResult.status === 'fulfilled') {
+      resultReady = true;
+      state.projectId = resultProjectId(resultResult.value);
+    }
+
+    if (organizationResult.status === 'fulfilled') {
+      organizationReady = true;
+      state.pinned = organizationResult.value?.pinned === true;
+      state.archived = organizationResult.value?.archived === true;
+      if (typeof organizationResult.value?.project_id === 'string') state.projectId = organizationResult.value.project_id;
+    } else {
+      const error = organizationResult.reason;
+      ui.status.textContent = error?.code === 'RESULT_ORGANIZATION_MIGRATION_REQUIRED' ? copy().unavailable : copy().failed;
+    }
+
+    if (organizationReady) ui.status.textContent = '';
+    else if (!ui.status.textContent) ui.status.textContent = copy().failed;
     render();
   }
 
-  function schedule() {
-    if (refreshQueued) return;
-    refreshQueued = true;
-    window.requestAnimationFrame(() => {
-      refreshQueued = false;
-      install();
-    });
+  function openMenu() {
+    const ui = ensureMenu();
+    ui.root.hidden = false;
+    menuOpen = true;
+    void loadMenuState();
   }
 
-  install();
-  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  function closeMenu() {
+    const ui = ensureMenu();
+    ui.root.hidden = true;
+    menuOpen = false;
+  }
+
+  function toggleMenu() {
+    if (menuOpen) closeMenu();
+    else openMenu();
+  }
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const trigger = target.closest('.platform-header-organize');
+    if (trigger) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      toggleMenu();
+      return;
+    }
+    if (menuOpen && !target.closest('.result-organization-popover')) closeMenu();
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && menuOpen) {
+      event.preventDefault();
+      closeMenu();
+      document.querySelector('.platform-header-organize')?.focus();
+    }
+  });
+
+  window.addEventListener('popstate', closeMenu);
 })();
