@@ -9,10 +9,6 @@
   root.className = 'aca-shell';
   root.setAttribute('aria-label', 'Astera 総合案内AI');
   root.innerHTML = `
-    <button class="aca-launcher" type="button" aria-expanded="false" aria-controls="aca-panel" title="総合案内AIを開く">
-      <img class="aca-guide-icon" src="/guide-ai.png?v=ai-guide-20260822-1" alt="" aria-hidden="true">
-      <span class="aca-launcher-label">案内AI</span>
-    </button>
     <div class="aca-panel" id="aca-panel" aria-hidden="true">
       <header class="aca-header">
         <div><small>ASTERA CUSTOMER AI</small><strong>総合案内AI</strong></div>
@@ -30,7 +26,6 @@
     </div>`;
   document.body.appendChild(root);
 
-  const launcher = root.querySelector('.aca-launcher');
   const panel = root.querySelector('.aca-panel');
   const minimize = root.querySelector('.aca-minimize');
   const form = root.querySelector('.aca-form');
@@ -41,14 +36,12 @@
 
   function open() {
     root.classList.add('aca-open');
-    launcher.setAttribute('aria-expanded', 'true');
     panel.setAttribute('aria-hidden', 'false');
     setTimeout(() => input.focus(), 80);
   }
 
   function close() {
     root.classList.remove('aca-open');
-    launcher.setAttribute('aria-expanded', 'false');
     panel.setAttribute('aria-hidden', 'true');
   }
 
@@ -70,9 +63,6 @@
     return '回答を準備しましたが、表示できる本文がありません。';
   }
 
-  launcher.addEventListener('click', () => {
-    root.classList.contains('aca-open') ? close() : open();
-  });
   minimize.addEventListener('click', close);
 
   input.addEventListener('input', () => {
