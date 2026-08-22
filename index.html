@@ -15,30 +15,9 @@
     <link rel="stylesheet" href="/template-management.css" />
     <link rel="stylesheet" href="/external-storage-management.css" />
     <link rel="stylesheet" href="/astera-storage-management.css" />
-    <style data-astera-tablet-drawer-fix>
+    <style data-astera-inline-fixes>
       .history-search-state.is-error {
         display: none !important;
-      }
-      @media (min-width: 601px) and (max-width: 1100px) {
-        .platform-backdrop {
-          display: block !important;
-          position: fixed !important;
-          inset: 0 !important;
-          z-index: 60 !important;
-          border: 0 !important;
-          background: rgba(0, 0, 0, .58) !important;
-        }
-        .platform-mobile-drawer {
-          display: flex !important;
-          position: fixed !important;
-          z-index: 70 !important;
-          inset: env(safe-area-inset-top) auto env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
-          max-width: calc(100vw - env(safe-area-inset-left) - 30px) !important;
-          flex-direction: column !important;
-          overflow-x: hidden !important;
-          overflow-y: auto !important;
-          background: var(--ex-bg, var(--platform-bg,var(--bg-primary,#090909))) !important;
-        }
       }
       .platform-input {
         width: 100%;
