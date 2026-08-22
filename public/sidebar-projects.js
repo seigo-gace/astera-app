@@ -186,13 +186,39 @@
     const newPage = nav.querySelector('a[href="/app/new"]');
     const about = sidebar.querySelector('a[href="/app/about"]');
     if (!(newPage instanceof HTMLElement) || !(about instanceof HTMLElement)) return;
-    if (newPage.nextElementSibling === about) return;
-    newPage.after(about);
+
+    if (!about.querySelector('.sidebar-about-label')) {
+      const label = document.createElement('span');
+      label.className = 'sidebar-about-label';
+      label.textContent = about.textContent?.trim() || '';
+      about.replaceChildren(label);
+    }
+
+    if (newPage.nextElementSibling !== about) newPage.after(about);
+  }
+
+  function ensureScrollRegion(sidebar) {
+    if (!(sidebar instanceof HTMLElement)) return;
+    const nav = sidebar.querySelector('.platform-nav');
+    const recent = sidebar.querySelector('.platform-side-section');
+    const meta = sidebar.querySelector('.platform-side-meta');
+    if (!(nav instanceof HTMLElement) || !(meta instanceof HTMLElement)) return;
+
+    let region = sidebar.querySelector(':scope > .sidebar-scroll-region');
+    if (!(region instanceof HTMLElement)) {
+      region = document.createElement('div');
+      region.className = 'sidebar-scroll-region';
+      meta.before(region);
+    }
+
+    if (nav.parentElement !== region) region.append(nav);
+    if (recent instanceof HTMLElement && recent.parentElement !== region) region.append(recent);
   }
 
   function install(sidebar) {
     if (!(sidebar instanceof HTMLElement)) return;
     moveAboutLink(sidebar);
+    ensureScrollRegion(sidebar);
     if (sidebar.querySelector('[data-sidebar-project-section]')) return;
     const nav = sidebar.querySelector('.platform-nav');
     if (!(nav instanceof HTMLElement)) return;
