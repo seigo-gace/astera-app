@@ -224,7 +224,7 @@ export async function listHistoryPage(
         ?13='all'
         OR (?13='active' AND r.archived_at IS NULL)
         OR (?13='archived' AND r.archived_at IS NOT NULL)
-        OR (?13='pinned' AND r.archived_at IS NULL AND r.pinned_at IS NOT NULL)
+        OR (?13='pinned' AND r.pinned_at IS NOT NULL)
       )
     ORDER BY r.created_at DESC,r.id DESC
     LIMIT ?14`).bind(
