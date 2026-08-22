@@ -1,11 +1,146 @@
 (() => {
   'use strict';
 
-  const transport = window.AsteraCustomerAI;
-  if (!transport || document.getElementById('astera-customer-ai')) return;
-
+  const DEFAULT_API = 'https://g-ace-astera-customerai.hf.space';
+  const SESSION_KEY = 'astera.customer-ai.session-id';
+  const MODE_KEY = 'astera.customer-ai.response-mode';
+  const MODE_SOURCE_KEY = 'astera.customer-ai.mode-source';
   const HISTORY_KEY = 'astera.customer-ai.history-v2';
   const MAX_HISTORY_ITEMS = 20;
+  const RESPONSE_MODES = new Set(['general','operation','billing','technical','investor','support','trouble','auto']);
+  const script = document.currentScript;
+  const config = {
+    apiBase: script?.dataset.apiBase || window.__ASTERA_CUSTOMER_AI_API_BASE__ || DEFAULT_API,
+    source: script?.dataset.source || 'astera-app',
+    locale: document.documentElement.lang?.toLowerCase().startsWith('en') ? 'en' : 'ja-JP',
+    timeoutMs: 30000
+  };
+
+  function randomId(prefix) {
+    const value = typeof crypto?.randomUUID === 'function'
+      ? crypto.randomUUID().replaceAll('-', '')
+      : `${Date.now()}${Math.random().toString(36).slice(2)}`.replace(/[^A-Za-z0-9]/g, '');
+    return `${prefix}_${value}`;
+  }
+
+  function readStore(key, fallback = '') {
+    try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+
+  function writeStore(key, value) {
+    try { sessionStorage.setItem(key, value); } catch {}
+  }
+
+  function removeStore(key) {
+    try { sessionStorage.removeItem(key); } catch {}
+  }
+
+  function getSessionId() {
+    const existing = readStore(SESSION_KEY);
+    if (existing) return existing;
+    const created = randomId('session');
+    writeStore(SESSION_KEY, created);
+    return created;
+  }
+
+  function currentMode() {
+    const value = readStore(MODE_KEY, 'auto');
+    return RESPONSE_MODES.has(value) ? value : 'auto';
+  }
+
+  function currentModeSource() {
+    const value = readStore(MODE_SOURCE_KEY, 'auto');
+    return ['selected', 'auto', 'confirmed'].includes(value) ? value : 'auto';
+  }
+
+  function apiBase() {
+    return String(config.apiBase || DEFAULT_API).trim().replace(/\/$/, '');
+  }
+
+  async function jsonOrEmpty(response) {
+    return response.json().catch(() => ({}));
+  }
+
+  async function request(path, options = {}) {
+    const base = apiBase();
+    if (!base) throw new Error('customer_ai_runtime_not_configured');
+    const response = await fetch(`${base}${path}`, options);
+    const payload = await jsonOrEmpty(response);
+    if (!response.ok) {
+      const error = new Error(String(payload.detail || payload.error || `http_${response.status}`));
+      error.status = response.status;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  }
+
+  async function respond(message, options = {}) {
+    const text = String(message || '').trim();
+    if (!text) throw new Error('message_required');
+    if (text.length > 12000) throw new Error('message_too_large');
+
+    const ownController = options.signal ? null : new AbortController();
+    const signal = options.signal || ownController.signal;
+    const timeout = ownController ? window.setTimeout(() => ownController.abort(), Number(options.timeoutMs || config.timeoutMs)) : null;
+    try {
+      const payload = await request('/respond', {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        signal,
+        body: JSON.stringify({
+          message: text,
+          source: options.source || config.source,
+          locale: options.locale || config.locale,
+          session_id: options.sessionId || getSessionId(),
+          message_id: options.messageId || randomId('message'),
+          response_mode: options.responseMode || currentMode(),
+          mode_source: options.modeSource || currentModeSource(),
+          current_path: options.currentPath || location.pathname || '/'
+        })
+      });
+      if (payload.session_id) writeStore(SESSION_KEY, String(payload.session_id));
+      window.dispatchEvent(new CustomEvent('astera:customer-ai-result', { detail: payload }));
+      return payload;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('timeout');
+      throw error;
+    } finally {
+      if (timeout !== null) window.clearTimeout(timeout);
+    }
+  }
+
+  async function deleteSession(sessionId = readStore(SESSION_KEY)) {
+    removeStore(SESSION_KEY);
+    if (!sessionId) return true;
+    try {
+      const payload = await request(`/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: { accept: 'application/json' }
+      });
+      return payload.ok === true;
+    } catch {
+      return false;
+    }
+  }
+
+  const api = {
+    config: { ...config },
+    createId: randomId,
+    getSessionId,
+    ask: respond,
+    send: respond,
+    submit: respond,
+    deleteSession
+  };
+  window.AsteraCustomerAI = api;
+  window.dispatchEvent(new CustomEvent('astera:customer-ai-ready', { detail: api.config }));
+
+  if (document.getElementById('astera-customer-ai')) return;
 
   const root = document.createElement('section');
   root.id = 'astera-customer-ai';
@@ -40,35 +175,9 @@
   let activeController = null;
   let conversationEpoch = 0;
 
-  function readStore(key, fallback = '') {
-    try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
-  }
-
-  function writeStore(key, value) {
-    try { sessionStorage.setItem(key, value); } catch {}
-  }
-
   function resizeInput() {
     input.style.height = 'auto';
     input.style.height = `${Math.min(124, Math.max(44, input.scrollHeight))}px`;
-  }
-
-  function bindReliableControl(element, handler) {
-    if (!element) return;
-    let lastTouchActivation = 0;
-    element.addEventListener('pointerup', (event) => {
-      if (event.pointerType === 'mouse') return;
-      event.preventDefault();
-      lastTouchActivation = Date.now();
-      handler(event);
-    });
-    element.addEventListener('click', (event) => {
-      if (Date.now() - lastTouchActivation < 700 && event.detail !== 0) {
-        event.preventDefault();
-        return;
-      }
-      handler(event);
-    });
   }
 
   function errorMessage(code) {
@@ -80,8 +189,7 @@
       case 'runtime_process_failed':
       case 'runtime_process_invalid':
       case 'runtime_session_delete_failed': return '案内AIへ接続できませんでした。入力内容を保持したまま再試行できます。';
-      case 'timeout':
-      case 'customer_ai_timeout': return '回答に時間がかかっています。入力内容を保持したまま再試行できます。';
+      case 'timeout': return '回答に時間がかかっています。入力内容を保持したまま再試行できます。';
       case 'Failed to fetch': return '案内AIへ接続できません。少し時間を空けて再試行してください。';
       default: return '案内AIで一時的なエラーが発生しました。入力内容を保持したまま再試行できます。';
     }
@@ -143,9 +251,7 @@
 
   function answerText(result) {
     if (result?.answer) return String(result.answer);
-    if (result?.status === 'awaiting_clarification') {
-      return String(result.clarification || '回答に必要な条件が不足しています。確認したい内容を教えてください。');
-    }
+    if (result?.status === 'awaiting_clarification') return String(result.clarification || '回答に必要な条件が不足しています。確認したい内容を教えてください。');
     if (result?.status === 'failed') return '処理を完了できませんでした。少し時間を置いて、同じ質問をもう一度送ってください。';
     return '回答を準備しましたが、表示できる本文がありません。';
   }
@@ -153,10 +259,7 @@
   async function submit() {
     if (sending) return;
     const text = input.value.trim();
-    if (!text) {
-      input.focus();
-      return;
-    }
+    if (!text) { input.focus(); return; }
 
     const epoch = conversationEpoch;
     sending = true;
@@ -172,7 +275,7 @@
     activeController = controller;
     const timeout = window.setTimeout(() => controller.abort(), 30000);
     try {
-      const result = await transport.ask(text, {
+      const result = await respond(text, {
         signal: controller.signal,
         source: 'astera-app',
         locale: document.documentElement.lang?.toLowerCase().startsWith('en') ? 'en' : 'ja-JP',
@@ -205,8 +308,7 @@
 
   restoreHistory();
   resizeInput();
-  bindReliableControl(minimize, close);
-
+  minimize.addEventListener('click', close);
   input.addEventListener('input', resizeInput);
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -222,5 +324,5 @@
     if (event.key === 'Escape' && root.classList.contains('aca-open')) close();
   });
 
-  window.AsteraCustomerAIUI = Object.assign(window.AsteraCustomerAIUI || {}, { open, close, root });
+  window.AsteraCustomerAIUI = { open, close, root };
 })();
