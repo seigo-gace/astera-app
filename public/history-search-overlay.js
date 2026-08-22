@@ -8,31 +8,33 @@
   }
 
   const locale = () => (document.documentElement.lang || navigator.language || 'ja').toLowerCase().startsWith('en') ? 'en' : 'ja';
-  const copy = () => locale() === 'en'
-    ? {
-        open: 'Search history',
-        placeholder: 'Search...',
-        recent: 'Recent',
-        results: 'Search results',
-        loading: 'Loading…',
-        emptyRecent: 'No history yet',
-        emptySearch: 'No matching history',
-        error: 'Could not load history.',
-        retry: 'Retry',
-        close: 'Close search',
-      }
-    : {
-        open: '履歴を検索',
-        placeholder: '検索...',
-        recent: '最近の履歴',
-        results: '検索結果',
-        loading: '読み込み中…',
-        emptyRecent: 'まだ履歴がありません',
-        emptySearch: '一致する履歴はありません',
-        error: '履歴を取得できませんでした。',
-        retry: '再試行',
-        close: '検索を閉じる',
-      };
+  const copy = (scope = currentScope) => {
+    const archive = scope === 'archived';
+    if (locale() === 'en') {
+      return archive
+        ? {
+            open: 'Search archive', placeholder: 'Search archive...', recent: 'Archived', results: 'Archive results',
+            loading: 'Loading…', emptyRecent: 'No archived results', emptySearch: 'No matching archive',
+            error: 'Could not load archive.', retry: 'Retry', close: 'Close archive search',
+          }
+        : {
+            open: 'Search history', placeholder: 'Search...', recent: 'Recent', results: 'Search results',
+            loading: 'Loading…', emptyRecent: 'No history yet', emptySearch: 'No matching history',
+            error: 'Could not load history.', retry: 'Retry', close: 'Close search',
+          };
+    }
+    return archive
+      ? {
+          open: 'アーカイブを検索', placeholder: 'アーカイブを検索...', recent: 'アーカイブ', results: 'アーカイブ検索結果',
+          loading: '読み込み中…', emptyRecent: 'アーカイブはありません', emptySearch: '一致するアーカイブはありません',
+          error: 'アーカイブを取得できませんでした。', retry: '再試行', close: 'アーカイブ検索を閉じる',
+        }
+      : {
+          open: '履歴を検索', placeholder: '検索...', recent: '最近の履歴', results: '検索結果',
+          loading: '読み込み中…', emptyRecent: 'まだ履歴がありません', emptySearch: '一致する履歴はありません',
+          error: '履歴を取得できませんでした。', retry: '再試行', close: '検索を閉じる',
+        };
+  };
 
   let overlay = null;
   let panel = null;
@@ -45,6 +47,7 @@
   let selectedIndex = -1;
   let currentItems = [];
   let composing = false;
+  let currentScope = 'all';
 
   const focusableElements = (root) => Array.from(root.querySelectorAll(
     'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
@@ -81,7 +84,7 @@
       const id = stringValue(entry, ['result_id', 'id']);
       if (!id) return [];
       const title = stringValue(entry, ['title', 'prompt', 'name']) || `Result ${index + 1}`;
-      return [{ id, title }];
+      return [{ id, title, archived: entry.archived === true || Boolean(entry.archived_at) }];
     });
   }
 
@@ -141,7 +144,7 @@
       const row = document.createElement('button');
       row.type = 'button';
       row.id = `history-search-result-${index}`;
-      row.className = 'history-search-result';
+      row.className = `history-search-result${item.archived ? ' is-archived' : ''}`;
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', 'false');
       const mark = document.createElement('span');
@@ -166,20 +169,17 @@
     const controller = new AbortController();
     requestController = controller;
     renderState('loading', copy().loading);
-    const params = new URLSearchParams({ limit: '20' });
+    const params = new URLSearchParams({ limit: '20', scope: currentScope });
     if (query) params.set('q', query);
     try {
       const response = await fetch(`/api/history?${params.toString()}`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
+        method: 'GET', credentials: 'include', headers: { Accept: 'application/json' }, signal: controller.signal,
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(`HISTORY_HTTP_${response.status}`);
       if (controller.signal.aborted) return;
       renderItems(normalizeItems(payload), query);
-    } catch (error) {
+    } catch {
       if (controller.signal.aborted) return;
       renderState('error', copy().error, query);
     }
@@ -203,7 +203,7 @@
     window.clearTimeout(debounceTimer);
     requestController?.abort();
     overlay.hidden = true;
-    document.documentElement.classList.remove('history-search-open');
+    document.documentElement.classList.remove('history-search-open', 'archive-search-open');
     const target = returnFocus;
     returnFocus = null;
     window.requestAnimationFrame(() => {
@@ -212,19 +212,23 @@
     });
   }
 
-  function openOverlay(trigger) {
+  function openOverlay(trigger, scope = 'all') {
     ensureOverlay();
-    const inMobileDrawer = Boolean(trigger.closest('#platform-mobile-drawer'));
-    returnFocus = inMobileDrawer ? document.querySelector('.platform-menu-button') : trigger;
+    currentScope = scope === 'archived' ? 'archived' : 'all';
+    const triggerNode = trigger instanceof HTMLElement ? trigger : null;
+    const inMobileDrawer = Boolean(triggerNode?.closest('#platform-mobile-drawer'));
+    returnFocus = inMobileDrawer ? document.querySelector('.platform-menu-button') : triggerNode;
     if (inMobileDrawer) document.querySelector('.platform-backdrop')?.click();
     overlay.hidden = false;
     document.documentElement.classList.add('history-search-open');
+    document.documentElement.classList.toggle('archive-search-open', currentScope === 'archived');
+    const labels = copy();
     input.value = '';
-    heading.textContent = copy().recent;
-    input.placeholder = copy().placeholder;
-    input.setAttribute('aria-label', copy().open);
-    panel.setAttribute('aria-label', copy().open);
-    panel.querySelector('.history-search-close')?.setAttribute('aria-label', copy().close);
+    heading.textContent = labels.recent;
+    input.placeholder = labels.placeholder;
+    input.setAttribute('aria-label', labels.open);
+    panel.setAttribute('aria-label', labels.open);
+    panel.querySelector('.history-search-close')?.setAttribute('aria-label', labels.close);
     window.requestAnimationFrame(() => input.focus());
     void load('');
   }
@@ -333,12 +337,12 @@
     trigger.type = 'button';
     trigger.className = 'history-search-trigger';
     trigger.dataset.historySearchTrigger = 'true';
-    trigger.setAttribute('aria-label', copy().open);
+    trigger.setAttribute('aria-label', copy('all').open);
     const icon = document.createElement('span');
     icon.className = 'history-search-icon';
     icon.setAttribute('aria-hidden', 'true');
     trigger.append(icon);
-    trigger.addEventListener('click', () => openOverlay(trigger));
+    trigger.addEventListener('click', () => openOverlay(trigger, 'all'));
     const brand = sidebar.querySelector('.platform-brand');
     if (brand) brand.after(trigger);
     else sidebar.prepend(trigger);
@@ -348,6 +352,11 @@
     removeLegacySearchLinks();
     document.querySelectorAll('.platform-sidebar, .platform-mobile-drawer').forEach(installTrigger);
   }
+
+  window.AsteraHistorySearchOverlay = Object.assign(window.AsteraHistorySearchOverlay || {}, {
+    open: (scope = 'all', trigger = null) => openOverlay(trigger, scope),
+    close: closeOverlay,
+  });
 
   ensureOverlay();
   refresh();

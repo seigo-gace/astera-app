@@ -1,0 +1,10 @@
+.result-organization-trigger{display:grid!important;place-items:center!important;width:42px!important;min-width:42px!important;padding:0!important}
+.result-organization-folder-icon{display:block;width:20px;height:20px;background:currentColor;-webkit-mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/folder.svg") center/20px 20px no-repeat;mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/folder.svg") center/20px 20px no-repeat}
+.result-organization-menu>div{min-width:220px}
+.result-organization-controls{display:grid;gap:2px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--ex-line,var(--platform-border))}
+.result-organization-controls>button{width:100%;min-height:36px;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;padding:0 10px;font:inherit;cursor:pointer}
+.result-organization-controls>button:hover:not(:disabled){background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent))}
+.result-organization-controls>button:disabled{opacity:.45;cursor:default}
+.result-organization-folder{display:grid;gap:5px;padding:6px 10px;font-size:12px;color:var(--ex-muted,var(--platform-muted))}
+.result-organization-folder select{min-height:34px;width:100%;border:1px solid var(--ex-line,var(--platform-border));border-radius:8px;background:var(--ex-bg,var(--platform-bg));color:var(--ex-text,var(--platform-text));padding:0 8px;font:inherit}
+.result-organization-status{padding:4px 10px;font-size:11px;color:var(--ex-muted,var(--platform-muted))}

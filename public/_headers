@@ -18,3 +18,15 @@
 
 /sidebar-projects.css
   Cache-Control: no-cache, no-store, must-revalidate
+
+/sidebar-organization.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/sidebar-organization.css
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/result-organization.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/result-organization.css
+  Cache-Control: no-cache, no-store, must-revalidate
