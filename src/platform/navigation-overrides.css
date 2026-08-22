@@ -21,7 +21,7 @@
   margin:0!important;
   padding:0!important;
   border:0!important;
-  border-radius:0!important;
+  border-radius:10px!important;
   outline:0!important;
   background:transparent!important;
   box-shadow:none!important;
@@ -30,10 +30,14 @@
   cursor:pointer!important;
 }
 .platform-header-ai:hover,
-.platform-header-ai:active,
-.platform-header-ai:focus{
+.platform-header-ai:focus-visible{
   border:0!important;
-  background:transparent!important;
+  background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent))!important;
+  box-shadow:none!important;
+}
+.platform-header-ai:active{
+  border:0!important;
+  background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent))!important;
   box-shadow:none!important;
 }
 .platform-header-ai img{
