@@ -10,6 +10,9 @@ type PagesContext = {
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const API_PREFIX = '/api/customer-ai';
+const HF_SPACE_HOST = 'g-ace-astera-customerai.hf.space';
+const HF_SPACE_RESTART_URL = 'https://huggingface.co/api/spaces/G-ACE/astera-customerAI/restart';
+const PAUSED_RETRY_DELAY_MS = 5000;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, {
@@ -48,6 +51,43 @@ function upstreamHeaders(env: CustomerAIEnv, contentType = false): Headers {
   return headers;
 }
 
+function hfToken(env: CustomerAIEnv): string {
+  return String(env.CUSTOMER_AI_HF_TOKEN || '').trim();
+}
+
+function isRestartableHfSpace(env: CustomerAIEnv): boolean {
+  try {
+    return new URL(upstreamBase(env)).hostname === HF_SPACE_HOST;
+  } catch {
+    return false;
+  }
+}
+
+async function readResponseSnippet(response: Response, maxBytes = 4096): Promise<string> {
+  const buffer = await response.clone().arrayBuffer();
+  return new TextDecoder().decode(buffer.slice(0, maxBytes)).toLowerCase();
+}
+
+function isPausedUpstream(status: number, bodyText: string): boolean {
+  return status === 503 && bodyText.includes('space is paused');
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function restartKnownHfSpace(token: string): Promise<boolean> {
+  const response = await fetch(HF_SPACE_RESTART_URL, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    redirect: 'error',
+  });
+  return response.ok;
+}
+
 async function forward(upstream: Response): Promise<Response> {
   const headers = new Headers({
     'Cache-Control': 'no-store',
@@ -62,6 +102,15 @@ async function forward(upstream: Response): Promise<Response> {
   });
 }
 
+async function fetchUpstreamRespond(env: CustomerAIEnv, body: ArrayBuffer): Promise<Response> {
+  return fetch(`${upstreamBase(env)}/respond`, {
+    method: 'POST',
+    headers: upstreamHeaders(env, true),
+    body,
+    redirect: 'error',
+  });
+}
+
 async function proxyRespond(context: PagesContext): Promise<Response> {
   const contentType = context.request.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('application/json')) {
@@ -72,12 +121,20 @@ async function proxyRespond(context: PagesContext): Promise<Response> {
   if (body.byteLength === 0) return json({ detail: 'request_body_required' }, 400);
   if (body.byteLength > MAX_REQUEST_BYTES) return json({ detail: 'message_too_large' }, 413);
 
-  const response = await fetch(`${upstreamBase(context.env)}/respond`, {
-    method: 'POST',
-    headers: upstreamHeaders(context.env, true),
-    body,
-    redirect: 'error',
-  });
+  let response = await fetchUpstreamRespond(context.env, body);
+  const token = hfToken(context.env);
+
+  if (token && isRestartableHfSpace(context.env)) {
+    const snippet = await readResponseSnippet(response);
+    if (isPausedUpstream(response.status, snippet)) {
+      const restarted = await restartKnownHfSpace(token);
+      if (restarted) {
+        await sleep(PAUSED_RETRY_DELAY_MS);
+        response = await fetchUpstreamRespond(context.env, body);
+      }
+    }
+  }
+
   return forward(response);
 }
 
