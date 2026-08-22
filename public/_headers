@@ -12,3 +12,9 @@
 
 /history-search-overlay.css
   Cache-Control: no-cache, no-store, must-revalidate
+
+/sidebar-projects.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/sidebar-projects.css
+  Cache-Control: no-cache, no-store, must-revalidate
