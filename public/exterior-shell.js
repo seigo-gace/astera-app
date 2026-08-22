@@ -37,6 +37,7 @@
     style.dataset.exteriorCanonicalStyle = 'true';
     style.textContent = `
 html.exterior-settings-open{overflow:hidden!important}
+html.exterior-mobile-menu-open{overflow:hidden!important}
 @media(max-width:600px){
   .exterior-settings-panel{
     inset:0!important;top:0!important;left:0!important;right:0!important;bottom:0!important;
@@ -47,16 +48,6 @@ html.exterior-settings-open{overflow:hidden!important}
   .exterior-settings-panel header{flex:none}
   .exterior-settings-panel nav{flex:1;min-height:0;overflow:auto;padding:8px 8px calc(16px + env(safe-area-inset-bottom))!important}
   .exterior-settings-panel nav a{min-height:52px!important;border-radius:10px!important}
-  html.exterior-mobile-menu-open{overflow:hidden!important}
-  .platform-mobile-drawer{
-    top:auto!important;left:0!important;right:0!important;bottom:0!important;
-    width:100%!important;max-width:none!important;height:auto!important;max-height:min(84dvh,720px)!important;
-    border-right:0!important;border-top:1px solid var(--ex-line)!important;border-radius:22px 22px 0 0!important;
-    padding:12px 8px calc(12px + env(safe-area-inset-bottom))!important;overflow:auto!important;
-    box-shadow:0 -20px 54px rgba(0,0,0,.34)!important;
-  }
-  .platform-mobile-drawer .platform-brand{display:none!important}
-  .platform-mobile-drawer .platform-nav{margin-top:0!important}
 }`;
     document.head.append(style);
   }
@@ -65,7 +56,7 @@ html.exterior-settings-open{overflow:hidden!important}
     ensureCanonicalExteriorStyle();
     const drawer = document.querySelector('#platform-mobile-drawer');
     const menuButton = document.querySelector('.platform-menu-button');
-    const isMobile = window.matchMedia('(max-width:600px)').matches;
+    const isMobile = window.matchMedia('(max-width:760px)').matches;
     document.documentElement.classList.toggle('exterior-mobile-menu-open', isMobile && drawer instanceof HTMLElement);
 
     if (!(drawer instanceof HTMLElement)) {
@@ -282,7 +273,7 @@ html.exterior-settings-open{overflow:hidden!important}
       const chip = button('◇ Private ×');
       chip.setAttribute('aria-label', 'Private Modeを解除');
       chip.addEventListener('click', () => {
-        if (!privateInput.disabled && privateInput.checked) privateInput.click();
+        if (!privateInput.disabled && privateInput.checked) input.click();
         refreshChips();
       });
       host.append(chip);
@@ -290,11 +281,17 @@ html.exterior-settings-open{overflow:hidden!important}
   }
 
   function enhanceComposer() {
-    if (!isComposer) return;
-    document.documentElement.classList.add('exterior-composer-route');
+    if (!isComposer) {
+      document.documentElement.classList.remove('exterior-composer-route');
+      return;
+    }
     const card = document.querySelector('.canonical-composer-card');
     const textarea = card?.querySelector('textarea');
-    if (!(card instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) return;
+    if (!(card instanceof HTMLElement) || !(textarea instanceof HTMLTextAreaElement)) {
+      document.documentElement.classList.remove('exterior-composer-route');
+      return;
+    }
+    document.documentElement.classList.add('exterior-composer-route');
     if (!card.querySelector('[data-exterior-tools]')) {
       const tools = document.createElement('div');
       tools.className = 'exterior-composer-tools'; tools.dataset.exteriorTools = 'true';
