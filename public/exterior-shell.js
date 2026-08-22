@@ -273,7 +273,7 @@ html.exterior-mobile-menu-open{overflow:hidden!important}
       const chip = button('◇ Private ×');
       chip.setAttribute('aria-label', 'Private Modeを解除');
       chip.addEventListener('click', () => {
-        if (!privateInput.disabled && privateInput.checked) input.click();
+        if (!privateInput.disabled && privateInput.checked) privateInput.click();
         refreshChips();
       });
       host.append(chip);
