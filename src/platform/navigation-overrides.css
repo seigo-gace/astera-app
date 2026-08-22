@@ -62,7 +62,7 @@
   padding:0 10px;
 }
 
-/* Sidebar navigation uses one consistent Lucide-style icon family. */
+/* Official Lucide navigation assets. One icon family, one size, one visual weight. */
 .platform-nav a,
 .platform-side-meta>a[href="/app/about"],
 .platform-side-meta .exterior-settings-trigger{
@@ -82,24 +82,33 @@
   mask:var(--platform-nav-icon) center/20px 20px no-repeat;
   opacity:.92;
 }
-/* FilePlus2 */
-.platform-nav a[href="/app/new"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4'/%3E%3Cpath d='M14 2v6h6'/%3E%3Cpath d='M3 15h6'/%3E%3Cpath d='M6 12v6'/%3E%3C/svg%3E")}
-/* Search */
-.platform-nav a[href="/app/search"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")}
-/* Folder */
-.platform-nav a[href="/app/projects"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3C/svg%3E")}
-/* SlidersHorizontal */
-.platform-nav a[href="/app/settings/options"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 4h-7'/%3E%3Cpath d='M10 4H3'/%3E%3Cpath d='M21 12h-9'/%3E%3Cpath d='M8 12H3'/%3E%3Cpath d='M21 20h-5'/%3E%3Cpath d='M12 20H3'/%3E%3Cpath d='M14 2v4'/%3E%3Cpath d='M8 10v4'/%3E%3Cpath d='M16 18v4'/%3E%3C/svg%3E")}
-/* CreditCard */
-.platform-nav a[href="/app/plan-credit"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='14' x='2' y='5' rx='2'/%3E%3Cpath d='M2 10h20'/%3E%3C/svg%3E")}
-/* Code2 */
-.platform-nav a[href="/app/developer"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 16 4-4-4-4'/%3E%3Cpath d='m6 8-4 4 4 4'/%3E%3Cpath d='m14.5 4-5 16'/%3E%3C/svg%3E")}
-/* History */
-.platform-nav a[href="/app/history"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 3-6.7L3 8'/%3E%3Cpath d='M3 3v5h5'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E")}
-/* CircleHelp */
-.platform-side-meta>a[href="/app/about"]{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M9.09 9a3 3 0 1 1 5.83 1c0 2-3 3-3 3'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E")}
-/* Settings */
-.platform-side-meta .exterior-settings-trigger{--platform-nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
+.platform-nav a[href="/app/new"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/file-plus-corner.svg");
+}
+.platform-nav a[href="/app/search"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/search.svg");
+}
+.platform-nav a[href="/app/projects"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/folder.svg");
+}
+.platform-nav a[href="/app/settings/options"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/sliders-horizontal.svg");
+}
+.platform-nav a[href="/app/plan-credit"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/credit-card.svg");
+}
+.platform-nav a[href="/app/developer"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/code-2.svg");
+}
+.platform-nav a[href="/app/history"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/rotate-ccw-clock.svg");
+}
+.platform-side-meta>a[href="/app/about"]{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/circle-question-mark.svg");
+}
+.platform-side-meta .exterior-settings-trigger{
+  --platform-nav-icon:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/settings.svg");
+}
 
 /* Single responsive shell boundary: desktop/tablet remains sidebar layout through 761px. */
 @media (min-width:761px){
