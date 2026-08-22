@@ -1,81 +1,18 @@
 .aca-shell {
   position: fixed;
-  right: max(18px, env(safe-area-inset-right));
-  bottom: max(18px, env(safe-area-inset-bottom));
+  inset: 0;
   z-index: 10000;
+  pointer-events: none;
   font-family: Inter, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif;
   color: var(--text-primary, #f5f1e8);
 }
 .aca-shell * { box-sizing: border-box; }
-.aca-launcher {
-  position: relative;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--platform-accent, var(--accent, #d3a15f)) 62%, transparent);
-  background: radial-gradient(
-    circle at 38% 32%,
-    color-mix(in srgb, var(--platform-accent, #d3a15f) 34%, var(--text-primary) 66%),
-    color-mix(in srgb, var(--platform-accent, #d3a15f) 20%, var(--bg-primary) 80%) 32%,
-    color-mix(in srgb, var(--bg-primary, #08090b) 96%, transparent) 72%
-  );
-  box-shadow:
-    0 18px 55px var(--shadow, rgba(0, 0, 0, .52)),
-    0 0 34px color-mix(in srgb, var(--platform-accent, #d3a15f) 18%, transparent),
-    inset 0 0 22px color-mix(in srgb, var(--platform-accent, #d3a15f) 10%, transparent);
-  color: color-mix(in srgb, var(--platform-accent, #d3a15f) 75%, var(--text-primary) 25%);
-  cursor: grab;
-  touch-action: none;
-  display: grid;
-  place-items: center;
-  padding: 0;
-}
-.aca-launcher:active { cursor: grabbing; }
-.aca-mark {
-  font-size: 25px;
-  text-shadow: 0 0 18px color-mix(in srgb, var(--platform-accent, #d3a15f) 78%, transparent);
-}
-.aca-orbit {
-  position: absolute;
-  inset: 7px;
-  border: 1px solid color-mix(in srgb, var(--platform-accent, #d3a15f) 46%, transparent);
-  border-radius: 50%;
-  animation: aca-spin 8s linear infinite;
-}
-.aca-orbit:after {
-  content: "";
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--platform-accent, #d3a15f) 75%, var(--text-primary) 25%);
-  top: 1px;
-  left: 50%;
-  box-shadow: 0 0 12px color-mix(in srgb, var(--platform-accent, #d3a15f) 95%, transparent);
-}
-.aca-launcher-label {
-  position: absolute;
-  right: 54px;
-  white-space: nowrap;
-  padding: 7px 10px;
-  border: 1px solid color-mix(in srgb, var(--platform-accent, #d3a15f) 22%, transparent);
-  background: color-mix(in srgb, var(--bg-primary, #060709) 82%, transparent);
-  backdrop-filter: blur(12px);
-  font-size: 9px;
-  letter-spacing: .12em;
-  color: color-mix(in srgb, var(--text-primary) 76%, transparent);
-  opacity: 0;
-  transform: translateX(6px);
-  pointer-events: none;
-  transition: .2s;
-}
-.aca-launcher:hover .aca-launcher-label { opacity: 1; transform: none; }
 .aca-panel {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  top: calc(env(safe-area-inset-top) + 62px);
   width: min(390px, calc(100vw - 28px));
-  height: min(620px, calc(100svh - 28px));
+  height: min(620px, calc(100svh - 90px));
   display: grid;
   grid-template-rows: auto auto 1fr auto auto;
   border: 1px solid color-mix(in srgb, var(--platform-accent, #d3a15f) 38%, transparent);
@@ -91,13 +28,18 @@
   clip-path: polygon(0 18px, 18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
   opacity: 0;
   visibility: hidden;
+  pointer-events: none;
   transform: translateY(14px) scale(.96);
-  transform-origin: 100% 100%;
+  transform-origin: 100% 0;
   transition: .25s cubic-bezier(.2, .8, .2, 1);
   overflow: hidden;
 }
-.aca-open .aca-panel { opacity: 1; visibility: visible; transform: none; }
-.aca-open .aca-launcher { opacity: 0; visibility: hidden; pointer-events: none; }
+.aca-open .aca-panel {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
 .aca-header {
   min-height: 70px;
   display: flex;
@@ -229,7 +171,6 @@
   color: color-mix(in srgb, var(--text-tertiary) 72%, transparent);
   background: color-mix(in srgb, var(--bg-primary, #030406) 72%, transparent);
 }
-@keyframes aca-spin { to { transform: rotate(360deg); } }
 @keyframes aca-dots {
   0% { content: ""; }
   25% { content: "."; }
@@ -237,16 +178,13 @@
   75%, 100% { content: "..."; }
 }
 @media (max-width: 600px) {
-  .aca-shell { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
   .aca-panel {
-    position: fixed;
     inset: auto 8px max(8px, env(safe-area-inset-bottom));
     width: auto;
     height: min(690px, calc(100svh - 16px));
     clip-path: none;
     border-radius: 18px;
   }
-  .aca-launcher-label { display: none; }
   .aca-message { max-width: 92%; }
 }
 @media (prefers-reduced-motion: reduce) {
