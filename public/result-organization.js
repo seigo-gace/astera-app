@@ -12,13 +12,15 @@
   const copy = () => locale() === 'en'
     ? {
         organize: 'Organize', pin: 'Pin', unpin: 'Unpin', archive: 'Archive', unarchive: 'Unarchive',
-        folder: 'Move to folder', unassigned: 'No folder', remove: 'Delete', unavailable: 'Organization data is not ready',
-        failed: 'Could not update organization', noResult: 'Open a saved result to organize it.', loading: 'Loading…', deleteConfirm: 'Delete this result?'
+        moveFolder: 'Move to folder', removeFolder: 'Remove from folder', chooseFolder: 'Choose a folder',
+        deleteResult: 'Delete result', unavailable: 'Organization data is not ready', failed: 'Could not update organization',
+        noResult: 'Open a saved result to organize it.', loading: 'Loading…', deleteConfirm: 'Delete this result?', noFolders: 'No folders available.'
       }
     : {
         organize: '整理', pin: 'ピン留め', unpin: 'ピン留めを解除', archive: 'アーカイブ', unarchive: 'アーカイブ解除',
-        folder: 'フォルダーに移動', unassigned: 'フォルダーなし', remove: '削除', unavailable: '整理機能のD1反映待ち',
-        failed: '整理状態を更新できませんでした', noResult: '保存済みResultを開くと整理できます。', loading: '読み込み中…', deleteConfirm: 'このResultを削除予定状態にしますか？'
+        moveFolder: 'フォルダーに移動', removeFolder: 'フォルダーから削除', chooseFolder: '移動先フォルダーを選択',
+        deleteResult: 'Resultを削除', unavailable: '整理機能のD1反映待ち', failed: '整理状態を更新できませんでした',
+        noResult: '保存済みResultを開くと整理できます。', loading: '読み込み中…', deleteConfirm: 'このResultを削除予定状態にしますか？', noFolders: '移動できるフォルダーがありません。'
       };
 
   function resultIdFromPath() {
@@ -89,24 +91,35 @@
     archive.type = 'button';
     archive.className = 'result-organization-popover-action';
 
+    const moveFolder = document.createElement('button');
+    moveFolder.type = 'button';
+    moveFolder.className = 'result-organization-popover-action';
+    moveFolder.textContent = copy().moveFolder;
+
     const folderLabel = document.createElement('label');
     folderLabel.className = 'result-organization-popover-folder';
+    folderLabel.hidden = true;
     const folderText = document.createElement('span');
-    folderText.textContent = copy().folder;
+    folderText.textContent = copy().chooseFolder;
     const folderSelect = document.createElement('select');
-    folderSelect.setAttribute('aria-label', copy().folder);
+    folderSelect.setAttribute('aria-label', copy().chooseFolder);
     folderLabel.append(folderText, folderSelect);
 
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'result-organization-popover-action is-danger';
-    remove.textContent = copy().remove;
+    const removeFolder = document.createElement('button');
+    removeFolder.type = 'button';
+    removeFolder.className = 'result-organization-popover-action';
+    removeFolder.textContent = copy().removeFolder;
+
+    const deleteResult = document.createElement('button');
+    deleteResult.type = 'button';
+    deleteResult.className = 'result-organization-popover-action is-danger';
+    deleteResult.textContent = copy().deleteResult;
 
     const status = document.createElement('div');
     status.className = 'result-organization-popover-status';
     status.setAttribute('role', 'status');
 
-    root.append(pin, archive, folderLabel, remove, status);
+    root.append(pin, archive, moveFolder, folderLabel, removeFolder, deleteResult, status);
     document.body.append(root);
 
     pin.addEventListener('click', async () => {
@@ -119,24 +132,25 @@
       await patchOrganization({ archived: !state.archived });
     });
 
-    folderSelect.addEventListener('change', async () => {
+    moveFolder.addEventListener('click', () => {
       if (!currentResultId || !resultReady) return;
-      const target = folderSelect.value || null;
-      setBusy(true);
-      status.textContent = '';
-      try {
-        await requestJson(`/api/results/${encodeURIComponent(currentResultId)}`, { method: 'PATCH', body: { project_id: target } });
-        state.projectId = target || '';
-        window.dispatchEvent(new CustomEvent('astera:result-organization-changed', { detail: { resultId: currentResultId, ...state } }));
-      } catch {
-        status.textContent = copy().failed;
-      } finally {
-        setBusy(false);
-        render();
-      }
+      folderLabel.hidden = !folderLabel.hidden;
+      if (!folderLabel.hidden) window.requestAnimationFrame(() => folderSelect.focus());
     });
 
-    remove.addEventListener('click', async () => {
+    folderSelect.addEventListener('change', async () => {
+      if (!currentResultId || !resultReady || !folderSelect.value) return;
+      await setProject(folderSelect.value);
+      folderLabel.hidden = true;
+    });
+
+    removeFolder.addEventListener('click', async () => {
+      if (!currentResultId || !resultReady || !state.projectId) return;
+      await setProject(null);
+      folderLabel.hidden = true;
+    });
+
+    deleteResult.addEventListener('click', async () => {
       if (!currentResultId || !resultReady) return;
       if (!window.confirm(copy().deleteConfirm)) return;
       setBusy(true);
@@ -152,7 +166,7 @@
       }
     });
 
-    menu = { root, pin, archive, folderSelect, remove, status };
+    menu = { root, pin, archive, moveFolder, folderLabel, folderSelect, removeFolder, deleteResult, status };
     return menu;
   }
 
@@ -160,8 +174,10 @@
     const ui = ensureMenu();
     ui.pin.disabled = busy || !organizationReady;
     ui.archive.disabled = busy || !organizationReady;
+    ui.moveFolder.disabled = busy || !resultReady;
     ui.folderSelect.disabled = busy || !resultReady;
-    ui.remove.disabled = busy || !resultReady;
+    ui.removeFolder.disabled = busy || !resultReady || !state.projectId;
+    ui.deleteResult.disabled = busy || !resultReady;
   }
 
   function render() {
@@ -169,9 +185,31 @@
     ui.root.setAttribute('aria-label', copy().organize);
     ui.pin.textContent = state.pinned ? copy().unpin : copy().pin;
     ui.archive.textContent = state.archived ? copy().unarchive : copy().archive;
-    ui.remove.textContent = copy().remove;
+    ui.moveFolder.textContent = copy().moveFolder;
+    ui.removeFolder.textContent = copy().removeFolder;
+    ui.deleteResult.textContent = copy().deleteResult;
+    ui.folderSelect.setAttribute('aria-label', copy().chooseFolder);
     ui.folderSelect.value = state.projectId || '';
     setBusy(false);
+  }
+
+  async function setProject(projectId) {
+    const ui = ensureMenu();
+    setBusy(true);
+    ui.status.textContent = '';
+    try {
+      await requestJson(`/api/results/${encodeURIComponent(currentResultId)}`, {
+        method: 'PATCH',
+        body: { project_id: projectId },
+      });
+      state.projectId = projectId || '';
+      window.dispatchEvent(new CustomEvent('astera:result-organization-changed', { detail: { resultId: currentResultId, ...state } }));
+    } catch {
+      ui.status.textContent = copy().failed;
+    } finally {
+      setBusy(false);
+      render();
+    }
   }
 
   async function patchOrganization(body) {
@@ -199,11 +237,15 @@
     resultReady = false;
     state = { pinned: false, archived: false, projectId: '' };
     ui.status.textContent = currentResultId ? copy().loading : copy().noResult;
+    ui.folderLabel.hidden = true;
     ui.folderSelect.replaceChildren();
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = copy().unassigned;
-    ui.folderSelect.append(empty);
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = copy().chooseFolder;
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    ui.folderSelect.append(placeholder);
     render();
 
     if (!currentResultId) return;
@@ -221,6 +263,7 @@
         option.textContent = project.name;
         ui.folderSelect.append(option);
       }
+      if (projectsResult.value.length === 0) ui.status.textContent = copy().noFolders;
     }
 
     if (resultResult.status === 'fulfilled') {
@@ -238,7 +281,7 @@
       ui.status.textContent = error?.code === 'RESULT_ORGANIZATION_MIGRATION_REQUIRED' ? copy().unavailable : copy().failed;
     }
 
-    if (organizationReady) ui.status.textContent = '';
+    if (organizationReady && projectsResult.status === 'fulfilled' && projectsResult.value.length > 0) ui.status.textContent = '';
     else if (!ui.status.textContent) ui.status.textContent = copy().failed;
     render();
   }
@@ -253,6 +296,7 @@
   function closeMenu() {
     const ui = ensureMenu();
     ui.root.hidden = true;
+    ui.folderLabel.hidden = true;
     menuOpen = false;
   }
 
