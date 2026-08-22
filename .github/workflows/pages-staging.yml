@@ -3,10 +3,12 @@ name: Pages Staging Deploy
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'deployment-evidence/**'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pages-staging-${{ github.ref }}
@@ -35,5 +37,85 @@ jobs:
         run: npm install --no-audit
       - name: Build frontend
         run: npm run build
+      - name: Build Pages Functions
+        run: npm run cloudflare:functions:build
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
+      - name: Verify live Customer AI connection
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          endpoint = 'https://staging.asterav8.jp/api/customer-ai/respond'
+          payload = json.dumps({
+              'message': '料金を教えて',
+              'source': 'astera-app',
+              'locale': 'ja-JP',
+              'session_id': 'session_staging_pages_gate',
+              'message_id': 'message_staging_pages_gate',
+              'response_mode': 'auto',
+              'mode_source': 'auto',
+              'current_path': '/app/new',
+          }).encode('utf-8')
+
+          last = None
+          for _ in range(30):
+              try:
+                  request = urllib.request.Request(
+                      endpoint,
+                      data=payload,
+                      method='POST',
+                      headers={
+                          'Content-Type': 'application/json',
+                          'Accept': 'application/json',
+                      },
+                  )
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      body = json.loads(response.read().decode('utf-8'))
+                      transport = response.headers.get('X-Astera-Customer-AI-Transport')
+                      answer = str(body.get('answer') or body.get('clarification') or '').strip()
+                      last = {
+                          'status': response.status,
+                          'transport': transport,
+                          'body': body,
+                      }
+                      if response.status == 200 and transport == 'server-proxy' and answer:
+                          break
+              except Exception as exc:
+                  last = repr(exc)
+              time.sleep(5)
+          else:
+              raise SystemExit(f'staging_customer_ai_not_connected last={last!r}')
+
+          evidence = {
+              'verified_at': datetime.now(timezone.utc).isoformat(),
+              'source_sha': os.environ['SOURCE_SHA'],
+              'endpoint': endpoint,
+              'respond_status': 200,
+              'transport': 'server-proxy',
+              'respond_has_answer': True,
+              'answer_preview': answer[:160],
+              'status': 'success',
+          }
+          Path('deployment-evidence').mkdir(exist_ok=True)
+          Path('deployment-evidence/staging-customer-ai-live.json').write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          print(json.dumps(evidence, ensure_ascii=False))
+          PY
+      - name: Record live Customer AI evidence
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add deployment-evidence/staging-customer-ai-live.json
+          git commit -m 'Record staging Customer AI live connection' || exit 0
+          git push origin HEAD:main
