@@ -7,12 +7,21 @@
   const MODE_SOURCE_KEY = 'astera.customer-ai.mode-source';
   const HISTORY_KEY = 'astera.customer-ai.history-v2';
   const MAX_HISTORY_ITEMS = 20;
-  const RESPONSE_MODES = new Set(['general','operation','billing','technical','investor','support','trouble','auto']);
+  const RESPONSE_MODES = {
+    auto: 'AIに任せる',
+    general: 'Asteraについて',
+    operation: '操作・使い方',
+    billing: '料金・Account',
+    technical: '技術者向け',
+    investor: '投資家・法人向け',
+    support: '開発支援・Sponsor',
+    trouble: '不具合・困りごと'
+  };
+
   const script = document.currentScript;
   const config = {
     apiBase: script?.dataset.apiBase || window.__ASTERA_CUSTOMER_AI_API_BASE__ || DEFAULT_API,
     source: script?.dataset.source || 'astera-app',
-    locale: document.documentElement.lang?.toLowerCase().startsWith('en') ? 'en' : 'ja-JP',
     timeoutMs: 30000
   };
 
@@ -26,15 +35,12 @@
   function readStore(key, fallback = '') {
     try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
   }
-
   function writeStore(key, value) {
     try { sessionStorage.setItem(key, value); } catch {}
   }
-
   function removeStore(key) {
     try { sessionStorage.removeItem(key); } catch {}
   }
-
   function getSessionId() {
     const existing = readStore(SESSION_KEY);
     if (existing) return existing;
@@ -42,17 +48,18 @@
     writeStore(SESSION_KEY, created);
     return created;
   }
-
   function currentMode() {
     const value = readStore(MODE_KEY, 'auto');
-    return RESPONSE_MODES.has(value) ? value : 'auto';
+    return Object.hasOwn(RESPONSE_MODES, value) ? value : 'auto';
   }
-
   function currentModeSource() {
     const value = readStore(MODE_SOURCE_KEY, 'auto');
     return ['selected', 'auto', 'confirmed'].includes(value) ? value : 'auto';
   }
-
+  function storeMode(mode) {
+    writeStore(MODE_KEY, mode);
+    writeStore(MODE_SOURCE_KEY, mode === 'auto' ? 'auto' : 'selected');
+  }
   function apiBase() {
     return String(config.apiBase || DEFAULT_API).trim().replace(/\/$/, '');
   }
@@ -66,12 +73,7 @@
     if (!base) throw new Error('customer_ai_runtime_not_configured');
     const response = await fetch(`${base}${path}`, options);
     const payload = await jsonOrEmpty(response);
-    if (!response.ok) {
-      const error = new Error(String(payload.detail || payload.error || `http_${response.status}`));
-      error.status = response.status;
-      error.payload = payload;
-      throw error;
-    }
+    if (!response.ok) throw new Error(String(payload.detail || payload.error || `http_${response.status}`));
     return payload;
   }
 
@@ -79,41 +81,29 @@
     const text = String(message || '').trim();
     if (!text) throw new Error('message_required');
     if (text.length > 12000) throw new Error('message_too_large');
-
-    const ownController = options.signal ? null : new AbortController();
-    const signal = options.signal || ownController.signal;
-    const timeout = ownController ? window.setTimeout(() => ownController.abort(), Number(options.timeoutMs || config.timeoutMs)) : null;
-    try {
-      const payload = await request('/respond', {
-        method: 'POST',
-        mode: 'cors',
-        credentials: 'omit',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        signal,
-        body: JSON.stringify({
-          message: text,
-          source: options.source || config.source,
-          locale: options.locale || config.locale,
-          session_id: options.sessionId || getSessionId(),
-          message_id: options.messageId || randomId('message'),
-          response_mode: options.responseMode || currentMode(),
-          mode_source: options.modeSource || currentModeSource(),
-          current_path: options.currentPath || location.pathname || '/'
-        })
-      });
-      if (payload.session_id) writeStore(SESSION_KEY, String(payload.session_id));
-      window.dispatchEvent(new CustomEvent('astera:customer-ai-result', { detail: payload }));
-      return payload;
-    } catch (error) {
-      if (error?.name === 'AbortError') throw new Error('timeout');
-      throw error;
-    } finally {
-      if (timeout !== null) window.clearTimeout(timeout);
-    }
+    const payload = await request('/respond', {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      signal: options.signal,
+      body: JSON.stringify({
+        message: text,
+        source: options.source || config.source,
+        locale: document.documentElement.lang?.toLowerCase().startsWith('en') ? 'en' : 'ja-JP',
+        session_id: options.sessionId || getSessionId(),
+        message_id: options.messageId || randomId('message'),
+        response_mode: options.responseMode || currentMode(),
+        mode_source: options.modeSource || currentModeSource(),
+        current_path: options.currentPath || location.pathname || '/'
+      })
+    });
+    if (payload.session_id) writeStore(SESSION_KEY, String(payload.session_id));
+    window.dispatchEvent(new CustomEvent('astera:customer-ai-result', { detail: payload }));
+    return payload;
   }
 
   async function deleteSession(sessionId = readStore(SESSION_KEY)) {
-    removeStore(SESSION_KEY);
     if (!sessionId) return true;
     try {
       const payload = await request(`/sessions/${encodeURIComponent(sessionId)}`, {
@@ -128,7 +118,7 @@
     }
   }
 
-  const api = {
+  window.AsteraCustomerAI = {
     config: { ...config },
     createId: randomId,
     getSessionId,
@@ -137,49 +127,127 @@
     submit: respond,
     deleteSession
   };
-  window.AsteraCustomerAI = api;
-  window.dispatchEvent(new CustomEvent('astera:customer-ai-ready', { detail: api.config }));
+  window.dispatchEvent(new CustomEvent('astera:customer-ai-ready', { detail: { ...config } }));
 
-  if (document.getElementById('astera-customer-ai')) return;
+  if (document.getElementById('ai-chat')) return;
 
-  const root = document.createElement('section');
-  root.id = 'astera-customer-ai';
-  root.className = 'aca-shell';
-  root.setAttribute('aria-label', 'Astera 総合案内AI');
-  root.innerHTML = `
-    <div class="aca-panel" id="aca-panel" aria-hidden="true">
-      <header class="aca-header">
-        <div><small>ASTERA CUSTOMER AI</small><strong>総合案内AI</strong></div>
-        <button class="aca-minimize" type="button" aria-label="最小化">−</button>
-      </header>
-      <div class="aca-status"><i></i><span>製品・利用方法・料金・技術・支援について案内します</span></div>
-      <div class="aca-log" role="log" aria-live="polite" aria-relevant="additions">
-        <div class="aca-message aca-bot" data-ai-welcome>Asteraについて知りたいことを入力してください。追加質問も同じ会話のまま続けられます。</div>
+  const panel = document.createElement('section');
+  panel.id = 'ai-chat';
+  panel.className = 'ai-chat ai-chat--glass';
+  panel.hidden = true;
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'false');
+  panel.setAttribute('aria-labelledby', 'ai-chat-title');
+  panel.innerHTML = `
+    <div class="ai-chat__top-dock" data-ai-top-dock>
+      <div class="ai-chat__header">
+        <div class="ai-chat__title-wrap"><span class="ai-chat__connection" data-ai-connection aria-hidden="true"></span><h2 id="ai-chat-title">Astera総合案内AI</h2></div>
+        <div class="ai-chat__window-actions">
+          <button class="ai-window-button" type="button" data-ai-minimize aria-label="案内AIを最小化">－</button>
+          <button class="ai-window-button ai-window-button--close" type="button" data-ai-delete-close aria-label="会話を削除して案内AIを閉じる">×</button>
+        </div>
       </div>
-      <form class="aca-form">
-        <textarea class="aca-input" rows="1" maxlength="12000" placeholder="質問を入力" aria-label="総合案内AIへの質問"></textarea>
-        <button class="aca-send" type="submit">送信</button>
-      </form>
-      <p class="aca-note">回答は承認済みKBと現在の実装情報を基に生成します。</p>
+      <div class="ai-routing" data-ai-routing>
+        <div class="ai-routing__current">
+          <label class="ai-mode-select-wrap">
+            <span class="ai-mode-select-label">回答タイプ</span>
+            <span class="ai-mode-select-shell">
+              <select class="ai-mode-select" data-ai-mode-select aria-label="回答タイプ">
+                <option value="auto">AIに任せる</option>
+                <option value="general">Asteraについて</option>
+                <option value="operation">操作・使い方</option>
+                <option value="billing">料金・Account</option>
+                <option value="technical">技術者向け</option>
+                <option value="investor">投資家・法人向け</option>
+                <option value="support">開発支援・Sponsor</option>
+                <option value="trouble">不具合・困りごと</option>
+              </select>
+              <span class="ai-mode-select-arrow" aria-hidden="true">⌄</span>
+            </span>
+          </label>
+          <div class="ai-routing__actions"><button type="button" data-ai-new-chat>新しい会話</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="ai-timeline" data-ai-timeline role="log" aria-live="polite" aria-label="案内AIとの会話">
+      <div class="ai-chat__empty" data-ai-empty>Asteraについて質問してください。</div>
+    </div>
+    <div class="ai-chat__composer-dock" data-ai-composer-dock>
+      <div class="ai-composer">
+        <textarea data-ai-input aria-label="質問" placeholder="質問を入力…" rows="1" maxlength="12000"></textarea>
+        <button class="ai-send" type="button" data-icon-send aria-label="送信"><svg class="ai-send__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6l.8 6.5L15 12 4.2 13.9z"/></svg></button>
+      </div>
+      <p class="ai-status" data-ai-status role="status" aria-live="polite"></p>
     </div>`;
-  document.body.appendChild(root);
+  document.body.appendChild(panel);
 
-  const panel = root.querySelector('.aca-panel');
-  const minimize = root.querySelector('.aca-minimize');
-  const form = root.querySelector('.aca-form');
-  const input = root.querySelector('.aca-input');
-  const send = root.querySelector('.aca-send');
-  const log = root.querySelector('.aca-log');
-  const welcome = root.querySelector('[data-ai-welcome]');
+  const minimize = panel.querySelector('[data-ai-minimize]');
+  const deleteClose = panel.querySelector('[data-ai-delete-close]');
+  const newChat = panel.querySelector('[data-ai-new-chat]');
+  const modeSelect = panel.querySelector('[data-ai-mode-select]');
+  const topDock = panel.querySelector('[data-ai-top-dock]');
+  const composerDock = panel.querySelector('[data-ai-composer-dock]');
+  const timeline = panel.querySelector('[data-ai-timeline]');
+  const empty = panel.querySelector('[data-ai-empty]');
+  const textarea = panel.querySelector('[data-ai-input]');
+  const sendButton = panel.querySelector('.ai-send');
+  const status = panel.querySelector('[data-ai-status]');
+  const connection = panel.querySelector('[data-ai-connection]');
+
   let sending = false;
   let activeController = null;
   let conversationEpoch = 0;
 
-  function resizeInput() {
-    input.style.height = 'auto';
-    input.style.height = `${Math.min(124, Math.max(44, input.scrollHeight))}px`;
+  function setEmptyState(hidden) {
+    if (empty) empty.hidden = hidden;
   }
-
+  function createMessage(role, text, state = '') {
+    setEmptyState(true);
+    const item = document.createElement('div');
+    item.className = `ai-message ai-message--${state || role}`;
+    item.dataset.aiMessageRole = role;
+    const label = document.createElement('strong');
+    label.className = 'ai-message__label';
+    label.textContent = role === 'user' ? 'あなた' : 'Astera AI';
+    const body = document.createElement('p');
+    body.className = 'ai-message__body';
+    body.textContent = text;
+    item.append(label, body);
+    timeline.append(item);
+    timeline.scrollTop = timeline.scrollHeight;
+    return item;
+  }
+  function updateMessage(item, text, state = 'assistant') {
+    if (!item) return;
+    item.className = `ai-message ai-message--${state}`;
+    const body = item.querySelector('.ai-message__body');
+    if (body) body.textContent = text;
+    timeline.scrollTo({ top: timeline.scrollHeight, behavior: 'smooth' });
+  }
+  function persistHistory() {
+    const history = [...timeline.querySelectorAll('.ai-message')]
+      .slice(-MAX_HISTORY_ITEMS)
+      .map((item) => ({
+        role: item.dataset.aiMessageRole === 'user' ? 'user' : 'assistant',
+        text: item.querySelector('.ai-message__body')?.textContent?.slice(0, 8000) || '',
+        state: item.classList.contains('ai-message--error') ? 'error' : 'completed'
+      }))
+      .filter((item) => item.text);
+    writeStore(HISTORY_KEY, JSON.stringify(history));
+  }
+  function restoreHistory() {
+    let history = [];
+    try { history = JSON.parse(readStore(HISTORY_KEY, '[]')); } catch {}
+    if (!Array.isArray(history)) return;
+    for (const entry of history.slice(-MAX_HISTORY_ITEMS)) {
+      if (!entry || !['user', 'assistant'].includes(entry.role) || !String(entry.text || '').trim()) continue;
+      createMessage(entry.role, String(entry.text), entry.state === 'error' ? 'error' : '');
+    }
+  }
+  function resizeInput() {
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(120, Math.max(44, textarea.scrollHeight))}px`;
+  }
   function errorMessage(code) {
     switch (code) {
       case 'rate_limited': return 'アクセスが集中しています。少し時間を空けてからもう一度お試しください。';
@@ -194,104 +262,102 @@
       default: return '案内AIで一時的なエラーが発生しました。入力内容を保持したまま再試行できます。';
     }
   }
-
-  function open() {
-    root.classList.add('aca-open');
-    panel.setAttribute('aria-hidden', 'false');
+  function renderMode() {
+    modeSelect.value = currentMode();
   }
-
-  function close() {
-    root.classList.remove('aca-open');
-    panel.setAttribute('aria-hidden', 'true');
-    input.blur?.();
+  function measuredHeight(element, fallback) {
+    const value = element?.getBoundingClientRect?.().height;
+    return Number.isFinite(value) && value > 0 ? Math.ceil(value) : fallback;
   }
-
-  function append(text, role, pending = false) {
-    welcome?.remove();
-    const item = document.createElement('div');
-    item.className = `aca-message aca-${role}${pending ? ' aca-pending' : ''}`;
-    item.dataset.aiMessageRole = role === 'user' ? 'user' : 'assistant';
-    item.textContent = text;
-    log.appendChild(item);
-    log.scrollTop = log.scrollHeight;
-    return item;
-  }
-
-  function update(item, text, role = 'bot') {
-    if (!item) return;
-    item.className = `aca-message aca-${role}`;
-    item.dataset.aiMessageRole = role === 'user' ? 'user' : 'assistant';
-    item.textContent = text;
-    log.scrollTop = log.scrollHeight;
-  }
-
-  function persistHistory() {
-    const history = [...log.querySelectorAll('.aca-message[data-ai-message-role]')]
-      .slice(-MAX_HISTORY_ITEMS)
-      .map((item) => ({
-        role: item.dataset.aiMessageRole === 'user' ? 'user' : 'assistant',
-        text: String(item.textContent || '').slice(0, 8000),
-        state: item.classList.contains('aca-error') ? 'error' : 'completed'
-      }))
-      .filter((item) => item.text);
-    writeStore(HISTORY_KEY, JSON.stringify(history));
-  }
-
-  function restoreHistory() {
-    let history = [];
-    try { history = JSON.parse(readStore(HISTORY_KEY, '[]')); } catch {}
-    if (!Array.isArray(history) || history.length === 0) return;
-    welcome?.remove();
-    for (const entry of history.slice(-MAX_HISTORY_ITEMS)) {
-      if (!entry || !['user', 'assistant'].includes(entry.role) || !String(entry.text || '').trim()) continue;
-      const item = append(String(entry.text), entry.role === 'user' ? 'user' : 'bot');
-      if (entry.state === 'error') item.classList.add('aca-error');
+  function syncLayout() {
+    if (panel.hidden || panel.classList.contains('is-minimized')) {
+      panel.style.removeProperty('--ai-viewport-top');
+      panel.style.removeProperty('--ai-viewport-height');
+      return;
     }
+    const viewport = window.visualViewport;
+    if (viewport) {
+      panel.style.setProperty('--ai-viewport-top', `${Math.max(0, Math.round(viewport.offsetTop || 0))}px`);
+      panel.style.setProperty('--ai-viewport-height', `${Math.max(240, Math.round(viewport.height || window.innerHeight || 0))}px`);
+    }
+    panel.style.setProperty('--ai-top-dock-space', `${measuredHeight(topDock, 118)}px`);
+    panel.style.setProperty('--ai-bottom-dock-space', `${measuredHeight(composerDock, 86)}px`);
+  }
+  function open() {
+    panel.hidden = false;
+    panel.classList.remove('is-minimized');
+    minimize.textContent = '－';
+    minimize.setAttribute('aria-label', '案内AIを最小化');
+    window.requestAnimationFrame(syncLayout);
+  }
+  function close() {
+    panel.hidden = true;
+    panel.classList.remove('is-minimized');
+    textarea.blur?.();
+    syncLayout();
+  }
+  function clearLocalConversation() {
+    timeline.querySelectorAll('.ai-message').forEach((item) => item.remove());
+    setEmptyState(false);
+    removeStore(SESSION_KEY);
+    removeStore(HISTORY_KEY);
+    storeMode('auto');
+    renderMode();
+    textarea.value = '';
+    resizeInput();
+    status.textContent = '';
+  }
+  function resetConversation(keepOpen) {
+    const oldSession = readStore(SESSION_KEY);
+    conversationEpoch += 1;
+    activeController?.abort();
+    activeController = null;
+    sending = false;
+    sendButton.disabled = false;
+    textarea.disabled = false;
+    connection?.classList.remove('is-working');
+    clearLocalConversation();
+    if (keepOpen) open(); else close();
+    if (oldSession) void deleteSession(oldSession);
   }
 
-  function answerText(result) {
-    if (result?.answer) return String(result.answer);
-    if (result?.status === 'awaiting_clarification') return String(result.clarification || '回答に必要な条件が不足しています。確認したい内容を教えてください。');
-    if (result?.status === 'failed') return '処理を完了できませんでした。少し時間を置いて、同じ質問をもう一度送ってください。';
-    return '回答を準備しましたが、表示できる本文がありません。';
-  }
-
-  async function submit() {
+  async function send() {
     if (sending) return;
-    const text = input.value.trim();
-    if (!text) { input.focus(); return; }
-
+    const message = textarea.value.trim();
+    if (!message) {
+      status.textContent = '質問を入力してください。';
+      textarea.focus();
+      return;
+    }
     const epoch = conversationEpoch;
     sending = true;
-    send.disabled = true;
-    input.disabled = true;
-    append(text, 'user');
-    input.value = '';
+    sendButton.disabled = true;
+    textarea.disabled = true;
+    connection?.classList.add('is-working');
+    status.textContent = '';
+    createMessage('user', message);
+    textarea.value = '';
     resizeInput();
-    const pending = append('回答中…', 'bot', true);
+    syncLayout();
+    const pending = createMessage('assistant', '回答中…', 'pending');
     persistHistory();
 
     const controller = new AbortController();
     activeController = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 30000);
+    const timeout = window.setTimeout(() => controller.abort(), config.timeoutMs);
     try {
-      const result = await respond(text, {
-        signal: controller.signal,
-        source: 'astera-app',
-        locale: document.documentElement.lang?.toLowerCase().startsWith('en') ? 'en' : 'ja-JP',
-        currentPath: location.pathname
-      });
+      const payload = await respond(message, { signal: controller.signal, source: 'astera-app', currentPath: location.pathname });
       if (epoch !== conversationEpoch) return;
-      const answer = answerText(result).trim();
+      const answer = String(payload.answer || payload.clarification || '').trim();
       if (!answer) throw new Error('empty_answer');
-      update(pending, answer, result?.status === 'failed' ? 'error' : 'bot');
+      updateMessage(pending, answer, payload.status === 'failed' ? 'error' : 'assistant');
+      status.textContent = payload.status === 'awaiting_clarification' ? '追加情報を確認しています。' : '';
       persistHistory();
     } catch (error) {
       if (epoch !== conversationEpoch) return;
       const code = error?.name === 'AbortError' ? 'timeout' : String(error?.message || 'internal_error');
-      update(pending, errorMessage(code), 'error');
-      pending.classList.add('aca-error');
-      input.value = text;
+      updateMessage(pending, errorMessage(code), 'error');
+      textarea.value = message;
       resizeInput();
       persistHistory();
     } finally {
@@ -299,30 +365,48 @@
       if (activeController === controller) activeController = null;
       if (epoch === conversationEpoch) {
         sending = false;
-        send.disabled = false;
-        input.disabled = false;
-        input.focus();
+        sendButton.disabled = false;
+        textarea.disabled = false;
+        connection?.classList.remove('is-working');
+        syncLayout();
       }
     }
   }
 
   restoreHistory();
+  renderMode();
   resizeInput();
-  minimize.addEventListener('click', close);
-  input.addEventListener('input', resizeInput);
-  input.addEventListener('keydown', (event) => {
+
+  modeSelect.addEventListener('change', () => {
+    if (!Object.hasOwn(RESPONSE_MODES, modeSelect.value)) return;
+    storeMode(modeSelect.value);
+    status.textContent = '';
+    syncLayout();
+  });
+  newChat.addEventListener('click', () => resetConversation(true));
+  deleteClose.addEventListener('click', () => resetConversation(false));
+  minimize.addEventListener('click', () => {
+    panel.classList.toggle('is-minimized');
+    const minimized = panel.classList.contains('is-minimized');
+    minimize.textContent = minimized ? '□' : '－';
+    minimize.setAttribute('aria-label', minimized ? '案内AIを展開' : '案内AIを最小化');
+    if (minimized) textarea.blur?.();
+    window.setTimeout(syncLayout, 0);
+  });
+  sendButton.addEventListener('click', () => void send());
+  textarea.addEventListener('input', () => { resizeInput(); syncLayout(); });
+  textarea.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
-      form.requestSubmit();
+      void send();
     }
   });
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void submit();
-  });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && root.classList.contains('aca-open')) close();
+    if (event.key === 'Escape' && !panel.hidden) close();
   });
+  window.addEventListener('resize', syncLayout);
+  window.visualViewport?.addEventListener('resize', syncLayout);
+  window.visualViewport?.addEventListener('scroll', syncLayout);
 
-  window.AsteraCustomerAIUI = { open, close, root };
+  window.AsteraCustomerAIUI = { open, close, root: panel };
 })();
