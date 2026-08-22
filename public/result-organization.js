@@ -158,7 +158,7 @@
 
   function setBusy(busy) {
     const ui = ensureMenu();
-    ui.pin.disabled = busy || !organizationReady || state.archived;
+    ui.pin.disabled = busy || !organizationReady;
     ui.archive.disabled = busy || !organizationReady;
     ui.folderSelect.disabled = busy || !resultReady;
     ui.remove.disabled = busy || !resultReady;
@@ -182,7 +182,6 @@
       const payload = await requestJson(`/api/results/${encodeURIComponent(currentResultId)}/organization`, { method: 'PATCH', body });
       state.pinned = payload?.pinned === true;
       state.archived = payload?.archived === true;
-      if (state.archived) state.pinned = false;
       if (typeof payload?.project_id === 'string') state.projectId = payload.project_id;
       window.dispatchEvent(new CustomEvent('astera:result-organization-changed', { detail: { resultId: currentResultId, ...state } }));
     } catch (error) {
