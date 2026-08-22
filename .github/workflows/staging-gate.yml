@@ -24,8 +24,7 @@ jobs:
           node --check public/app-interactions.js
           node --check public/process-user-errors.js
           node --check public/ui-honesty.js
-          node --check public/customer-ai-transport.js
-          node --check public/customer-ai-bubble.js
+          node --check public/guide-ai-runtime.js
       - name: Audit canonical routes
         run: npm run route:audit
       - name: Audit responsive behavior
