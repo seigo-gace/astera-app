@@ -190,6 +190,12 @@ function openGuideAi() {
   ui?.open?.();
 }
 
+function openResultOrganization() {
+  const details = document.querySelector<HTMLDetailsElement>('.result-organization-menu, .result-summary-actions .result-more');
+  if (!details) return;
+  details.open = !details.open;
+}
+
 export function ResponsivePageShell({ route, children, eyebrow, description, actions, fullWidth = false }: { route: RouteMatch; children: ReactNode; eyebrow?: string; description?: string; actions?: ReactNode; fullWidth?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -334,7 +340,7 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
       <span className="platform-mobile-header-center" aria-hidden="true" />
       <span className="platform-mobile-account-actions">
         <button className="platform-header-ai" type="button" onClick={openGuideAi} aria-label={appText('openGuideAi')}><img src="/guide-ai.png?v=ai-guide-20260822-2" alt="" aria-hidden="true" /></button>
-        <a className="platform-header-account" href="/account" aria-label={appText('account')}>◎</a>
+        {route.id === 'result-detail' && <button className="platform-header-organize" type="button" onClick={openResultOrganization} aria-label="Resultを整理" title="整理"><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg></button>}
       </span>
     </header>
     <aside className="platform-sidebar">{nav}</aside>
