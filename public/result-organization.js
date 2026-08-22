@@ -12,12 +12,12 @@
   const copy = () => locale() === 'en'
     ? {
         organize: 'Organize', pin: 'Pin', unpin: 'Unpin', archive: 'Archive', unarchive: 'Unarchive',
-        folder: 'Folder', unassigned: 'No folder', remove: 'Delete', unavailable: 'Organization data is not ready',
+        folder: 'Move to folder', unassigned: 'No folder', remove: 'Delete', unavailable: 'Organization data is not ready',
         failed: 'Could not update organization', noResult: 'Open a saved result to organize it.', loading: 'Loading…', deleteConfirm: 'Delete this result?'
       }
     : {
         organize: '整理', pin: 'ピン留め', unpin: 'ピン留めを解除', archive: 'アーカイブ', unarchive: 'アーカイブ解除',
-        folder: 'フォルダー', unassigned: 'フォルダーなし', remove: '削除', unavailable: '整理機能のD1反映待ち',
+        folder: 'フォルダーに移動', unassigned: 'フォルダーなし', remove: '削除', unavailable: '整理機能のD1反映待ち',
         failed: '整理状態を更新できませんでした', noResult: '保存済みResultを開くと整理できます。', loading: '読み込み中…', deleteConfirm: 'このResultを削除予定状態にしますか？'
       };
 
