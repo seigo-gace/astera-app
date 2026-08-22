@@ -28,8 +28,25 @@ html.history-search-open{overflow:hidden}
 .history-search-state{min-height:180px;display:grid;place-items:center;align-content:center;gap:12px;padding:24px;color:var(--ex-muted,var(--platform-muted));text-align:center}
 .history-search-state.is-error{display:none!important}
 .history-search-state button{min-height:40px;border:1px solid var(--ex-line,var(--platform-border));border-radius:10px;background:transparent;color:inherit;padding:0 14px;cursor:pointer}
+
+/* Collapsed desktop: reserve separate rows for expand, search, then navigation. */
 .platform-shell.exterior-sidebar-collapsed .history-search-trigger{top:58px;right:18px}
-.platform-shell.exterior-sidebar-collapsed .platform-nav{margin-top:48px!important}
-@media(max-width:1100px){.platform-mobile-drawer .history-search-trigger{top:12px;right:12px}.history-search-panel{width:min(820px,calc(100vw - 32px));max-height:calc(100dvh - 32px)}}
-@media(max-width:600px){.platform-mobile-drawer .platform-nav{margin-top:44px!important}.history-search-panel{left:8px;right:8px;top:max(8px,env(safe-area-inset-top));bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:none;transform:none;border-radius:16px}.history-search-header{min-height:62px;padding:7px 8px 7px 16px}.history-search-input{font-size:16px}.history-search-body{padding:12px 8px 8px}.history-search-result{min-height:56px}}
+.platform-shell.exterior-sidebar-collapsed .platform-nav{margin-top:104px!important}
+
+/* Drawer: recent-history content must stay in normal flow above About/Settings. */
+@media(max-width:1100px){
+  .platform-mobile-drawer .history-search-trigger{top:12px;right:12px}
+  .platform-mobile-drawer .platform-side-section{max-height:none!important;flex:0 0 auto!important;overflow:visible!important}
+  .platform-mobile-drawer .platform-recent-list{max-height:min(22dvh,180px)!important;overflow-y:auto!important}
+  .platform-mobile-drawer .platform-side-meta{margin-top:12px!important;flex:0 0 auto!important}
+  .history-search-panel{width:min(820px,calc(100vw - 32px));max-height:calc(100dvh - 32px)}
+}
+@media(max-width:600px){
+  .platform-mobile-drawer .platform-nav{margin-top:44px!important}
+  .history-search-panel{left:8px;right:8px;top:max(8px,env(safe-area-inset-top));bottom:max(8px,env(safe-area-inset-bottom));width:auto;max-height:none;transform:none;border-radius:16px}
+  .history-search-header{min-height:62px;padding:7px 8px 7px 16px}
+  .history-search-input{font-size:16px}
+  .history-search-body{padding:12px 8px 8px}
+  .history-search-result{min-height:56px}
+}
 @media(prefers-reduced-motion:reduce){.history-search-trigger,.history-search-result,.history-search-close{transition:none!important}}
