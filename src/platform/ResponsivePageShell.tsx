@@ -154,8 +154,7 @@ function CreditMeter({ enabled }: { enabled: boolean }) {
   const { locale, text } = usePlatformText();
   if (!enabled) return null;
   if (credit.status !== 'ready') {
-    const displayValue = credit.status === 'loading' ? '…' : '0 C';
-    return <div className="platform-credit-layer" aria-live="polite"><a href="/app/plan-credit" className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? text('creditLoading') : text('creditUnavailable')}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{displayValue}</strong></a></div>;
+    return <div className="platform-credit-layer" aria-live="polite"><a href="/app/plan-credit" className={`platform-credit-meter is-${credit.status}`} aria-label={credit.status === 'loading' ? text('creditLoading') : text('creditUnavailable')}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{credit.status === 'loading' ? '…' : '—'}</strong></a></div>;
   }
   const fill = credit.state === 'depleted' ? 0 : Math.max(3, Math.min(100, (credit.usable / credit.capacity) * 100));
   const meterStyle = { '--credit-fill': `${fill}%` } as CSSProperties;
@@ -352,7 +351,7 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
           <a className={!isResultRoute ? 'is-active' : undefined} href="/app/new" aria-current={!isResultRoute ? 'page' : undefined}>{platformText('headerPage')}</a>
           <button type="button" className={isResultRoute ? 'is-active' : undefined} disabled={!isResultRoute} aria-disabled={!isResultRoute} onClick={openEvidenceList}>{platformText('headerEvidence')}</button>
         </span>
-        <button className="platform-header-organize" type="button" onClick={openResultOrganization} aria-label={platformText('organizeResultAria')} title={platformText('organizeResultTitle')}><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 1-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg></button>
+        <button className="platform-header-organize" type="button" onClick={openResultOrganization} aria-label={platformText('organizeResultAria')} title={platformText('organizeResultTitle')}><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg></button>
       </span>
     </header>
     <aside className="platform-sidebar">{nav}</aside>
