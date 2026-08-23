@@ -1,7 +1,7 @@
 import LoginPage from '../features/auth/LoginPage';
 import DeveloperPage from '../features/developer/DeveloperPage';
 import HistoryPage from '../features/history/HistoryPage';
-import { PlanCreditPage, SearchPage } from '../features/navigation/UtilityPages';
+import { PlanCreditPage } from '../features/navigation/UtilityPages';
 import ProjectPage from '../features/projects/ProjectPage';
 import ResultPage from '../features/results/ResultPage';
 import SecurityPage from '../features/security/SecurityPage';
@@ -24,7 +24,6 @@ const accountRoutes = new Set(['account-subscription', 'account-credit', 'billin
 export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'login') return <LoginPage route={route} />;
   if (authRoutes.has(route.id)) return <AuthPage route={route} />;
-  if (route.id === 'search') return <SearchPage route={route} />;
   if (route.id === 'plan-credit') return <PlanCreditPage route={route} />;
   if (route.id === 'projects') return <ProjectPage route={route} />;
   if (route.id === 'history') return <HistoryPage route={route} />;
