@@ -2,26 +2,128 @@
 @import './styles-core.css';
 @import './styles-responsive.css';
 
-/* Keep the live Credit balance visually centered over the header gauge without
-   changing the server-backed balance projection used by CreditMeter. */
+/* Credit gauge exterior only. The server-backed CreditMeter projection remains unchanged. */
+.platform-credit-meter {
+  width: min(560px, 100%);
+  height: 44px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 5px 14px;
+  border: 1px solid color-mix(in srgb, #8fdcff 52%, var(--border-color));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 94%, #8fdcff 6%);
+  box-shadow: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+
+.platform-credit-meter:hover,
+.platform-credit-meter:focus-visible {
+  border-color: color-mix(in srgb, #8fdcff 78%, var(--border-color));
+  background: color-mix(in srgb, var(--bg-primary) 90%, #8fdcff 10%);
+  outline: none;
+}
+
+.platform-credit-meter:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, #8fdcff 22%, transparent);
+}
+
+.platform-credit-meter::before,
+.platform-credit-meter::after,
+.platform-credit-mark,
+.platform-credit-title {
+  display: none;
+}
+
+.platform-credit-meter > .platform-credit-track {
+  position: absolute;
+  inset: 7px 9px;
+  z-index: 1;
+  height: auto;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, #8fdcff 28%, var(--border-color));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 96%, #8fdcff 4%);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.platform-credit-meter > .platform-credit-track > .platform-credit-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, #8fdcff 32%, transparent);
+  box-shadow: none;
+  transition: width .45s ease, background-color .25s ease;
+}
+
 .platform-credit-meter > .platform-credit-number {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 2;
   min-width: 0;
-  max-width: calc(100% - 112px);
+  max-width: calc(100% - 48px);
   padding: 0 6px;
+  color: var(--text-primary);
   text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  text-shadow: 0 1px 5px var(--shadow, rgba(0, 0, 0, .9)), 0 0 8px currentColor;
+  text-shadow: none;
+}
+
+.platform-credit-meter.is-low,
+.platform-credit-meter.is-critical,
+.platform-credit-meter.is-depleted {
+  border-color: color-mix(in srgb, #ff6b6b 62%, var(--border-color));
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.platform-credit-meter.is-low > .platform-credit-track,
+.platform-credit-meter.is-critical > .platform-credit-track,
+.platform-credit-meter.is-depleted > .platform-credit-track {
+  border-color: color-mix(in srgb, #ff6b6b 32%, var(--border-color));
+}
+
+.platform-credit-meter.is-low > .platform-credit-track > .platform-credit-fill,
+.platform-credit-meter.is-critical > .platform-credit-track > .platform-credit-fill,
+.platform-credit-meter.is-depleted > .platform-credit-track > .platform-credit-fill {
+  background: color-mix(in srgb, #ff6b6b 36%, transparent);
+  box-shadow: none;
+}
+
+.platform-credit-meter.is-loading {
+  opacity: .72;
+}
+
+.platform-credit-meter.is-loading > .platform-credit-track > .platform-credit-fill {
+  animation: none;
+}
+
+.platform-credit-meter.is-error {
+  opacity: .62;
+  filter: none;
 }
 
 @media (max-width: 760px) {
+  .platform-credit-layer {
+    padding-inline: 64px 112px;
+  }
+
+  .platform-credit-meter {
+    width: 100%;
+    height: 40px;
+  }
+
   .platform-credit-meter > .platform-credit-number {
-    max-width: calc(100% - 36px);
+    max-width: calc(100% - 28px);
+    font-size: 12px;
   }
 }
