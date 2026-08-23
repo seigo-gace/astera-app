@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAppText } from '../../app-text';
-import { asArray, asRecord, recordText } from '../../platform/api-client';
+import { previewWithoutAuth } from '../../platform/account-session';
+import { apiRequest, asArray, asRecord, recordText } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { FormResult, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
@@ -16,7 +17,19 @@ export function LanguageSettingsPage({ route }: { route: RouteMatch }) {
   const [value, setValue] = useState<'ja' | 'en'>(language);
   const [saved, setSaved] = useState(false);
   useEffect(() => setValue(language), [language]);
-  const apply = async (event: FormEvent) => { event.preventDefault(); await setLanguage(value); setSaved(true); window.setTimeout(() => setSaved(false), 1600); };
+  const apply = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!previewWithoutAuth()) {
+      await apiRequest('/api/preferences/display', {
+        method: 'PUT',
+        body: { ui_language: value === 'en' ? 'en-US' : 'ja-JP' },
+        idempotent: true,
+      });
+    }
+    await setLanguage(value);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 1600);
+  };
   return <ResponsivePageShell route={route} description={text('languageDescription')}><Panel title={text('languageTitle')}><form className="platform-form" onSubmit={(event) => void apply(event)}><label className="platform-field"><span>{text('languageSelect')}</span><select value={value} onChange={(event) => setValue(event.target.value as 'ja' | 'en')}><option value="ja">{text('japanese')}</option><option value="en">{text('english')}</option></select></label><button className="platform-button is-primary" type="submit">{text('save')}</button>{saved && <p className="platform-form-result is-success" role="status">{text('saved')}</p>}</form></Panel></ResponsivePageShell>;
 }
 
