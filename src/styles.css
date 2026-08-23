@@ -8,10 +8,10 @@
   height: 44px;
   grid-template-columns: minmax(0, 1fr);
   padding: 5px 14px;
-  border: 0;
+  border: 0 !important;
   border-radius: 999px;
   background: transparent;
-  box-shadow: none;
+  box-shadow: none !important;
   color: var(--text-primary);
   cursor: pointer;
   text-decoration: none;
@@ -20,13 +20,10 @@
 
 .platform-credit-meter:hover,
 .platform-credit-meter:focus-visible {
-  border: 0;
+  border: 0 !important;
   background: transparent;
   outline: none;
-}
-
-.platform-credit-meter:focus-visible {
-  box-shadow: none;
+  box-shadow: none !important;
 }
 
 .platform-credit-meter::before,
@@ -42,10 +39,10 @@
   z-index: 1;
   height: auto;
   min-width: 0;
-  border: 0;
+  border: 0 !important;
   border-radius: 999px;
   background: transparent;
-  box-shadow: none;
+  box-shadow: none !important;
   overflow: hidden;
 }
 
@@ -88,9 +85,39 @@
 .platform-credit-meter.is-depleted:focus-visible,
 .platform-credit-meter.is-depleted > .platform-credit-track,
 .platform-credit-meter.is-depleted > .platform-credit-track > .platform-credit-fill {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* The staging preview can expose the no-balance state as an unavailable projection.
+   Keep that exterior identical to zero credit instead of showing a blue partial gauge. */
+.platform-credit-meter.is-error {
+  opacity: 1;
+  filter: none;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.platform-credit-meter.is-error > .platform-credit-track,
+.platform-credit-meter.is-error > .platform-credit-track > .platform-credit-fill {
+  width: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.platform-credit-meter.is-error > .platform-credit-number {
+  font-size: 0;
+}
+
+.platform-credit-meter.is-error > .platform-credit-number::after {
+  content: '0 C';
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--text-primary);
 }
 
 .platform-credit-meter.is-loading {
@@ -99,11 +126,6 @@
 
 .platform-credit-meter.is-loading > .platform-credit-track > .platform-credit-fill {
   animation: none;
-}
-
-.platform-credit-meter.is-error {
-  opacity: .62;
-  filter: none;
 }
 
 @media (max-width: 760px) {
@@ -118,6 +140,10 @@
 
   .platform-credit-meter > .platform-credit-number {
     max-width: calc(100% - 28px);
+    font-size: 12px;
+  }
+
+  .platform-credit-meter.is-error > .platform-credit-number::after {
     font-size: 12px;
   }
 }
