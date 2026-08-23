@@ -1,4 +1,4 @@
-/* Final narrow override for the credit gauge exterior. */
+/* Final narrow override for the credit gauge exterior and header toggle labels. */
 html .platform-credit-meter,
 html .platform-credit-meter.is-depleted,
 html .platform-credit-meter.is-error {
@@ -10,8 +10,40 @@ html .platform-credit-meter > .platform-credit-track,
 html .platform-credit-meter.is-depleted > .platform-credit-track,
 html .platform-credit-meter.is-error > .platform-credit-track {
   display: block !important;
+  position: absolute !important;
+  inset: 7px 9px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
   border: 1px solid color-mix(in srgb, var(--platform-text) 42%, transparent) !important;
   border-radius: 999px !important;
   box-sizing: border-box !important;
+  background: transparent !important;
   box-shadow: none !important;
+  overflow: hidden !important;
+}
+
+html .platform-mobile-account-actions > .platform-main-evidence-toggle > a:first-child,
+html .platform-mobile-account-actions > .platform-main-evidence-toggle > button {
+  font-size: 11px !important;
+}
+
+html .platform-mobile-account-actions > .platform-main-evidence-toggle > a:first-child::after,
+html .platform-mobile-account-actions > .platform-main-evidence-toggle > button::after {
+  content: none !important;
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle > a:first-child,
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle > button {
+    font-size: 10px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle > a:first-child,
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle > button {
+    font-size: 9px !important;
+  }
 }
