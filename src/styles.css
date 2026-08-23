@@ -2,31 +2,31 @@
 @import './styles-core.css';
 @import './styles-responsive.css';
 
-/* Credit gauge exterior only. The server-backed CreditMeter projection remains unchanged. */
+/* Credit gauge exterior only. Credit balance/state logic remains unchanged. */
 .platform-credit-meter {
   width: min(560px, 100%);
   height: 44px;
   grid-template-columns: minmax(0, 1fr);
   padding: 5px 14px;
-  border: 1px solid color-mix(in srgb, #8fdcff 52%, var(--border-color));
+  border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-primary) 94%, #8fdcff 6%);
+  background: transparent;
   box-shadow: none;
   color: var(--text-primary);
   cursor: pointer;
   text-decoration: none;
-  transition: border-color .16s ease, background-color .16s ease;
+  outline: none;
 }
 
 .platform-credit-meter:hover,
 .platform-credit-meter:focus-visible {
-  border-color: color-mix(in srgb, #8fdcff 78%, var(--border-color));
-  background: color-mix(in srgb, var(--bg-primary) 90%, #8fdcff 10%);
+  border: 0;
+  background: transparent;
   outline: none;
 }
 
 .platform-credit-meter:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, #8fdcff 22%, transparent);
+  box-shadow: none;
 }
 
 .platform-credit-meter::before,
@@ -42,9 +42,9 @@
   z-index: 1;
   height: auto;
   min-width: 0;
-  border: 1px solid color-mix(in srgb, #8fdcff 28%, var(--border-color));
+  border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-primary) 96%, #8fdcff 4%);
+  background: transparent;
   box-shadow: none;
   overflow: hidden;
 }
@@ -52,7 +52,7 @@
 .platform-credit-meter > .platform-credit-track > .platform-credit-fill {
   height: 100%;
   border-radius: inherit;
-  background: color-mix(in srgb, #8fdcff 32%, transparent);
+  background: color-mix(in srgb, #8fdcff 38%, transparent);
   box-shadow: none;
   transition: width .45s ease, background-color .25s ease;
 }
@@ -78,24 +78,18 @@
   text-shadow: none;
 }
 
-.platform-credit-meter.is-low,
-.platform-credit-meter.is-critical,
-.platform-credit-meter.is-depleted {
-  border-color: color-mix(in srgb, #ff6b6b 62%, var(--border-color));
-  color: var(--text-primary);
-  box-shadow: none;
-}
-
-.platform-credit-meter.is-low > .platform-credit-track,
-.platform-credit-meter.is-critical > .platform-credit-track,
-.platform-credit-meter.is-depleted > .platform-credit-track {
-  border-color: color-mix(in srgb, #ff6b6b 32%, var(--border-color));
-}
-
 .platform-credit-meter.is-low > .platform-credit-track > .platform-credit-fill,
-.platform-credit-meter.is-critical > .platform-credit-track > .platform-credit-fill,
+.platform-credit-meter.is-critical > .platform-credit-track > .platform-credit-fill {
+  background: color-mix(in srgb, #ff6b6b 48%, transparent);
+}
+
+.platform-credit-meter.is-depleted,
+.platform-credit-meter.is-depleted:hover,
+.platform-credit-meter.is-depleted:focus-visible,
+.platform-credit-meter.is-depleted > .platform-credit-track,
 .platform-credit-meter.is-depleted > .platform-credit-track > .platform-credit-fill {
-  background: color-mix(in srgb, #ff6b6b 36%, transparent);
+  border: 0;
+  background: transparent;
   box-shadow: none;
 }
 
