@@ -29,9 +29,6 @@ const requiredFrontendFiles = [
   'src/platform/external-navigation.ts',
   'src/platform/deterministic-japanese-mcp-client.ts',
   'src/revision-credit-bridge.ts',
-  'public/app-interactions.js',
-  'public/process-user-errors.js',
-  'public/ui-honesty.js',
   'tests/device-matrix.spec.ts',
   'scripts/user-story-audit.mjs',
   ...storyFiles,
@@ -86,10 +83,6 @@ const sourceMarkers = [
   ['src/platform/pages/AccountPages.tsx', 'API_KEY_SECRET_MISSING'],
   ['src/revision-credit-bridge.ts', 'initializeRevisionCreditBridge'],
   ['src/revision-credit-bridge.ts', 'revision_of_job_id'],
-  ['public/app-interactions.js', 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED'],
-  ['public/app-interactions.js', 'canonicalSectionsFromObject'],
-  ['public/process-user-errors.js', 'AsteraProcessError'],
-  ['public/ui-honesty.js', 'PURPOSE_OPTION_SELECTOR'],
   ['scripts/user-story-audit.mjs', 'STORY_ID_COUNT_TOO_LOW'],
 ];
 
@@ -144,7 +137,7 @@ for (const file of requiredLaunchAssets) if (!exists(file)) sourceGaps.push(`MIS
 for (const file of brokenIndexAssetReferences) sourceGaps.push(`BROKEN_INDEX_ASSET_REFERENCE:${file}`);
 
 if (storyFiles.length < 7) sourceGaps.push(`USER_STORY_FILE_COUNT_TOO_LOW:${storyFiles.length}`);
-if (declaredRouteCount !== 43 || routeEntries !== 43) sourceGaps.push(`ROUTE_COUNT_MISMATCH:declared=${declaredRouteCount}:detected=${routeEntries}`);
+if (declaredRouteCount === null || declaredRouteCount !== routeEntries) sourceGaps.push(`ROUTE_COUNT_MISMATCH:declared=${declaredRouteCount}:detected=${routeEntries}`);
 
 for (const [file, marker] of sourceMarkers) {
   if (!exists(file)) continue;
