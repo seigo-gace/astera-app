@@ -103,7 +103,15 @@ function RootRedirect() {
   return <BusyState label="Astera Appを開いています…" />;
 }
 
+function LegacySearchRedirect() {
+  useEffect(() => {
+    window.location.replace('/app/history');
+  }, []);
+  return null;
+}
+
 export default function AppRouter() {
+  if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/app/search') return <LegacySearchRedirect />;
   const route = matchCanonicalRoute(window.location.pathname);
 
   if (route.id === 'root') return <RootRedirect />;
