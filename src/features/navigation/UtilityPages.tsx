@@ -4,15 +4,24 @@ import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { PLAN_CREDIT_TEXT } from './plan-credit-text';
 import './plan-credit-page.css';
 
-function CardGrid({ title, items, feature }: { title: string; items: readonly string[]; feature: string[] }) {
+type PlanCreditCard = {
+  name: string;
+  features?: readonly string[];
+};
+
+function CardGrid({ title, items }: { title: string; items: readonly PlanCreditCard[] }) {
   return (
     <section className="plan-credit-section">
       <h2>{title}</h2>
       <div className="plan-credit-grid">
         {items.map((item) => (
-          <article className="plan-credit-card" key={item}>
-            <h3>{item}</h3>
-            <ul>{feature.map((value) => <li key={value}>{value}</li>)}</ul>
+          <article className="plan-credit-card" key={item.name}>
+            <h3>{item.name}</h3>
+            {item.features && item.features.length > 0 && (
+              <ul className="plan-credit-feature-list">
+                {item.features.map((feature) => <li key={feature}>{feature}</li>)}
+              </ul>
+            )}
           </article>
         ))}
       </div>
@@ -21,16 +30,18 @@ function CardGrid({ title, items, feature }: { title: string; items: readonly st
 }
 
 export function PlanCreditPage({ route }: { route: RouteMatch }) {
-  const { language, text } = useAppText();
+  const { language } = useAppText();
   const pageText = PLAN_CREDIT_TEXT[language];
-  const feature = [pageText.featureDetail, pageText.usageCondition, pageText.offering];
 
   return (
-    <ResponsivePageShell route={route} description={text('planCreditDescription')}>
+    <ResponsivePageShell route={route}>
       <div className="plan-credit-page">
-        <CardGrid title={text('planLink')} items={pageText.plans} feature={feature} />
-        <CardGrid title={text('creditLink')} items={pageText.credits} feature={feature} />
-        <CardGrid title={pageText.storageTitle} items={pageText.storage} feature={feature} />
+        <header className="plan-credit-local-head">
+          <h1>{pageText.pageTitle}</h1>
+        </header>
+        <CardGrid title={pageText.planSectionTitle} items={pageText.plans} />
+        <CardGrid title={pageText.creditSectionTitle} items={pageText.credits} />
+        <CardGrid title={pageText.storageSectionTitle} items={pageText.storage} />
       </div>
     </ResponsivePageShell>
   );
