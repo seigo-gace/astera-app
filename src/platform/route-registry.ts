@@ -7,12 +7,12 @@ export type CanonicalRoute = {
   title: string;
   group: RouteGroup;
   access: RouteAccess;
-  nav?: 'new' | 'search' | 'projects' | 'options' | 'plan-credit' | 'developer' | 'history' | 'settings' | 'account';
+  nav?: 'new' | 'projects' | 'options' | 'plan-credit' | 'developer' | 'history' | 'settings' | 'account';
 };
 
 export type RouteMatch = CanonicalRoute & { params: Record<string, string> };
 
-export const CANONICAL_ROUTE_COUNT = 46;
+export const CANONICAL_ROUTE_COUNT = 45;
 
 export const canonicalRoutes: readonly CanonicalRoute[] = [
   { id: 'root', pattern: '/', title: 'Astera App', group: 'entry', access: 'public' },
@@ -26,7 +26,6 @@ export const canonicalRoutes: readonly CanonicalRoute[] = [
   { id: 'two-factor', pattern: '/auth/2fa', title: '2FA Challenge', group: 'auth', access: 'provisional' },
   { id: 'app', pattern: '/app', title: 'Astera App', group: 'app', access: 'authenticated', nav: 'new' },
   { id: 'new-run', pattern: '/app/new', title: '新しいページ', group: 'app', access: 'authenticated', nav: 'new' },
-  { id: 'search', pattern: '/app/search', title: '検索', group: 'app', access: 'authenticated', nav: 'search' },
   { id: 'result-detail', pattern: '/app/results/:id', title: 'Result詳細', group: 'app', access: 'authenticated' },
   { id: 'projects', pattern: '/app/projects', title: 'プロジェクト', group: 'app', access: 'authenticated', nav: 'projects' },
   { id: 'plan-credit', pattern: '/app/plan-credit', title: 'プラン / クレジット', group: 'app', access: 'authenticated', nav: 'plan-credit' },
