@@ -1,4 +1,4 @@
-/* Final narrow overrides for the header toggle and credit gauge exterior. */
+/* Final narrow override for the credit gauge exterior. */
 html .platform-credit-meter,
 html .platform-credit-meter.is-depleted,
 html .platform-credit-meter.is-error {
@@ -10,40 +10,8 @@ html .platform-credit-meter > .platform-credit-track,
 html .platform-credit-meter.is-depleted > .platform-credit-track,
 html .platform-credit-meter.is-error > .platform-credit-track {
   display: block !important;
-  border: 1px solid color-mix(in srgb, var(--platform-text) 28%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--platform-text) 42%, transparent) !important;
+  border-radius: 999px !important;
   box-sizing: border-box !important;
   box-shadow: none !important;
-}
-
-html .platform-main-evidence-toggle > a:first-child,
-html .platform-main-evidence-toggle > button {
-  font-size: 0 !important;
-}
-
-html .platform-main-evidence-toggle > a:first-child::after {
-  content: "ページ";
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1;
-}
-
-html .platform-main-evidence-toggle > button::after {
-  content: "根拠";
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1;
-}
-
-@media (max-width: 760px) {
-  html .platform-main-evidence-toggle > a:first-child::after,
-  html .platform-main-evidence-toggle > button::after {
-    font-size: 10px;
-  }
-}
-
-@media (max-width: 420px) {
-  html .platform-main-evidence-toggle > a:first-child::after,
-  html .platform-main-evidence-toggle > button::after {
-    font-size: 9px;
-  }
 }
