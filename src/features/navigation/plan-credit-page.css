@@ -22,6 +22,19 @@
   letter-spacing: -0.02em;
 }
 
+.plan-credit-status {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+}
+
+.plan-credit-status.is-error {
+  border-color: var(--danger);
+}
+
 .plan-credit-section {
   width: 100%;
 }
@@ -47,6 +60,27 @@
   background: var(--bg-primary);
 }
 
+.plan-credit-card.is-plan {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+
+.plan-credit-card.is-credit {
+  min-height: 150px;
+}
+
+.plan-credit-card.is-storage {
+  min-height: 88px;
+}
+
+.plan-credit-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .plan-credit-card h3 {
   margin: 0;
   font-size: 18px;
@@ -55,14 +89,67 @@
   overflow-wrap: anywhere;
 }
 
+.plan-credit-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.plan-credit-badges span {
+  padding: 3px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.plan-credit-price {
+  margin-top: 16px;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.plan-credit-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.plan-credit-fact span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.plan-credit-fact strong {
+  font-size: 15px;
+  text-align: right;
+}
+
+.plan-credit-feature-title {
+  margin-top: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .plan-credit-feature-list {
   display: grid;
-  gap: 6px;
-  margin: 14px 0 0;
+  gap: 7px;
+  margin: 10px 0 0;
   padding-left: 18px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .plan-credit-feature-list li {
@@ -89,7 +176,16 @@
     grid-template-columns: 1fr;
   }
 
-  .plan-credit-card {
+  .plan-credit-card,
+  .plan-credit-card.is-plan,
+  .plan-credit-card.is-credit,
+  .plan-credit-card.is-storage {
+    min-height: 0;
     padding: 16px;
+  }
+
+  .plan-credit-card-head,
+  .plan-credit-fact {
+    align-items: flex-start;
   }
 }
