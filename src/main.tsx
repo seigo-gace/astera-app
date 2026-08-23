@@ -7,7 +7,6 @@ import './platform/navigation-overrides.css';
 import './device-compatibility.css';
 import './horizontal-stability.css';
 import './orientation-stability.css';
-import './platform/final-header-credit-overrides.css';
 import { initializeDeviceCompatibility } from './device-compatibility';
 import { initializeNativeShell } from './native-shell';
 import { initializeRevisionCreditBridge } from './revision-credit-bridge';
