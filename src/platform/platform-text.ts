@@ -15,11 +15,13 @@ export const PLATFORM_TEXT = {
     checking: '確認しています…', processFailedTitle: '処理を完了できませんでした', processFailed: '処理に失敗しました。', retry: '再確認', accountSessionChecking: 'アカウントとSessionを確認しています…',
     creditLoading: 'クレジット残高を確認中', creditUnavailable: 'クレジット残高を取得できません', usableCredit: '利用可能クレジット', reservedCredit: '予約中',
     publicPricing: '料金', publicLogin: 'ログイン', publicRegister: '登録', appNavigation: 'Astera App navigation',
+    headerPage: 'ページ', headerEvidence: '根拠', headerToggleAria: 'ページと根拠の切替', organizeResultAria: 'Resultを整理', organizeResultTitle: '整理',
   },
   en: {
     checking: 'Checking…', processFailedTitle: 'Could not complete the operation', processFailed: 'The operation failed.', retry: 'Retry', accountSessionChecking: 'Checking account and session…',
     creditLoading: 'Checking credit balance', creditUnavailable: 'Could not load credit balance', usableCredit: 'Available credits', reservedCredit: 'Reserved',
     publicPricing: 'Pricing', publicLogin: 'Log in', publicRegister: 'Register', appNavigation: 'Astera App navigation',
+    headerPage: 'Page', headerEvidence: 'Evidence', headerToggleAria: 'Switch between page and evidence', organizeResultAria: 'Organize result', organizeResultTitle: 'Organize',
   },
 } as const;
 
