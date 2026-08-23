@@ -159,7 +159,8 @@ function CreditMeter({ enabled }: { enabled: boolean }) {
   }
   const fill = credit.state === 'depleted' ? 0 : Math.max(3, Math.min(100, (credit.usable / credit.capacity) * 100));
   const meterStyle = { '--credit-fill': `${fill}%` } as CSSProperties;
-  return <div className="platform-credit-layer" aria-live="polite"><a href="/app/plan-credit" className={`platform-credit-meter is-${credit.state}`} style={meterStyle} role="meter" aria-label={`${text('usableCredit')} ${credit.usable.toLocaleString(locale)}`} aria-valuemin={0} aria-valuemax={credit.capacity} aria-valuenow={credit.usable} title={credit.reserved > 0 ? `${text('reservedCredit')} ${credit.reserved.toLocaleString(locale)}` : text('usableCredit')}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{Math.trunc(credit.usable).toLocaleString(locale)}</strong></a></div>;
+  const creditLabel = `${Math.trunc(credit.usable).toLocaleString(locale)} C`;
+  return <div className="platform-credit-layer" aria-live="polite"><a href="/app/plan-credit" className={`platform-credit-meter is-${credit.state}`} style={meterStyle} role="meter" aria-label={`${text('usableCredit')} ${creditLabel}`} aria-valuemin={0} aria-valuemax={credit.capacity} aria-valuenow={credit.usable} title={credit.reserved > 0 ? `${text('reservedCredit')} ${credit.reserved.toLocaleString(locale)} C` : `${text('usableCredit')} ${creditLabel}`}><span className="platform-credit-mark" aria-hidden="true" /><span className="platform-credit-title">CREDIT</span><span className="platform-credit-track" aria-hidden="true"><span className="platform-credit-fill" /></span><strong className="platform-credit-number">{creditLabel}</strong></a></div>;
 }
 
 function useSession(required: boolean): SessionState {
