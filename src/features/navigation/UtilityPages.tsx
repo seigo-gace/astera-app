@@ -1,13 +1,10 @@
 import { useAppText } from '../../app-text';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
+import { PLAN_CREDIT_TEXT } from './plan-credit-text';
 import './plan-credit-page.css';
 
-const planCards = ['Free', 'Basic', 'Pro', 'Business', 'Enterprise'];
-const creditCards = ['Credit Pack 1', 'Credit Pack 2', 'Credit Pack 3', 'Credit Pack 4', 'Credit Pack 5'];
-const storageCards = ['Free', 'Small', 'Standard', 'Pro', 'Enterprise'];
-
-function CardGrid({ title, items }: { title: string; items: string[] }) {
+function CardGrid({ title, items, feature }: { title: string; items: readonly string[]; feature: string[] }) {
   return (
     <section className="plan-credit-section">
       <h2>{title}</h2>
@@ -15,11 +12,7 @@ function CardGrid({ title, items }: { title: string; items: string[] }) {
         {items.map((item) => (
           <article className="plan-credit-card" key={item}>
             <h3>{item}</h3>
-            <ul>
-              <li>機能詳細</li>
-              <li>利用条件</li>
-              <li>提供内容</li>
-            </ul>
+            <ul>{feature.map((value) => <li key={value}>{value}</li>)}</ul>
           </article>
         ))}
       </div>
@@ -28,13 +21,16 @@ function CardGrid({ title, items }: { title: string; items: string[] }) {
 }
 
 export function PlanCreditPage({ route }: { route: RouteMatch }) {
-  const { text } = useAppText();
+  const { language, text } = useAppText();
+  const pageText = PLAN_CREDIT_TEXT[language];
+  const feature = [pageText.featureDetail, pageText.usageCondition, pageText.offering];
+
   return (
     <ResponsivePageShell route={route} description={text('planCreditDescription')}>
       <div className="plan-credit-page">
-        <CardGrid title={text('planLink')} items={planCards} />
-        <CardGrid title={text('creditLink')} items={creditCards} />
-        <CardGrid title="Astera Storage" items={storageCards} />
+        <CardGrid title={text('planLink')} items={pageText.plans} feature={feature} />
+        <CardGrid title={text('creditLink')} items={pageText.credits} feature={feature} />
+        <CardGrid title={pageText.storageTitle} items={pageText.storage} feature={feature} />
       </div>
     </ResponsivePageShell>
   );
