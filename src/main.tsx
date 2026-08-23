@@ -4,10 +4,12 @@ import './i18n';
 import './styles.css';
 import AppRouter from './platform/app-router';
 import './platform/navigation-overrides.css';
+import './header-view-toggle.css';
 import './device-compatibility.css';
 import './horizontal-stability.css';
 import './orientation-stability.css';
 import { initializeDeviceCompatibility } from './device-compatibility';
+import { initializeHeaderViewToggle } from './header-view-toggle';
 import { initializeNativeShell } from './native-shell';
 import { initializeRevisionCreditBridge } from './revision-credit-bridge';
 
@@ -22,4 +24,5 @@ if (!runtimeUnsupported) {
   initializeDeviceCompatibility();
   void initializeNativeShell();
   createRoot(root).render(<StrictMode><AppRouter /></StrictMode>);
+  window.requestAnimationFrame(() => initializeHeaderViewToggle());
 }
