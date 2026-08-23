@@ -37,9 +37,10 @@
   position: absolute;
   inset: 7px 9px;
   z-index: 1;
+  width: auto;
   height: auto;
   min-width: 0;
-  border: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
   border-radius: 999px;
   background: transparent;
   box-shadow: none !important;
@@ -82,10 +83,21 @@
 
 .platform-credit-meter.is-depleted,
 .platform-credit-meter.is-depleted:hover,
-.platform-credit-meter.is-depleted:focus-visible,
-.platform-credit-meter.is-depleted > .platform-credit-track,
-.platform-credit-meter.is-depleted > .platform-credit-track > .platform-credit-fill {
+.platform-credit-meter.is-depleted:focus-visible {
   border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.platform-credit-meter.is-depleted > .platform-credit-track {
+  width: auto !important;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.platform-credit-meter.is-depleted > .platform-credit-track > .platform-credit-fill {
+  width: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
@@ -100,10 +112,15 @@
   box-shadow: none !important;
 }
 
-.platform-credit-meter.is-error > .platform-credit-track,
+.platform-credit-meter.is-error > .platform-credit-track {
+  width: auto !important;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .platform-credit-meter.is-error > .platform-credit-track > .platform-credit-fill {
   width: 0 !important;
-  border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
