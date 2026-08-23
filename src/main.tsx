@@ -11,7 +11,6 @@ import './platform/final-header-credit-overrides.css';
 import { initializeDeviceCompatibility } from './device-compatibility';
 import { initializeNativeShell } from './native-shell';
 import { initializeRevisionCreditBridge } from './revision-credit-bridge';
-import { initializeUiTextRuntime } from './ui-text-runtime';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found');
@@ -24,5 +23,4 @@ if (!runtimeUnsupported) {
   initializeDeviceCompatibility();
   void initializeNativeShell();
   createRoot(root).render(<StrictMode><AppRouter /></StrictMode>);
-  initializeUiTextRuntime();
 }
