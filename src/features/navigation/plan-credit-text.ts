@@ -8,6 +8,8 @@ export const PLAN_CREDIT_TEXT = {
     grantedCredit: '付与Credit',
     includedFeatures: '利用できる機能',
     selectedPlanLabel: '契約中',
+    selectPlanLabel: 'このプランを選択',
+    changePlanLabel: 'プランを変更',
     plans: [
       {
         id: 'free',
@@ -114,6 +116,8 @@ export const PLAN_CREDIT_TEXT = {
     grantedCredit: 'Granted credit',
     includedFeatures: 'Included features',
     selectedPlanLabel: 'Current',
+    selectPlanLabel: 'Choose this plan',
+    changePlanLabel: 'Change plan',
     plans: [
       {
         id: 'free',

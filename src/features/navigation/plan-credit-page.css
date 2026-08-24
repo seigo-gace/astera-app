@@ -57,7 +57,10 @@
   border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 18px;
+  color: inherit;
   background: var(--bg-primary);
+  text-decoration: none;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
 .plan-credit-card.is-plan {
@@ -66,12 +69,30 @@
   min-height: 320px;
 }
 
+.plan-credit-card.is-actionable {
+  cursor: pointer;
+}
+
 .plan-credit-card.is-credit {
   min-height: 150px;
 }
 
 .plan-credit-card.is-storage {
   min-height: 88px;
+}
+
+.plan-credit-card:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .plan-credit-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
+    background: color-mix(in srgb, var(--text-primary) 2.5%, var(--bg-primary));
+    box-shadow: 0 9px 24px color-mix(in srgb, var(--text-primary) 9%, transparent);
+  }
 }
 
 .plan-credit-card-head {
@@ -124,10 +145,10 @@
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
-  border: 1px solid var(--text-primary);
+  border: 1px solid #9bd8fa;
   border-radius: 999px;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  color: #176f9f;
+  background: #e6f6ff;
   font-size: 12px;
   line-height: 1;
   font-weight: 700;
@@ -250,6 +271,24 @@
   min-width: 0;
 }
 
+.plan-credit-plan-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.plan-credit-card.is-actionable:hover .plan-credit-plan-action {
+  border-top-color: color-mix(in srgb, var(--text-primary) 30%, var(--border-color));
+}
+
 @media (max-width: 1023px) {
   .plan-credit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -299,5 +338,15 @@
 
   .plan-credit-basic-list {
     font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-credit-card {
+    transition: none;
+  }
+
+  .plan-credit-card:hover {
+    transform: none;
   }
 }

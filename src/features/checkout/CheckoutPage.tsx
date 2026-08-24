@@ -11,6 +11,8 @@ type CheckoutState =
   | { status: 'submitting'; planName: string; priceLabel: string; currentPlan: string }
   | { status: 'error'; message: string };
 
+type CheckoutReturnTo = 'pricing' | 'plan-credit' | 'app';
+
 const API_BASE = resolvedApiBase();
 const ACCOUNT_CATALOG_ENDPOINT = `${API_BASE}/api/account/catalog`;
 const CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/billing/checkout-intents`;
@@ -76,11 +78,29 @@ function isAllowedCheckoutUrl(value: string): boolean {
   }
 }
 
+function checkoutReturnTo(value: string | null): CheckoutReturnTo {
+  if (value === 'pricing' || value === 'plan-credit') return value;
+  return 'app';
+}
+
+function checkoutReturnPath(value: CheckoutReturnTo): string {
+  if (value === 'pricing') return '/pricing';
+  if (value === 'plan-credit') return '/app/plan-credit';
+  return '/app';
+}
+
+function checkoutReturnLabel(value: CheckoutReturnTo): string {
+  if (value === 'pricing') return '料金Pageへ戻る';
+  if (value === 'plan-credit') return 'プラン / クレジットへ戻る';
+  return 'Appへ戻る';
+}
+
 export default function CheckoutPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const planId = params.get('plan')?.trim() ?? '';
-  const returnTo = params.get('return_to') === 'pricing' ? 'pricing' : 'app';
-  const returnPath = returnTo === 'pricing' ? '/pricing' : '/app';
+  const returnTo = checkoutReturnTo(params.get('return_to'));
+  const returnPath = checkoutReturnPath(returnTo);
+  const returnLabel = checkoutReturnLabel(returnTo);
   const [state, setState] = useState<CheckoutState>({ status: 'loading' });
   const [accepted, setAccepted] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -207,7 +227,7 @@ export default function CheckoutPage() {
             <div className="checkout-actions">
               <a className="checkout-primary" href={`/login?return_to=${loginReturn}`}>Login</a>
               <a className="checkout-secondary" href={`/register?return_to=${loginReturn}`}>Account登録</a>
-              <a className="checkout-secondary" href={returnPath}>料金Pageへ戻る</a>
+              <a className="checkout-secondary" href={returnPath}>{returnLabel}</a>
             </div>
           </div>
         )}

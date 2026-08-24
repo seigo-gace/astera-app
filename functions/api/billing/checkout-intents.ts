@@ -54,6 +54,7 @@ function idempotencyKey(request: Request): string {
 function returnRoute(value: unknown): string {
   const normalized = text(value);
   if (normalized === 'pricing') return '/pricing';
+  if (normalized === 'plan-credit') return '/app/plan-credit';
   if (normalized === 'credit') return '/account/credit';
   if (normalized === 'account') return '/account/subscription';
   return '/app/new';

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useAppText } from '../../app-text';
 import { previewWithoutAuth, useVerifiedAccountSession } from '../../platform/account-session';
 import { apiRequest, asRecord, recordText } from '../../platform/api-client';
@@ -25,24 +25,46 @@ type PlanCreditCard = {
   };
 };
 
+type SubscriptionProjection = {
+  planId: string;
+  hasLiveSubscription: boolean;
+};
+
 function normalizePlanId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function currentPlanIdFromPayload(payload: unknown): string {
+function subscriptionFromPayload(payload: unknown): SubscriptionProjection {
   const root = asRecord(payload);
   const account = asRecord(root.account ?? root.data ?? root);
   const subscription = asRecord(account.subscription ?? root.subscription);
-  return normalizePlanId(recordText(subscription, ['plan_id', 'planId']));
+  const planId = normalizePlanId(recordText(subscription, ['plan_id', 'planId']));
+  const providerSubscriptionId = recordText(subscription, ['provider_subscription_id', 'providerSubscriptionId']);
+  const status = recordText(subscription, ['status']).toLowerCase();
+  return {
+    planId,
+    hasLiveSubscription: Boolean(providerSubscriptionId) && !['none', 'cancelled', 'failed'].includes(status),
+  };
 }
 
-function PlanGrid({ title, items, creditLabel, featureLabel, currentPlanId, selectedPlanLabel }: {
+function PlanGrid({
+  title,
+  items,
+  creditLabel,
+  featureLabel,
+  subscription,
+  selectedPlanLabel,
+  selectPlanLabel,
+  changePlanLabel,
+}: {
   title: string;
   items: readonly PlanCreditCard[];
   creditLabel: string;
   featureLabel: string;
-  currentPlanId: string;
+  subscription: SubscriptionProjection;
   selectedPlanLabel: string;
+  selectPlanLabel: string;
+  changePlanLabel: string;
 }) {
   return (
     <section className="plan-credit-section">
@@ -51,10 +73,15 @@ function PlanGrid({ title, items, creditLabel, featureLabel, currentPlanId, sele
         {items.map((item) => {
           const hasFeatureContent = Boolean(item.basicFeature || (item.features && item.features.length > 0));
           const itemPlanId = normalizePlanId(item.id ?? item.name);
-          const isCurrentPlan = Boolean(currentPlanId) && itemPlanId === currentPlanId;
+          const isCurrentPlan = Boolean(subscription.planId) && itemPlanId === subscription.planId;
+          const usesSubscriptionManagement = subscription.hasLiveSubscription || itemPlanId === 'free';
+          const actionLabel = usesSubscriptionManagement ? changePlanLabel : selectPlanLabel;
+          const actionHref = usesSubscriptionManagement
+            ? `/account/subscription?target_plan=${encodeURIComponent(itemPlanId)}&return_to=plan-credit`
+            : `/account/checkout?plan=${encodeURIComponent(itemPlanId)}&return_to=plan-credit`;
 
-          return (
-            <article className={`plan-credit-card is-plan${isCurrentPlan ? ' is-current-plan' : ''}`} key={item.name}>
+          const cardContent: ReactNode = (
+            <>
               <div className="plan-credit-plan-top">
                 <div className="plan-credit-plan-heading">
                   <h3>{item.name}</h3>
@@ -98,7 +125,32 @@ function PlanGrid({ title, items, creditLabel, featureLabel, currentPlanId, sele
                   )}
                 </>
               )}
-            </article>
+              {!isCurrentPlan && (
+                <span className="plan-credit-plan-action">
+                  <span>{actionLabel}</span>
+                  <span aria-hidden="true">→</span>
+                </span>
+              )}
+            </>
+          );
+
+          if (isCurrentPlan) {
+            return (
+              <article className="plan-credit-card is-plan is-current-plan" key={item.name}>
+                {cardContent}
+              </article>
+            );
+          }
+
+          return (
+            <a
+              className="plan-credit-card is-plan is-actionable"
+              href={actionHref}
+              key={item.name}
+              aria-label={`${item.name}: ${actionLabel}`}
+            >
+              {cardContent}
+            </a>
           );
         })}
       </div>
@@ -137,18 +189,20 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
   const session = useVerifiedAccountSession();
   const pageText = PLAN_CREDIT_TEXT[language];
   const previewMode = previewWithoutAuth();
-  const sessionPlanId = currentPlanIdFromPayload(session?.payload);
-  const [currentPlanId, setCurrentPlanId] = useState(() => previewMode ? 'free' : sessionPlanId);
+  const sessionSubscription = subscriptionFromPayload(session?.payload);
+  const [subscription, setSubscription] = useState<SubscriptionProjection>(() => previewMode
+    ? { planId: 'free', hasLiveSubscription: false }
+    : sessionSubscription);
 
   useEffect(() => {
     if (previewMode) {
-      setCurrentPlanId('free');
+      setSubscription({ planId: 'free', hasLiveSubscription: false });
       return;
     }
 
-    const sessionValue = currentPlanIdFromPayload(session?.payload);
-    if (sessionValue) {
-      setCurrentPlanId(sessionValue);
+    const sessionValue = subscriptionFromPayload(session?.payload);
+    if (sessionValue.planId || sessionValue.hasLiveSubscription) {
+      setSubscription(sessionValue);
       return;
     }
 
@@ -156,11 +210,11 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
     apiRequest('/api/account/catalog', { signal: controller.signal })
       .then((payload) => {
         if (controller.signal.aborted) return;
-        const planId = currentPlanIdFromPayload(payload);
-        if (planId) setCurrentPlanId(planId);
+        const next = subscriptionFromPayload(payload);
+        if (next.planId || next.hasLiveSubscription) setSubscription(next);
       })
       .catch(() => {
-        // Current-plan indicator is optional display state; keep the page usable if readback fails.
+        // Current-plan indicator and route selection are additive UI state; keep the page usable if readback fails.
       });
 
     return () => controller.abort();
@@ -178,8 +232,10 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           items={pageText.plans}
           creditLabel={pageText.monthlyCredit}
           featureLabel={pageText.includedFeatures}
-          currentPlanId={currentPlanId}
+          subscription={subscription}
           selectedPlanLabel={pageText.selectedPlanLabel}
+          selectPlanLabel={pageText.selectPlanLabel}
+          changePlanLabel={pageText.changePlanLabel}
         />
         <SimpleGrid
           title={pageText.creditSectionTitle}
