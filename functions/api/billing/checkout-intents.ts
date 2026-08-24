@@ -5,7 +5,7 @@ import {
   requireFreshAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
-import { loadActiveCatalog } from '../../_catalog';
+import { loadActiveCatalog, type BillingCycle } from '../../_catalog';
 import { createSquareCheckout, type SquareEnv } from '../../_square';
 
 type Env = AsteraFunctionEnv & SquareEnv;
@@ -14,6 +14,7 @@ type PagesContext = { request: Request; env: Env };
 type CheckoutBody = {
   product_id?: unknown;
   plan_id?: unknown;
+  billing_cycle?: unknown;
   return_to?: unknown;
   native_callback?: unknown;
 };
@@ -31,6 +32,7 @@ type ExistingIntent = {
 
 type ExistingSubscription = {
   plan_id: string;
+  billing_cycle: BillingCycle;
   provider_subscription_id: string | null;
   status: string;
 };
@@ -42,6 +44,13 @@ type PendingPlanIntent = {
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseBillingCycle(value: unknown): BillingCycle {
+  const normalized = text(value).toLowerCase();
+  if (!normalized || normalized === 'monthly') return 'monthly';
+  if (normalized === 'annual') return 'annual';
+  throw new FunctionHttpError(422, 'BILLING_CYCLE_INVALID', 'billing_cycleはmonthlyまたはannualを指定してください。');
 }
 
 function idempotencyKey(request: Request): string {
@@ -60,14 +69,26 @@ function returnRoute(value: unknown): string {
   return '/app/new';
 }
 
-function bodyFingerprint(value: { catalogVersion: string; productKind: string; productId: string; amount: number; credits: number }): string {
+function bodyFingerprint(value: {
+  catalogVersion: string;
+  productKind: string;
+  productId: string;
+  amount: number;
+  credits: number;
+  billingCycle: BillingCycle | null;
+}): string {
   return JSON.stringify(value);
 }
 
-async function assertPlanCheckoutAvailable(context: PagesContext, tenantId: string, planId: string): Promise<void> {
+async function assertPlanCheckoutAvailable(
+  context: PagesContext,
+  tenantId: string,
+  planId: string,
+  billingCycle: BillingCycle,
+): Promise<void> {
   const [subscription, pendingIntent] = await Promise.all([
     context.env.ASTERA_DB.prepare(
-      `SELECT plan_id, provider_subscription_id, status
+      `SELECT plan_id, billing_cycle, provider_subscription_id, status
        FROM tenant_subscriptions WHERE tenant_id = ?1 LIMIT 1`,
     ).bind(tenantId).first<ExistingSubscription>(),
     context.env.ASTERA_DB.prepare(
@@ -87,10 +108,15 @@ async function assertPlanCheckoutAvailable(context: PagesContext, tenantId: stri
   const live = subscription?.provider_subscription_id
     && !['none', 'cancelled', 'failed'].includes(subscription.status);
   if (!live) return;
-  if (subscription?.plan_id === planId) {
-    throw new FunctionHttpError(409, 'SUBSCRIPTION_ALREADY_ACTIVE', '選択したPlanは既に契約中です。');
+  if (subscription?.plan_id === planId && subscription.billing_cycle === billingCycle) {
+    throw new FunctionHttpError(409, 'SUBSCRIPTION_ALREADY_ACTIVE', '選択したPlanと請求周期は既に契約中です。');
   }
-  throw new FunctionHttpError(409, 'SUBSCRIPTION_CHANGE_REQUIRES_SWAP', '既存SubscriptionのPlan変更は新規Checkoutでは行えません。Plan変更APIを使用してください。', { current_plan_id: subscription?.plan_id, requested_plan_id: planId });
+  throw new FunctionHttpError(409, 'SUBSCRIPTION_CHANGE_REQUIRES_SWAP', '既存SubscriptionのPlanまたは請求周期変更は新規Checkoutでは行えません。Plan変更APIを使用してください。', {
+    current_plan_id: subscription?.plan_id,
+    current_billing_cycle: subscription?.billing_cycle,
+    requested_plan_id: planId,
+    requested_billing_cycle: billingCycle,
+  });
 }
 
 export async function onRequestPost(context: PagesContext): Promise<Response> {
@@ -105,6 +131,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     if (Boolean(productId) === Boolean(planId)) {
       throw new FunctionHttpError(422, 'CHECKOUT_PRODUCT_SELECTION_INVALID', 'product_idまたはplan_idのどちらか一つを指定してください。');
     }
+    const billingCycle = planId ? parseBillingCycle(body.billing_cycle) : null;
 
     const existing = await context.env.ASTERA_DB.prepare(
       `SELECT id, tenant_id, user_id, status, checkout_url, provider_checkout_id, provider_order_id, expires_at
@@ -128,7 +155,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       throw new FunctionHttpError(409, 'CHECKOUT_INTENT_IN_PROGRESS', '同じCheckout Intentを作成中です。');
     }
 
-    if (planId) await assertPlanCheckoutAvailable(context, actor.profile.tenant_id, planId);
+    if (planId && billingCycle) {
+      await assertPlanCheckoutAvailable(context, actor.profile.tenant_id, planId, billingCycle);
+    }
 
     const catalog = await loadActiveCatalog(context.env.ASTERA_DB);
     let productKind: 'credit' | 'plan';
@@ -148,15 +177,17 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       credits = product.credits;
     } else {
       const plan = catalog.plans.find((item) => item.plan_id === planId && item.active);
-      if (!plan) throw new FunctionHttpError(422, 'PLAN_NOT_AVAILABLE', 'Accountが選択可能なPlanではありません。');
-      if (plan.recurring_amount <= 0) throw new FunctionHttpError(422, 'PLAN_CHECKOUT_NOT_REQUIRED', 'このPlanはSquare Checkoutを必要としません。');
-      if (!plan.square_plan_variation_id) throw new FunctionHttpError(503, 'SQUARE_PLAN_MAPPING_MISSING', 'PlanとSquare Subscription VariationのMappingがありません。');
+      if (!plan || !billingCycle) throw new FunctionHttpError(422, 'PLAN_NOT_AVAILABLE', 'Accountが選択可能なPlanではありません。');
+      const variant = plan.billing_variants.find((item) => item.billing_cycle === billingCycle && item.active);
+      if (!variant) throw new FunctionHttpError(422, 'PLAN_BILLING_VARIANT_NOT_AVAILABLE', '選択したPlanの請求周期は利用できません。');
+      if (variant.recurring_amount <= 0) throw new FunctionHttpError(422, 'PLAN_CHECKOUT_NOT_REQUIRED', 'このPlanはSquare Checkoutを必要としません。');
+      if (!variant.square_plan_variation_id) throw new FunctionHttpError(503, 'SQUARE_PLAN_MAPPING_MISSING', 'PlanとSquare Subscription VariationのMappingがありません。', { plan_id: planId, billing_cycle: billingCycle });
       productKind = 'plan';
       selectedId = plan.plan_id;
-      displayName = plan.display_name;
-      amount = plan.recurring_amount;
-      credits = plan.included_credits;
-      subscriptionPlanVariationId = plan.square_plan_variation_id;
+      displayName = `${plan.display_name} (${billingCycle})`;
+      amount = variant.recurring_amount;
+      credits = variant.included_credits;
+      subscriptionPlanVariationId = variant.square_plan_variation_id;
     }
 
     if (!Number.isInteger(amount) || amount <= 0 || !Number.isInteger(credits) || credits < 0) {
@@ -168,7 +199,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     const intentId = crypto.randomUUID();
     const contextId = crypto.randomUUID();
     const route = returnRoute(body.return_to);
-    const fingerprint = bodyFingerprint({ catalogVersion: catalog.catalog_version, productKind, productId: selectedId, amount, credits });
+    const fingerprint = bodyFingerprint({ catalogVersion: catalog.catalog_version, productKind, productId: selectedId, amount, credits, billingCycle });
 
     await context.env.ASTERA_DB.batch([
       context.env.ASTERA_DB.prepare(
@@ -179,11 +210,11 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       context.env.ASTERA_DB.prepare(
         `INSERT INTO billing_intents
           (id, tenant_id, user_id, catalog_version, product_id, currency, amount, status, idempotency_key,
-           provider_checkout_id, created_at, updated_at, product_kind, credit_amount, provider_order_id,
+           provider_checkout_id, created_at, updated_at, product_kind, billing_cycle, credit_amount, provider_order_id,
            provider_payment_id, checkout_url, return_context_id, expires_at, completed_at, failure_code)
          VALUES (?1, ?2, ?3, ?4, ?5, 'JPY', ?6, 'creating_checkout', ?7,
-                 NULL, ?8, ?8, ?9, ?10, NULL, NULL, NULL, ?11, ?12, NULL, NULL)`,
-      ).bind(intentId, actor.profile.tenant_id, actor.user.id, catalog.catalog_version, selectedId, amount, key, now.toISOString(), productKind, credits, contextId, expiresAt),
+                 NULL, ?8, ?8, ?9, ?10, ?11, NULL, NULL, NULL, ?12, ?13, NULL, NULL)`,
+      ).bind(intentId, actor.profile.tenant_id, actor.user.id, catalog.catalog_version, selectedId, amount, key, now.toISOString(), productKind, billingCycle, credits, contextId, expiresAt),
     ]);
 
     try {
@@ -211,6 +242,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         return_context_id: contextId,
         expires_at: expiresAt,
         catalog_version: catalog.catalog_version,
+        billing_cycle: billingCycle,
         request_fingerprint: fingerprint,
       }, { status: 201, headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
     } catch (error) {

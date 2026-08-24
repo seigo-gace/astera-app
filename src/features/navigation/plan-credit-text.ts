@@ -10,11 +10,17 @@ export const PLAN_CREDIT_TEXT = {
     selectedPlanLabel: '契約中',
     selectPlanLabel: 'このプランを選択',
     changePlanLabel: 'プランを変更',
+    billingMonthly: '月額',
+    billingAnnual: '年額',
+    annualSaving: '2か月分お得',
+    monthlyEquivalent: '月換算',
+    monthlyGrant: 'Creditは毎月付与',
     plans: [
       {
         id: 'free',
         name: 'Free',
-        price: '¥0 / 月',
+        monthlyPrice: '¥0 / 月',
+        annualPrice: '¥0 / 年',
         creditValue: '初回 20,000 C / 以後 10,000 C',
         basicFeature: {
           label: '基本機能',
@@ -32,7 +38,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'basic',
         name: 'Basic',
-        price: '¥980 / 月',
+        monthlyPrice: '¥980 / 月',
+        annualPrice: '¥9,800 / 年',
+        annualMonthlyEquivalent: '約 ¥817 / 月',
         creditValue: '180,000 C',
         features: [
           '基本機能',
@@ -46,7 +54,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'pro',
         name: 'Pro',
-        price: '¥2,980 / 月',
+        monthlyPrice: '¥2,980 / 月',
+        annualPrice: '¥29,800 / 年',
+        annualMonthlyEquivalent: '約 ¥2,483 / 月',
         creditValue: '640,000 C',
         features: [
           '基本機能',
@@ -62,7 +72,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'business',
         name: 'Business',
-        price: '¥9,980 / 月',
+        monthlyPrice: '¥9,980 / 月',
+        annualPrice: '¥99,800 / 年',
+        annualMonthlyEquivalent: '約 ¥8,317 / 月',
         creditValue: '2,200,000 C',
         features: [
           '基本機能',
@@ -78,7 +90,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'enterprise',
         name: 'Enterprise',
-        price: '¥29,800 / 月',
+        monthlyPrice: '¥29,800 / 月',
+        annualPrice: '¥298,000 / 年',
+        annualMonthlyEquivalent: '約 ¥24,833 / 月',
         creditValue: '6,600,000 C',
         features: [
           '基本機能',
@@ -118,11 +132,17 @@ export const PLAN_CREDIT_TEXT = {
     selectedPlanLabel: 'Current',
     selectPlanLabel: 'Choose this plan',
     changePlanLabel: 'Change plan',
+    billingMonthly: 'Monthly',
+    billingAnnual: 'Annual',
+    annualSaving: '2 months free',
+    monthlyEquivalent: 'Monthly equivalent',
+    monthlyGrant: 'Credits are granted monthly',
     plans: [
       {
         id: 'free',
         name: 'Free',
-        price: '¥0 / month',
+        monthlyPrice: '¥0 / month',
+        annualPrice: '¥0 / year',
         creditValue: '20,000 C first month / 10,000 C after',
         basicFeature: {
           label: 'Core features',
@@ -140,7 +160,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'basic',
         name: 'Basic',
-        price: '¥980 / month',
+        monthlyPrice: '¥980 / month',
+        annualPrice: '¥9,800 / year',
+        annualMonthlyEquivalent: 'About ¥817 / month',
         creditValue: '180,000 C',
         features: [
           'Core features',
@@ -154,7 +176,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'pro',
         name: 'Pro',
-        price: '¥2,980 / month',
+        monthlyPrice: '¥2,980 / month',
+        annualPrice: '¥29,800 / year',
+        annualMonthlyEquivalent: 'About ¥2,483 / month',
         creditValue: '640,000 C',
         features: [
           'Core features',
@@ -170,7 +194,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'business',
         name: 'Business',
-        price: '¥9,980 / month',
+        monthlyPrice: '¥9,980 / month',
+        annualPrice: '¥99,800 / year',
+        annualMonthlyEquivalent: 'About ¥8,317 / month',
         creditValue: '2,200,000 C',
         features: [
           'Core features',
@@ -186,7 +212,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'enterprise',
         name: 'Enterprise',
-        price: '¥29,800 / month',
+        monthlyPrice: '¥29,800 / month',
+        annualPrice: '¥298,000 / year',
+        annualMonthlyEquivalent: 'About ¥24,833 / month',
         creditValue: '6,600,000 C',
         features: [
           'Core features',

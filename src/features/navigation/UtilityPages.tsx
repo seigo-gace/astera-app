@@ -7,6 +7,8 @@ import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { PLAN_CREDIT_TEXT } from './plan-credit-text';
 import './plan-credit-page.css';
 
+type BillingCycle = 'monthly' | 'annual';
+
 type FeatureGroup = {
   title?: string;
   items: readonly string[];
@@ -16,6 +18,9 @@ type PlanCreditCard = {
   id?: string;
   name: string;
   price?: string;
+  monthlyPrice?: string;
+  annualPrice?: string;
+  annualMonthlyEquivalent?: string;
   creditLabel?: string;
   creditValue?: string;
   features?: readonly string[];
@@ -27,11 +32,16 @@ type PlanCreditCard = {
 
 type SubscriptionProjection = {
   planId: string;
+  billingCycle: BillingCycle;
   hasLiveSubscription: boolean;
 };
 
 function normalizePlanId(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function normalizeBillingCycle(value: string): BillingCycle {
+  return value.trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
 }
 
 function subscriptionFromPayload(payload: unknown): SubscriptionProjection {
@@ -41,8 +51,10 @@ function subscriptionFromPayload(payload: unknown): SubscriptionProjection {
   const planId = normalizePlanId(recordText(subscription, ['plan_id', 'planId']));
   const providerSubscriptionId = recordText(subscription, ['provider_subscription_id', 'providerSubscriptionId']);
   const status = recordText(subscription, ['status']).toLowerCase();
+  const billingCycle = normalizeBillingCycle(recordText(subscription, ['billing_cycle', 'billingCycle']));
   return {
     planId,
+    billingCycle,
     hasLiveSubscription: Boolean(providerSubscriptionId) && !['none', 'cancelled', 'failed'].includes(status),
   };
 }
@@ -56,6 +68,13 @@ function PlanGrid({
   selectedPlanLabel,
   selectPlanLabel,
   changePlanLabel,
+  billingCycle,
+  onBillingCycleChange,
+  monthlyLabel,
+  annualLabel,
+  annualSaving,
+  monthlyEquivalent,
+  monthlyGrant,
 }: {
   title: string;
   items: readonly PlanCreditCard[];
@@ -65,32 +84,75 @@ function PlanGrid({
   selectedPlanLabel: string;
   selectPlanLabel: string;
   changePlanLabel: string;
+  billingCycle: BillingCycle;
+  onBillingCycleChange: (cycle: BillingCycle) => void;
+  monthlyLabel: string;
+  annualLabel: string;
+  annualSaving: string;
+  monthlyEquivalent: string;
+  monthlyGrant: string;
 }) {
   return (
     <section className="plan-credit-section">
-      <h2>{title}</h2>
+      <div className="plan-credit-section-head">
+        <h2>{title}</h2>
+        <div className="plan-credit-cycle-toggle" role="group" aria-label={`${monthlyLabel} / ${annualLabel}`}>
+          <button
+            type="button"
+            className={billingCycle === 'monthly' ? 'is-active' : ''}
+            aria-pressed={billingCycle === 'monthly'}
+            onClick={() => onBillingCycleChange('monthly')}
+          >
+            {monthlyLabel}
+          </button>
+          <button
+            type="button"
+            className={billingCycle === 'annual' ? 'is-active' : ''}
+            aria-pressed={billingCycle === 'annual'}
+            onClick={() => onBillingCycleChange('annual')}
+          >
+            {annualLabel}
+          </button>
+        </div>
+      </div>
       <div className="plan-credit-grid">
         {items.map((item) => {
           const hasFeatureContent = Boolean(item.basicFeature || (item.features && item.features.length > 0));
           const itemPlanId = normalizePlanId(item.id ?? item.name);
-          const isCurrentPlan = Boolean(subscription.planId) && itemPlanId === subscription.planId;
-          const usesSubscriptionManagement = subscription.hasLiveSubscription || itemPlanId === 'free';
+          const isFree = itemPlanId === 'free';
+          const isCurrentPlan = Boolean(subscription.planId)
+            && itemPlanId === subscription.planId
+            && (isFree || subscription.billingCycle === billingCycle);
+          const usesSubscriptionManagement = subscription.hasLiveSubscription || isFree;
           const actionLabel = usesSubscriptionManagement ? changePlanLabel : selectPlanLabel;
+          const cycleQuery = `billing=${billingCycle}`;
           const actionHref = usesSubscriptionManagement
-            ? `/account/subscription?target_plan=${encodeURIComponent(itemPlanId)}&return_to=plan-credit`
-            : `/account/checkout?plan=${encodeURIComponent(itemPlanId)}&return_to=plan-credit`;
+            ? `/account/subscription?target_plan=${encodeURIComponent(itemPlanId)}&${cycleQuery}&return_to=plan-credit`
+            : `/account/checkout?plan=${encodeURIComponent(itemPlanId)}&${cycleQuery}&return_to=plan-credit`;
+          const price = billingCycle === 'annual'
+            ? (item.annualPrice ?? item.monthlyPrice ?? item.price)
+            : (item.monthlyPrice ?? item.price);
+          const cycleLabel = billingCycle === 'annual' ? annualLabel : monthlyLabel;
 
           const cardContent: ReactNode = (
             <>
               <div className="plan-credit-plan-top">
                 <div className="plan-credit-plan-heading">
                   <h3>{item.name}</h3>
-                  {item.price && <div className="plan-credit-price">{item.price}</div>}
+                  {price && <div className="plan-credit-price">{price}</div>}
+                  {billingCycle === 'annual' && !isFree && (
+                    <div className="plan-credit-annual-meta">
+                      <span className="plan-credit-saving-badge">{annualSaving}</span>
+                      {item.annualMonthlyEquivalent && (
+                        <span>{monthlyEquivalent}: {item.annualMonthlyEquivalent}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {isCurrentPlan && (
                   <div className="plan-credit-current-plan" aria-label={selectedPlanLabel}>
                     <span className="plan-credit-current-plan-icon" aria-hidden="true" />
-                    <span>{selectedPlanLabel}</span>
+                    <span>{isFree ? selectedPlanLabel : `${selectedPlanLabel}・${cycleLabel}`}</span>
                   </div>
                 )}
               </div>
@@ -99,6 +161,9 @@ function PlanGrid({
                   <span>{item.creditLabel ?? creditLabel}</span>
                   <strong>{item.creditValue}</strong>
                 </div>
+              )}
+              {billingCycle === 'annual' && !isFree && (
+                <div className="plan-credit-monthly-grant">{monthlyGrant}</div>
               )}
               {hasFeatureContent && (
                 <>
@@ -190,13 +255,14 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
   const pageText = PLAN_CREDIT_TEXT[language];
   const previewMode = previewWithoutAuth();
   const sessionSubscription = subscriptionFromPayload(session?.payload);
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [subscription, setSubscription] = useState<SubscriptionProjection>(() => previewMode
-    ? { planId: 'free', hasLiveSubscription: false }
+    ? { planId: 'free', billingCycle: 'monthly', hasLiveSubscription: false }
     : sessionSubscription);
 
   useEffect(() => {
     if (previewMode) {
-      setSubscription({ planId: 'free', hasLiveSubscription: false });
+      setSubscription({ planId: 'free', billingCycle: 'monthly', hasLiveSubscription: false });
       return;
     }
 
@@ -236,6 +302,13 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           selectedPlanLabel={pageText.selectedPlanLabel}
           selectPlanLabel={pageText.selectPlanLabel}
           changePlanLabel={pageText.changePlanLabel}
+          billingCycle={billingCycle}
+          onBillingCycleChange={setBillingCycle}
+          monthlyLabel={pageText.billingMonthly}
+          annualLabel={pageText.billingAnnual}
+          annualSaving={pageText.annualSaving}
+          monthlyEquivalent={pageText.monthlyEquivalent}
+          monthlyGrant={pageText.monthlyGrant}
         />
         <SimpleGrid
           title={pageText.creditSectionTitle}

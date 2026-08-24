@@ -46,6 +46,44 @@
   font-weight: 700;
 }
 
+.plan-credit-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.plan-credit-section-head h2 {
+  margin: 0;
+}
+
+.plan-credit-cycle-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+}
+
+.plan-credit-cycle-toggle button {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.plan-credit-cycle-toggle button.is-active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  box-shadow: 0 1px 4px var(--shadow);
+}
+
 .plan-credit-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -186,6 +224,25 @@
   letter-spacing: -0.02em;
 }
 
+.plan-credit-annual-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.plan-credit-saving-badge {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-primary));
+  font-weight: 700;
+}
+
 .plan-credit-fact {
   display: flex;
   align-items: baseline;
@@ -205,6 +262,12 @@
 .plan-credit-fact strong {
   font-size: 15px;
   text-align: right;
+}
+
+.plan-credit-monthly-grant {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .plan-credit-feature-title {
@@ -303,6 +366,12 @@
 
   .plan-credit-local-head h1 {
     font-size: 24px;
+  }
+
+  .plan-credit-section-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .plan-credit-grid {

@@ -14,3 +14,6 @@ bucket_name = "astera-app-uploads-staging"
 
 [vars]
 BETTER_AUTH_URL = "https://staging.asterav8.jp"
+SQUARE_ENVIRONMENT = "sandbox"
+SQUARE_VERSION = "2026-08-19"
+APP_PUBLIC_ORIGIN = "https://staging.asterav8.jp"

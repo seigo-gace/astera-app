@@ -20,6 +20,16 @@ type PlanRow = {
   square_plan_variation_id: string | null;
 };
 
+type BillingVariantRow = {
+  plan_id: string;
+  billing_cycle: 'monthly' | 'annual';
+  recurring_amount: number;
+  recurring_interval: 'month' | 'year';
+  included_credits: number;
+  square_plan_variation_id: string | null;
+  active: number;
+};
+
 type CreditProductRow = {
   product_id: string;
   display_name: string;
@@ -36,6 +46,7 @@ type SubscriptionRow = {
   tenant_id: string;
   catalog_version: string;
   plan_id: string;
+  billing_cycle: 'monthly' | 'annual';
   provider_subscription_id: string | null;
   status: string;
   current_period_start: string | null;
@@ -58,6 +69,8 @@ function yen(amount: number, interval?: string): string {
   if (interval === 'year') return `${base} / 年`;
   return base;
 }
+
+export type BillingCycle = 'monthly' | 'annual';
 
 export type ActiveCommercialCatalog = {
   catalog_version: string;
@@ -82,6 +95,15 @@ export type ActiveCommercialCatalog = {
     recommended: boolean;
     active: boolean;
     square_plan_variation_id: string | null;
+    billing_variants: Array<{
+      billing_cycle: BillingCycle;
+      recurring_amount: number;
+      recurring_interval: 'month' | 'year';
+      included_credits: number;
+      price_label: string;
+      square_plan_variation_id: string | null;
+      active: boolean;
+    }>;
   }>;
   creditProducts: Array<{
     product_id: string;
@@ -109,7 +131,7 @@ export async function loadActiveCatalog(db: D1Database): Promise<ActiveCommercia
       throw new FunctionHttpError(503, 'ACTIVE_CATALOG_NOT_PUBLISHED', '公開可能なActive Catalogがありません。');
     }
 
-    const [planResult, creditResult] = await Promise.all([
+    const [planResult, variantResult, creditResult] = await Promise.all([
       db.prepare(
         `SELECT plan_id, display_name, description, currency, recurring_amount, recurring_interval,
                 included_credits, entitlement_ids, recommended, active, square_plan_variation_id
@@ -118,6 +140,13 @@ export async function loadActiveCatalog(db: D1Database): Promise<ActiveCommercia
          ORDER BY display_order ASC, recurring_amount ASC, plan_id ASC`,
       ).bind(version.version).all<PlanRow>(),
       db.prepare(
+        `SELECT plan_id, billing_cycle, recurring_amount, recurring_interval, included_credits,
+                square_plan_variation_id, active
+         FROM plan_billing_variants
+         WHERE catalog_version = ?1 AND active = 1
+         ORDER BY plan_id ASC, CASE billing_cycle WHEN 'monthly' THEN 0 ELSE 1 END ASC`,
+      ).bind(version.version).all<BillingVariantRow>(),
+      db.prepare(
         `SELECT product_id, display_name, description, currency, amount, credits, active, square_catalog_object_id
          FROM credit_products
          WHERE catalog_version = ?1 AND active = 1
@@ -125,8 +154,21 @@ export async function loadActiveCatalog(db: D1Database): Promise<ActiveCommercia
       ).bind(version.version).all<CreditProductRow>(),
     ]);
 
+    const allVariants = variantResult.results ?? [];
     const plans = (planResult.results ?? []).map((row) => {
       const entitlements = parseStringArray(row.entitlement_ids);
+      const billingVariants = allVariants
+        .filter((variant) => variant.plan_id === row.plan_id)
+        .map((variant) => ({
+          billing_cycle: variant.billing_cycle,
+          recurring_amount: Number(variant.recurring_amount),
+          recurring_interval: variant.recurring_interval,
+          included_credits: Number(variant.included_credits),
+          price_label: yen(Number(variant.recurring_amount), variant.recurring_interval),
+          square_plan_variation_id: variant.square_plan_variation_id,
+          active: variant.active === 1,
+        }));
+      const monthly = billingVariants.find((variant) => variant.billing_cycle === 'monthly');
       return {
         plan_id: row.plan_id,
         id: row.plan_id,
@@ -134,10 +176,10 @@ export async function loadActiveCatalog(db: D1Database): Promise<ActiveCommercia
         name: row.display_name,
         description: row.description,
         currency: row.currency,
-        recurring_amount: Number(row.recurring_amount),
-        recurring_interval: row.recurring_interval,
-        monthly_price_yen: Number(row.recurring_amount),
-        price_label: yen(Number(row.recurring_amount), row.recurring_interval),
+        recurring_amount: monthly?.recurring_amount ?? Number(row.recurring_amount),
+        recurring_interval: monthly?.recurring_interval ?? row.recurring_interval,
+        monthly_price_yen: monthly?.recurring_amount ?? Number(row.recurring_amount),
+        price_label: monthly?.price_label ?? yen(Number(row.recurring_amount), row.recurring_interval),
         included_credits: Number(row.included_credits),
         monthly_credits: Number(row.included_credits),
         monthly_credits_label: Number(row.included_credits).toLocaleString('ja-JP'),
@@ -145,7 +187,8 @@ export async function loadActiveCatalog(db: D1Database): Promise<ActiveCommercia
         features: entitlements,
         recommended: row.recommended === 1,
         active: row.active === 1,
-        square_plan_variation_id: row.square_plan_variation_id,
+        square_plan_variation_id: monthly?.square_plan_variation_id ?? row.square_plan_variation_id,
+        billing_variants: billingVariants,
       };
     });
 
@@ -184,7 +227,7 @@ export async function loadActiveCatalog(db: D1Database): Promise<ActiveCommercia
 export async function loadTenantSubscription(db: D1Database, tenantId: string): Promise<SubscriptionRow | null> {
   try {
     return await db.prepare(
-      `SELECT id, tenant_id, catalog_version, plan_id, provider_subscription_id, status,
+      `SELECT id, tenant_id, catalog_version, plan_id, billing_cycle, provider_subscription_id, status,
               current_period_start, current_period_end, cancel_at_period_end
        FROM tenant_subscriptions WHERE tenant_id = ?1 LIMIT 1`,
     ).bind(tenantId).first<SubscriptionRow>();
