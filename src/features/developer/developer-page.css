@@ -178,7 +178,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   min-width: 0;
   max-height: 124px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
   overscroll-behavior-y: contain;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--platform-text, var(--text)) 34%, transparent) transparent;
