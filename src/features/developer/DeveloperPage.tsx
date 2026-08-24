@@ -166,7 +166,6 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
 
   const renderApiCard = (api: ApiDefinition) => {
     const apiKeys = keyItems.filter((item) => matchesApi(api, item));
-    const placeholderCount = Math.max(0, 3 - apiKeys.length);
     return (
       <article className="developer-api-card" key={api.id}>
         <header className="developer-api-card-head">
@@ -193,11 +192,8 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
               <span>{isJapanese ? '更新' : 'Update'}</span>
               <span>{isJapanese ? '削除' : 'Delete'}</span>
             </div>
-            <div className="developer-key-table-body" tabIndex={apiKeys.length > 3 ? 0 : -1}>
+            <div className="developer-key-table-body" tabIndex={apiKeys.length > 2 ? 0 : -1}>
               {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
-              {Array.from({ length: placeholderCount }, (_, index) => (
-                <div className="developer-key-placeholder-row" key={`${api.id}-placeholder-${index}`} aria-hidden="true" />
-              ))}
             </div>
           </div>
         </section>
