@@ -1,0 +1,106 @@
+name: Staging Route Audit
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit-route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      TARGET_HOST: staging.asterav8.jp
+      EVIDENCE_ISSUE: '9'
+    steps:
+      - name: Inspect Cloudflare route without exposing secrets
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' > /tmp/route-audit.md
+          const token = process.env.CLOUDFLARE_API_TOKEN || '';
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const targetHost = process.env.TARGET_HOST;
+          const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+          async function cf(path) {
+            const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, { headers });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || body.success === false) {
+              return { ok: false, status: response.status, errors: (body.errors || []).map((e) => e.code || e.message || 'unknown') };
+            }
+            return { ok: true, result: body.result, result_info: body.result_info || null };
+          }
+          const report = { target: targetHost, token_present: Boolean(token), dns: null, pages: null, tunnel: null };
+          if (!token) {
+            report.error = 'CLOUDFLAREACCOUNTAPI missing';
+          } else {
+            const zones = await cf(`/zones?name=asterav8.jp&status=active`);
+            if (!zones.ok || !Array.isArray(zones.result) || !zones.result[0]?.id) {
+              report.zone_lookup = zones;
+            } else {
+              const zoneId = zones.result[0].id;
+              const dns = await cf(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(targetHost)}`);
+              if (dns.ok && Array.isArray(dns.result)) {
+                report.dns = dns.result.map((r) => {
+                  const type = r.type || 'unknown';
+                  let destination = 'hidden';
+                  if (type === 'CNAME') {
+                    const content = String(r.content || '');
+                    if (content.endsWith('.pages.dev')) destination = 'pages.dev';
+                    else if (content.endsWith('.cfargotunnel.com')) destination = 'cloudflare-tunnel';
+                    else destination = 'other-cname';
+                  } else if (type === 'A' || type === 'AAAA') {
+                    destination = 'ip-origin';
+                  }
+                  return { type, proxied: Boolean(r.proxied), destination };
+                });
+                const tunnelRecord = dns.result.find((r) => r.type === 'CNAME' && String(r.content || '').endsWith('.cfargotunnel.com'));
+                if (tunnelRecord) {
+                  const tunnelId = String(tunnelRecord.content).split('.')[0];
+                  const tunnelConfig = await cf(`/accounts/${accountId}/cfd_tunnel/${tunnelId}/configurations`);
+                  if (tunnelConfig.ok) {
+                    const ingress = tunnelConfig.result?.config?.ingress;
+                    report.tunnel = {
+                      configured: true,
+                      ingress: Array.isArray(ingress) ? ingress.map((i) => ({ hostname: i.hostname || null, service: String(i.service || '').replace(/:\/\/[^/]*@/, '://***@') })) : []
+                    };
+                  } else {
+                    report.tunnel = { configured: false, status: tunnelConfig.status, errors: tunnelConfig.errors };
+                  }
+                }
+              } else {
+                report.dns = dns;
+              }
+            }
+            const pages = await cf(`/accounts/${accountId}/pages/projects/astera-app-staging`);
+            if (pages.ok) {
+              const r = pages.result || {};
+              report.pages = {
+                exists: true,
+                subdomain: r.subdomain || null,
+                production_branch: r.production_branch || r.source?.config?.production_branch || null,
+                domains: Array.isArray(r.domains) ? r.domains : []
+              };
+            } else {
+              report.pages = { exists: false, status: pages.status, errors: pages.errors };
+            }
+          }
+          console.log('## Staging route audit');
+          console.log('```json');
+          console.log(JSON.stringify(report, null, 2));
+          console.log('```');
+          NODE
+          cat /tmp/route-audit.md
+
+      - name: Post sanitized evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${EVIDENCE_ISSUE}/comments" -f body="$(cat /tmp/route-audit.md)"
