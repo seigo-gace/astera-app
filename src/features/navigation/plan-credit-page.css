@@ -106,6 +106,57 @@
   white-space: nowrap;
 }
 
+.plan-credit-plan-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.plan-credit-plan-heading {
+  min-width: 0;
+}
+
+.plan-credit-current-plan {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--text-primary);
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-credit-current-plan-icon {
+  position: relative;
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.plan-credit-current-plan-icon::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 6px;
+  height: 3px;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: center;
+}
+
 .plan-credit-price {
   margin-top: 16px;
   font-size: 25px;
@@ -230,6 +281,16 @@
   .plan-credit-card-head,
   .plan-credit-fact {
     align-items: flex-start;
+  }
+
+  .plan-credit-plan-top {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .plan-credit-current-plan {
+    margin-top: 1px;
   }
 
   .plan-credit-basic-columns {

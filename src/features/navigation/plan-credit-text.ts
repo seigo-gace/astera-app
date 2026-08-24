@@ -7,8 +7,10 @@ export const PLAN_CREDIT_TEXT = {
     monthlyCredit: '月次Credit',
     grantedCredit: '付与Credit',
     includedFeatures: '利用できる機能',
+    selectedPlanLabel: '契約中',
     plans: [
       {
+        id: 'free',
         name: 'Free',
         price: '¥0 / 月',
         creditValue: '初回 20,000 C / 以後 10,000 C',
@@ -26,6 +28,7 @@ export const PLAN_CREDIT_TEXT = {
         },
       },
       {
+        id: 'basic',
         name: 'Basic',
         price: '¥980 / 月',
         creditValue: '180,000 C',
@@ -39,6 +42,7 @@ export const PLAN_CREDIT_TEXT = {
         ],
       },
       {
+        id: 'pro',
         name: 'Pro',
         price: '¥2,980 / 月',
         creditValue: '640,000 C',
@@ -54,6 +58,7 @@ export const PLAN_CREDIT_TEXT = {
         ],
       },
       {
+        id: 'business',
         name: 'Business',
         price: '¥9,980 / 月',
         creditValue: '2,200,000 C',
@@ -69,6 +74,7 @@ export const PLAN_CREDIT_TEXT = {
         ],
       },
       {
+        id: 'enterprise',
         name: 'Enterprise',
         price: '¥29,800 / 月',
         creditValue: '6,600,000 C',
@@ -107,8 +113,10 @@ export const PLAN_CREDIT_TEXT = {
     monthlyCredit: 'Monthly credit',
     grantedCredit: 'Granted credit',
     includedFeatures: 'Included features',
+    selectedPlanLabel: 'Current',
     plans: [
       {
+        id: 'free',
         name: 'Free',
         price: '¥0 / month',
         creditValue: '20,000 C first month / 10,000 C after',
@@ -126,6 +134,7 @@ export const PLAN_CREDIT_TEXT = {
         },
       },
       {
+        id: 'basic',
         name: 'Basic',
         price: '¥980 / month',
         creditValue: '180,000 C',
@@ -139,6 +148,7 @@ export const PLAN_CREDIT_TEXT = {
         ],
       },
       {
+        id: 'pro',
         name: 'Pro',
         price: '¥2,980 / month',
         creditValue: '640,000 C',
@@ -154,6 +164,7 @@ export const PLAN_CREDIT_TEXT = {
         ],
       },
       {
+        id: 'business',
         name: 'Business',
         price: '¥9,980 / month',
         creditValue: '2,200,000 C',
@@ -169,6 +180,7 @@ export const PLAN_CREDIT_TEXT = {
         ],
       },
       {
+        id: 'enterprise',
         name: 'Enterprise',
         price: '¥29,800 / month',
         creditValue: '6,600,000 C',

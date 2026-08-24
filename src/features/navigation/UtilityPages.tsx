@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useAppText } from '../../app-text';
+import { previewWithoutAuth, useVerifiedAccountSession } from '../../platform/account-session';
+import { apiRequest, asRecord, recordText } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { PLAN_CREDIT_TEXT } from './plan-credit-text';
@@ -10,6 +13,7 @@ type FeatureGroup = {
 };
 
 type PlanCreditCard = {
+  id?: string;
   name: string;
   price?: string;
   creditLabel?: string;
@@ -21,11 +25,24 @@ type PlanCreditCard = {
   };
 };
 
-function PlanGrid({ title, items, creditLabel, featureLabel }: {
+function normalizePlanId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function currentPlanIdFromPayload(payload: unknown): string {
+  const root = asRecord(payload);
+  const account = asRecord(root.account ?? root.data ?? root);
+  const subscription = asRecord(account.subscription ?? root.subscription);
+  return normalizePlanId(recordText(subscription, ['plan_id', 'planId']));
+}
+
+function PlanGrid({ title, items, creditLabel, featureLabel, currentPlanId, selectedPlanLabel }: {
   title: string;
   items: readonly PlanCreditCard[];
   creditLabel: string;
   featureLabel: string;
+  currentPlanId: string;
+  selectedPlanLabel: string;
 }) {
   return (
     <section className="plan-credit-section">
@@ -33,11 +50,23 @@ function PlanGrid({ title, items, creditLabel, featureLabel }: {
       <div className="plan-credit-grid">
         {items.map((item) => {
           const hasFeatureContent = Boolean(item.basicFeature || (item.features && item.features.length > 0));
+          const itemPlanId = normalizePlanId(item.id ?? item.name);
+          const isCurrentPlan = Boolean(currentPlanId) && itemPlanId === currentPlanId;
 
           return (
-            <article className="plan-credit-card is-plan" key={item.name}>
-              <h3>{item.name}</h3>
-              {item.price && <div className="plan-credit-price">{item.price}</div>}
+            <article className={`plan-credit-card is-plan${isCurrentPlan ? ' is-current-plan' : ''}`} key={item.name}>
+              <div className="plan-credit-plan-top">
+                <div className="plan-credit-plan-heading">
+                  <h3>{item.name}</h3>
+                  {item.price && <div className="plan-credit-price">{item.price}</div>}
+                </div>
+                {isCurrentPlan && (
+                  <div className="plan-credit-current-plan" aria-label={selectedPlanLabel}>
+                    <span className="plan-credit-current-plan-icon" aria-hidden="true" />
+                    <span>{selectedPlanLabel}</span>
+                  </div>
+                )}
+              </div>
               {item.creditValue && (
                 <div className="plan-credit-fact">
                   <span>{item.creditLabel ?? creditLabel}</span>
@@ -105,7 +134,37 @@ function SimpleGrid({ title, items, defaultCreditLabel }: {
 
 export function PlanCreditPage({ route }: { route: RouteMatch }) {
   const { language } = useAppText();
+  const session = useVerifiedAccountSession();
   const pageText = PLAN_CREDIT_TEXT[language];
+  const previewMode = previewWithoutAuth();
+  const sessionPlanId = currentPlanIdFromPayload(session?.payload);
+  const [currentPlanId, setCurrentPlanId] = useState(() => previewMode ? 'free' : sessionPlanId);
+
+  useEffect(() => {
+    if (previewMode) {
+      setCurrentPlanId('free');
+      return;
+    }
+
+    const sessionValue = currentPlanIdFromPayload(session?.payload);
+    if (sessionValue) {
+      setCurrentPlanId(sessionValue);
+      return;
+    }
+
+    const controller = new AbortController();
+    apiRequest('/api/account/catalog', { signal: controller.signal })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        const planId = currentPlanIdFromPayload(payload);
+        if (planId) setCurrentPlanId(planId);
+      })
+      .catch(() => {
+        // Current-plan indicator is optional display state; keep the page usable if readback fails.
+      });
+
+    return () => controller.abort();
+  }, [previewMode, session?.payload]);
 
   return (
     <ResponsivePageShell route={route} fullWidth>
@@ -119,6 +178,8 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           items={pageText.plans}
           creditLabel={pageText.monthlyCredit}
           featureLabel={pageText.includedFeatures}
+          currentPlanId={currentPlanId}
+          selectedPlanLabel={pageText.selectedPlanLabel}
         />
         <SimpleGrid
           title={pageText.creditSectionTitle}
