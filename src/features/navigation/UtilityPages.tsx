@@ -66,8 +66,6 @@ function PlanGrid({
   featureLabel,
   subscription,
   selectedPlanLabel,
-  selectPlanLabel,
-  changePlanLabel,
   billingCycle,
   onBillingCycleChange,
   monthlyLabel,
@@ -82,8 +80,6 @@ function PlanGrid({
   featureLabel: string;
   subscription: SubscriptionProjection;
   selectedPlanLabel: string;
-  selectPlanLabel: string;
-  changePlanLabel: string;
   billingCycle: BillingCycle;
   onBillingCycleChange: (cycle: BillingCycle) => void;
   monthlyLabel: string;
@@ -124,7 +120,6 @@ function PlanGrid({
             && itemPlanId === subscription.planId
             && (isFree || subscription.billingCycle === billingCycle);
           const usesSubscriptionManagement = subscription.hasLiveSubscription || isFree;
-          const actionLabel = usesSubscriptionManagement ? changePlanLabel : selectPlanLabel;
           const cycleQuery = `billing=${billingCycle}`;
           const actionHref = usesSubscriptionManagement
             ? `/account/subscription?target_plan=${encodeURIComponent(itemPlanId)}&${cycleQuery}&return_to=plan-credit`
@@ -190,12 +185,6 @@ function PlanGrid({
                   )}
                 </>
               )}
-              {!isCurrentPlan && (
-                <span className="plan-credit-plan-action">
-                  <span>{actionLabel}</span>
-                  <span aria-hidden="true">→</span>
-                </span>
-              )}
             </>
           );
 
@@ -212,7 +201,7 @@ function PlanGrid({
               className="plan-credit-card is-plan is-actionable"
               href={actionHref}
               key={item.name}
-              aria-label={`${item.name}: ${actionLabel}`}
+              aria-label={`${item.name}・${cycleLabel}`}
             >
               {cardContent}
             </a>
@@ -300,8 +289,6 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           featureLabel={pageText.includedFeatures}
           subscription={subscription}
           selectedPlanLabel={pageText.selectedPlanLabel}
-          selectPlanLabel={pageText.selectPlanLabel}
-          changePlanLabel={pageText.changePlanLabel}
           billingCycle={billingCycle}
           onBillingCycleChange={setBillingCycle}
           monthlyLabel={pageText.billingMonthly}

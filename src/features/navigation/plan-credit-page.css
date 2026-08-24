@@ -334,24 +334,6 @@
   min-width: 0;
 }
 
-.plan-credit-plan-action {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color);
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.3;
-  font-weight: 700;
-}
-
-.plan-credit-card.is-actionable:hover .plan-credit-plan-action {
-  border-top-color: color-mix(in srgb, var(--text-primary) 30%, var(--border-color));
-}
-
 @media (max-width: 1023px) {
   .plan-credit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
