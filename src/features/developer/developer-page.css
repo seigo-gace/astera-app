@@ -73,20 +73,20 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   background: transparent;
 }
 
-/* PC / Tablet: title block is roughly two issue-button widths; the issue action sits immediately beside it. */
+/* PC / Tablet: keep the title block at two issue-button widths and place the issue action immediately after it. */
 .developer-api-card-head {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 320px max-content minmax(0, 1fr);
   align-items: center;
-  gap: 16px;
+  column-gap: 10px;
   padding: 18px;
 }
 
 .developer-api-title-block {
-  min-width: 0;
-  width: 300px;
-  max-width: 300px;
-  flex: 0 1 300px;
+  min-width: 320px;
+  width: 320px;
+  max-width: 320px;
   display: grid;
   gap: 4px;
 }
@@ -109,7 +109,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-card-issue {
-  flex: 0 0 auto;
+  grid-column: 2;
+  justify-self: start;
   margin-left: 0;
   align-self: center;
   width: auto;
@@ -424,13 +425,15 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-api-card-head {
+    grid-template-columns: 320px max-content minmax(0, 1fr);
+    column-gap: 10px;
     padding: 16px;
   }
 
   .developer-api-title-block {
-    width: 300px;
-    max-width: 300px;
-    flex-basis: 300px;
+    min-width: 320px;
+    width: 320px;
+    max-width: 320px;
   }
 
   .developer-card-section {
@@ -485,9 +488,9 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-api-title-block {
+    min-width: 0;
     width: auto;
     max-width: none;
-    flex: none;
     gap: 1px;
   }
 
