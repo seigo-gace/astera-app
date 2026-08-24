@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 import { resolvedApiBase } from '../../platform/api-client';
+import type { RouteMatch } from '../../platform/route-registry';
+import { BusyState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
+import { Panel } from '../../platform/pages/page-kit';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -95,7 +98,7 @@ function checkoutReturnLabel(value: CheckoutReturnTo): string {
   return 'Appへ戻る';
 }
 
-export default function CheckoutPage() {
+export default function CheckoutPage({ route }: { route: RouteMatch }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const planId = params.get('plan')?.trim() ?? '';
   const returnTo = checkoutReturnTo(params.get('return_to'));
@@ -147,7 +150,6 @@ export default function CheckoutPage() {
   }, [planId]);
 
   useEffect(() => {
-    document.title = 'Checkout確認 | Astera App';
     void loadAccountCatalog();
     return () => {
       requestRef.current?.abort('unmount');
@@ -206,63 +208,71 @@ export default function CheckoutPage() {
   const loginReturn = encodeURIComponent(window.location.pathname + window.location.search);
 
   return (
-    <main className="checkout-page" aria-busy={state.status === 'loading' || state.status === 'submitting'}>
-      <style>{`
-        .checkout-page{min-height:100dvh;display:grid;place-items:center;padding:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(24px + env(safe-area-inset-left,0px));background:radial-gradient(circle at 50% 10%,rgba(178,109,48,.14),transparent 34%),var(--bg-primary,#050505);color:var(--text-primary,#f6f4ef);font-family:Inter,system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif}.checkout-page *{box-sizing:border-box}.checkout-card{width:min(620px,100%);border:1px solid var(--border-color,rgba(255,255,255,.14));background:linear-gradient(150deg,color-mix(in srgb,var(--text-primary) 7%,transparent),color-mix(in srgb,var(--text-primary) 2%,transparent));padding:clamp(24px,5vw,44px);box-shadow:0 30px 100px var(--shadow,rgba(0,0,0,.45))}.checkout-brand{display:flex;align-items:center;gap:12px;margin-bottom:34px;color:inherit;text-decoration:none}.checkout-brand img{width:42px;height:42px;filter:var(--logo-filter)}.checkout-brand strong{letter-spacing:.18em}.checkout-kicker{font-size:11px;letter-spacing:.2em;color:var(--platform-accent,#d6ad70)}.checkout-card h1{font-size:clamp(34px,7vw,56px);letter-spacing:-.05em;margin:12px 0 22px}.checkout-status{padding:18px;border:1px solid var(--border-color,rgba(255,255,255,.1));background:color-mix(in srgb,var(--text-primary) 3.5%,transparent);line-height:1.8}.checkout-plan{display:grid;gap:9px;margin:24px 0;padding:20px;border:1px solid rgba(214,173,112,.36)}.checkout-plan strong{font-size:24px}.checkout-plan span{color:var(--text-tertiary,#b9b4ab)}.checkout-current{font-size:12px;color:var(--text-tertiary,#918c84)}.checkout-consent{display:flex;align-items:flex-start;gap:10px;color:var(--text-secondary,#cbc6bd);line-height:1.65;margin:22px 0}.checkout-consent input{margin-top:.35em}.checkout-actions{display:flex;gap:10px;flex-wrap:wrap}.checkout-primary,.checkout-secondary{min-height:48px;padding:0 18px;font:inherit;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.checkout-primary{border:1px solid rgba(214,173,112,.62);background:linear-gradient(135deg,rgba(161,94,39,.48),rgba(214,173,112,.14));color:var(--text-primary,#fff)}.checkout-primary:disabled{opacity:.46;cursor:not-allowed}.checkout-secondary{border:1px solid var(--border-color,rgba(255,255,255,.16));background:transparent;color:var(--text-secondary,#dedad2)}.checkout-error{margin-top:14px;color:var(--platform-danger,#f0b8aa);font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}html[data-theme="light"] .checkout-page{background:var(--bg-primary,#f4f3ef);color:var(--text-primary,#121212)}html[data-theme="light"] .checkout-card{background:var(--bg-primary,#fff);border-color:var(--border-color,rgba(0,0,0,.14))}@media(max-width:600px){.checkout-page{padding-inline:14px}.checkout-card{padding:22px 17px}.checkout-actions{display:grid}.checkout-primary,.checkout-secondary{width:100%}}
-      `}</style>
+    <ResponsivePageShell route={route}>
+      {state.status === 'loading' && (
+        <Panel title="Planを確認">
+          <BusyState label="Accountと選択可能なPlanを確認しています…" />
+        </Panel>
+      )}
 
-      <section className="checkout-card">
-        <a className="checkout-brand" href={returnPath}>
-          <img src="/logo-mark.svg" alt="" />
-          <span><strong>ASTERA</strong> APP</span>
-        </a>
-        <div className="checkout-kicker">ACCOUNT / CHECKOUT GATE</div>
-        <h1>Plan選択の確認</h1>
-
-        {state.status === 'loading' && <div className="checkout-status" role="status">Accountと選択可能なPlanを確認しています…</div>}
-
-        {state.status === 'login-required' && (
-          <div className="checkout-status">
-            <p>決済へ進む前に、Astera AccountへのLoginまたは登録が必要です。選択したPlanは復帰後も維持します。</p>
-            <div className="checkout-actions">
-              <a className="checkout-primary" href={`/login?return_to=${loginReturn}`}>Login</a>
-              <a className="checkout-secondary" href={`/register?return_to=${loginReturn}`}>Account登録</a>
-              <a className="checkout-secondary" href={returnPath}>{returnLabel}</a>
-            </div>
+      {state.status === 'login-required' && (
+        <Panel title="Loginが必要です">
+          <p>決済へ進む前にAstera AccountへのLoginまたは登録が必要です。選択したPlanは復帰後も維持します。</p>
+          <div className="platform-action-row">
+            <a className="platform-button is-primary" href={`/login?return_to=${loginReturn}`}>Login</a>
+            <a className="platform-button" href={`/register?return_to=${loginReturn}`}>Account登録</a>
+            <a className="platform-button" href={returnPath}>{returnLabel}</a>
           </div>
-        )}
+        </Panel>
+      )}
 
-        {(state.status === 'ready' || state.status === 'submitting') && (
-          <>
-            <div className="checkout-plan">
-              <strong>{state.planName}</strong>
-              <span>{state.priceLabel}</span>
-              <span className="checkout-current">現在のPlan: {state.currentPlan}</span>
-            </div>
-            <label className="checkout-consent">
-              <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} disabled={state.status === 'submitting'} />
-              <span>料金、Credit、契約条件を確認し、Serverが再確認したPlan内容でSquare Checkoutへ進むことに同意します。</span>
+      {(state.status === 'ready' || state.status === 'submitting') && (
+        <>
+          <Panel title="選択内容">
+            <dl className="platform-kv-grid">
+              <div><dt>選択Plan</dt><dd>{state.planName}</dd></div>
+              <div><dt>料金</dt><dd>{state.priceLabel}</dd></div>
+              <div><dt>現在のPlan</dt><dd>{state.currentPlan}</dd></div>
+            </dl>
+          </Panel>
+
+          <Panel title="確認">
+            <label className="platform-toggle-row">
+              <span><strong>料金、Credit、契約条件を確認しました</strong></span>
+              <input
+                type="checkbox"
+                checked={accepted}
+                onChange={(event) => setAccepted(event.target.checked)}
+                disabled={state.status === 'submitting'}
+              />
             </label>
-            <div className="checkout-actions">
-              <button className="checkout-primary" type="button" disabled={!accepted || state.status === 'submitting'} onClick={() => void createCheckoutIntent()}>
+            <div className="platform-action-row">
+              <button
+                className="platform-button is-primary"
+                type="button"
+                disabled={!accepted || state.status === 'submitting'}
+                onClick={() => void createCheckoutIntent()}
+              >
                 {state.status === 'submitting' ? 'Checkoutを準備中…' : 'Square Checkoutへ進む'}
               </button>
-              <a className="checkout-secondary" href={returnPath}>戻る</a>
+              <a className="platform-button" href={returnPath}>{returnLabel}</a>
             </div>
-          </>
-        )}
+          </Panel>
+        </>
+      )}
 
-        {state.status === 'error' && (
-          <div className="checkout-status" role="alert">
-            <p>Checkoutを開始できません。入力値ではなくAccount CatalogとServer状態を確認して安全停止しました。</p>
-            <div className="checkout-error">{state.message}</div>
-            <div className="checkout-actions">
-              <button className="checkout-primary" type="button" onClick={() => void loadAccountCatalog()}>再確認</button>
-              <a className="checkout-secondary" href={returnPath}>戻る</a>
-            </div>
+      {state.status === 'error' && (
+        <Panel title="Checkoutを開始できません">
+          <div className="platform-form-result is-error" role="alert">
+            <strong>Accountと決済状態を確認できませんでした。</strong>
+            <code>{state.message}</code>
           </div>
-        )}
-      </section>
-    </main>
+          <div className="platform-action-row">
+            <button className="platform-button is-primary" type="button" onClick={() => void loadAccountCatalog()}>再確認</button>
+            <a className="platform-button" href={returnPath}>{returnLabel}</a>
+          </div>
+        </Panel>
+      )}
+    </ResponsivePageShell>
   );
 }

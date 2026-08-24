@@ -117,7 +117,9 @@ export default function AppRouter() {
   if (route.id === 'root') return <RootRedirect />;
   if (route.id === 'pricing') return <PricingPage />;
 
-  if (route.id === 'account-checkout') return <CheckoutPage />;
+  if (route.id === 'account-checkout') {
+    return <AccountSessionGate><CheckoutPage route={route} /></AccountSessionGate>;
+  }
 
   if (route.id === 'app' || route.id === 'new-run') {
     return <AccountSessionGate><NativeComposerPage route={route} /></AccountSessionGate>;
