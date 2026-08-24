@@ -95,12 +95,6 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   const keyItems = keys.status === 'ready' ? asArray(keys.data, ['keys', 'items']).map(asRecord) : [];
   const overlayApi = overlayApiId ? APIS.find((api) => api.id === overlayApiId) ?? null : null;
 
-  const statusFor = (api: ApiDefinition): string => {
-    const target = targets.find((item) => matchesApi(api, item));
-    if (!target) return catalog.status === 'loading' ? (isJapanese ? '確認中' : 'Checking') : text('notCataloged');
-    return recordText(target, ['availability', 'status'], text('statusUnknown'));
-  };
-
   const openIssueOverlay = (api: ApiDefinition) => {
     setOverlayApiId(api.id);
     setIssueName('');
@@ -159,13 +153,13 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
 
     return (
       <div className="developer-key-row" key={`${api.id}-${id || index}`}>
-        <div className="developer-key-cell developer-key-name" data-label={isJapanese ? 'APIキー名' : 'API key name'}>{name}</div>
-        <div className="developer-key-cell" data-label={isJapanese ? '使用量' : 'Usage'}>{usage}</div>
-        <div className="developer-key-cell" data-label={isJapanese ? '使用料金' : 'Cost'}>{cost}</div>
-        <div className="developer-key-cell developer-key-action" data-label={isJapanese ? '更新' : 'Update'}>
+        <div className="developer-key-cell developer-key-name">{name}</div>
+        <div className="developer-key-cell">{usage}</div>
+        <div className="developer-key-cell">{cost}</div>
+        <div className="developer-key-cell developer-key-action">
           <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{isJapanese ? '更新' : 'Update'}</button>
         </div>
-        <div className="developer-key-cell developer-key-action" data-label={isJapanese ? '削除' : 'Delete'}>
+        <div className="developer-key-cell developer-key-action">
           <button className="platform-button" type="button" disabled title={text('productionDeleteUnavailable')}>{isJapanese ? '削除' : 'Delete'}</button>
         </div>
       </div>
@@ -182,7 +176,6 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             <span>{isJapanese ? api.ja : api.en}</span>
             <small>{isJapanese ? api.descriptionJa : api.descriptionEn}</small>
           </div>
-          <span className="developer-status"><i aria-hidden="true" />{statusFor(api)}</span>
         </header>
 
         <section className="developer-card-section" aria-label={isJapanese ? `${api.name} APIキー管理` : `${api.name} API key management`}>
@@ -193,19 +186,18 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             </button>
           </div>
 
-          <div className="developer-key-table">
-            <div className="developer-key-table-head" aria-hidden="true">
-              <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
-              <span>{isJapanese ? '使用量' : 'Usage'}</span>
-              <span>{isJapanese ? '使用料金' : 'Cost'}</span>
-              <span>{isJapanese ? '更新' : 'Update'}</span>
-              <span>{isJapanese ? '削除' : 'Delete'}</span>
-            </div>
-            <div className="developer-key-table-body">
-              {keys.status === 'loading' && <div className="developer-key-empty">{isJapanese ? 'APIキーを読み込み中…' : 'Loading API keys…'}</div>}
-              {keys.status === 'error' && <div className="developer-key-empty">{isJapanese ? 'APIキーを取得できませんでした。' : 'Unable to load API keys.'}</div>}
-              {keys.status === 'ready' && apiKeys.length === 0 && <div className="developer-key-empty">{isJapanese ? '発行済みAPIキーはありません。' : 'No issued API keys.'}</div>}
-              {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
+          <div className="developer-key-table" tabIndex={0} aria-label={isJapanese ? `${api.name} APIキー一覧` : `${api.name} API key list`}>
+            <div className="developer-key-table-inner">
+              <div className="developer-key-table-head">
+                <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
+                <span>{isJapanese ? '使用量' : 'Usage'}</span>
+                <span>{isJapanese ? '料金' : 'Cost'}</span>
+                <span>{isJapanese ? '更新' : 'Update'}</span>
+                <span>{isJapanese ? '削除' : 'Delete'}</span>
+              </div>
+              <div className="developer-key-table-body">
+                {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
+              </div>
             </div>
           </div>
         </section>
@@ -214,13 +206,8 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   };
 
   return (
-    <ResponsivePageShell route={route} description={isJapanese ? 'APIと外部連携を1ページで管理' : 'Manage APIs and integrations on one page'}>
+    <ResponsivePageShell route={route}>
       <div className="developer-console">
-        <header className="developer-page-header">
-          <h1>Developer</h1>
-          <p>{isJapanese ? 'APIと外部連携を管理' : 'Manage APIs and external integrations'}</p>
-        </header>
-
         <section className="developer-family" aria-labelledby="developer-family-astera">
           <div className="developer-family-heading"><h2 id="developer-family-astera">Astera APIs</h2><p>{isJapanese ? 'Astera本体の4 API' : 'Four Astera core APIs'}</p></div>
           <div className="developer-api-list">{APIS.filter((api) => api.family === 'astera').map(renderApiCard)}</div>
