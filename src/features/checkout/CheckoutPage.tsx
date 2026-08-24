@@ -254,6 +254,10 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
                 <strong>{text.paymentData}</strong>
                 <p>{text.paymentDataValue}</p>
               </div>
+              <div className="checkout-term-row">
+                <strong>{text.dataRetention}</strong>
+                <p>{text.dataRetentionValue}</p>
+              </div>
               <nav className="checkout-legal-links" aria-label={text.contractTitle}>
                 <a href="/legal/terms">{text.terms}</a>
                 <a href="/legal/privacy">{text.privacy}</a>
