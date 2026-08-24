@@ -13,8 +13,14 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥0 / 月',
         creditValue: '初回 20,000 C / 以後 10,000 C',
         features: [
-          'Purpose選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
-          '判断材料8項目：本当の目的・前提不足・事実確認・危機・反対視点・比較案・推奨判断・主役AIへの再指示',
+          '用途選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
+          '目的整理',
+          '前提・不足確認',
+          '事実確認',
+          'リスク確認',
+          '反対視点の確認',
+          '選択肢の比較',
+          '推奨案の整理',
         ],
       },
       {
@@ -22,8 +28,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥980 / 月',
         creditValue: '180,000 C',
         features: [
-          'Purpose選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
-          '判断材料8項目：本当の目的・前提不足・事実確認・危機・反対視点・比較案・推奨判断・主役AIへの再指示',
+          '基本機能',
           '高精度翻訳',
           '書類作成',
           'Private Mode',
@@ -36,8 +41,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥2,980 / 月',
         creditValue: '640,000 C',
         features: [
-          'Purpose選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
-          '判断材料8項目：本当の目的・前提不足・事実確認・危機・反対視点・比較案・推奨判断・主役AIへの再指示',
+          '基本機能',
           '高精度翻訳',
           '書類作成',
           'Private Mode',
@@ -52,8 +56,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥9,980 / 月',
         creditValue: '2,200,000 C',
         features: [
-          'Purpose選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
-          '判断材料8項目：本当の目的・前提不足・事実確認・危機・反対視点・比較案・推奨判断・主役AIへの再指示',
+          '基本機能',
           '高精度翻訳',
           '書類作成',
           'Private Mode',
@@ -68,8 +71,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥29,800 / 月',
         creditValue: '6,600,000 C',
         features: [
-          'Purpose選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
-          '判断材料8項目：本当の目的・前提不足・事実確認・危機・反対視点・比較案・推奨判断・主役AIへの再指示',
+          '基本機能',
           '高精度翻訳',
           '書類作成',
           'Private Mode',
@@ -109,8 +111,14 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥0 / month',
         creditValue: '20,000 C first month / 10,000 C after',
         features: [
-          'Purpose selection: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
-          '8 decision-material outputs: True objective, Missing premises, Fact checks, Risks, Opposing perspective, Comparison options, Recommended judgment, Re-instruction to primary AI',
+          'Use cases: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
+          'Clarify purpose',
+          'Check missing context',
+          'Check facts',
+          'Check risks',
+          'Check opposing views',
+          'Compare options',
+          'Organize recommendations',
         ],
       },
       {
@@ -118,8 +126,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥980 / month',
         creditValue: '180,000 C',
         features: [
-          'Purpose selection: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
-          '8 decision-material outputs: True objective, Missing premises, Fact checks, Risks, Opposing perspective, Comparison options, Recommended judgment, Re-instruction to primary AI',
+          'Core features',
           'High-accuracy translation',
           'Document creation',
           'Private Mode',
@@ -132,8 +139,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥2,980 / month',
         creditValue: '640,000 C',
         features: [
-          'Purpose selection: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
-          '8 decision-material outputs: True objective, Missing premises, Fact checks, Risks, Opposing perspective, Comparison options, Recommended judgment, Re-instruction to primary AI',
+          'Core features',
           'High-accuracy translation',
           'Document creation',
           'Private Mode',
@@ -148,8 +154,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥9,980 / month',
         creditValue: '2,200,000 C',
         features: [
-          'Purpose selection: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
-          '8 decision-material outputs: True objective, Missing premises, Fact checks, Risks, Opposing perspective, Comparison options, Recommended judgment, Re-instruction to primary AI',
+          'Core features',
           'High-accuracy translation',
           'Document creation',
           'Private Mode',
@@ -164,8 +169,7 @@ export const PLAN_CREDIT_TEXT = {
         price: '¥29,800 / month',
         creditValue: '6,600,000 C',
         features: [
-          'Purpose selection: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
-          '8 decision-material outputs: True objective, Missing premises, Fact checks, Risks, Opposing perspective, Comparison options, Recommended judgment, Re-instruction to primary AI',
+          'Core features',
           'High-accuracy translation',
           'Document creation',
           'Private Mode',
