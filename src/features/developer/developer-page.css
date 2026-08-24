@@ -76,7 +76,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 .developer-api-card-head {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 348px) 1fr auto;
+  grid-template-columns: minmax(0, 300px) auto 1fr;
   align-items: center;
   column-gap: 16px;
   padding: 18px;
@@ -85,7 +85,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 .developer-api-title-block {
   min-width: 0;
   width: 100%;
-  max-width: 348px;
+  max-width: 300px;
   display: grid;
   gap: 4px;
 }
@@ -108,8 +108,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-card-issue {
-  grid-column: 3;
-  justify-self: end;
+  grid-column: 2;
+  justify-self: start;
   align-self: center;
   width: auto;
   min-height: 44px;
@@ -416,7 +416,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   line-height: 1.55;
 }
 
-/* Tablet keeps the same information architecture as PC, including the 348px title block. */
+/* Tablet keeps the same information architecture as PC, with roughly two issue-button widths for the title block. */
 @media (max-width: 900px) and (min-width: 701px) {
   .developer-console {
     gap: 25px;
@@ -428,7 +428,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
   .developer-api-title-block {
     width: 100%;
-    max-width: 348px;
+    max-width: 300px;
   }
 
   .developer-card-section {
@@ -508,6 +508,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    justify-self: end;
     align-self: center;
     width: auto;
     min-height: 44px;
