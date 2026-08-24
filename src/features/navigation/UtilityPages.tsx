@@ -4,12 +4,21 @@ import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { PLAN_CREDIT_TEXT } from './plan-credit-text';
 import './plan-credit-page.css';
 
+type FeatureGroup = {
+  title?: string;
+  items: readonly string[];
+};
+
 type PlanCreditCard = {
   name: string;
   price?: string;
   creditLabel?: string;
   creditValue?: string;
   features?: readonly string[];
+  basicFeature?: {
+    label: string;
+    columns: readonly FeatureGroup[];
+  };
 };
 
 function PlanGrid({ title, items, creditLabel, featureLabel }: {
@@ -22,26 +31,47 @@ function PlanGrid({ title, items, creditLabel, featureLabel }: {
     <section className="plan-credit-section">
       <h2>{title}</h2>
       <div className="plan-credit-grid">
-        {items.map((item) => (
-          <article className="plan-credit-card is-plan" key={item.name}>
-            <h3>{item.name}</h3>
-            {item.price && <div className="plan-credit-price">{item.price}</div>}
-            {item.creditValue && (
-              <div className="plan-credit-fact">
-                <span>{item.creditLabel ?? creditLabel}</span>
-                <strong>{item.creditValue}</strong>
-              </div>
-            )}
-            {item.features && item.features.length > 0 && (
-              <>
-                <div className="plan-credit-feature-title">{featureLabel}</div>
-                <ul className="plan-credit-feature-list">
-                  {item.features.map((feature) => <li key={feature}>{feature}</li>)}
-                </ul>
-              </>
-            )}
-          </article>
-        ))}
+        {items.map((item) => {
+          const hasFeatureContent = Boolean(item.basicFeature || (item.features && item.features.length > 0));
+
+          return (
+            <article className="plan-credit-card is-plan" key={item.name}>
+              <h3>{item.name}</h3>
+              {item.price && <div className="plan-credit-price">{item.price}</div>}
+              {item.creditValue && (
+                <div className="plan-credit-fact">
+                  <span>{item.creditLabel ?? creditLabel}</span>
+                  <strong>{item.creditValue}</strong>
+                </div>
+              )}
+              {hasFeatureContent && (
+                <>
+                  <div className="plan-credit-feature-title">{featureLabel}</div>
+                  {item.basicFeature && (
+                    <div className="plan-credit-basic-feature">
+                      <div className="plan-credit-basic-label">{item.basicFeature.label}</div>
+                      <div className="plan-credit-basic-columns">
+                        {item.basicFeature.columns.map((column, columnIndex) => (
+                          <div className="plan-credit-basic-column" key={`${item.name}-basic-${columnIndex}`}>
+                            {column.title && <div className="plan-credit-basic-column-title">{column.title}</div>}
+                            <ul className="plan-credit-basic-list">
+                              {column.items.map((value) => <li key={value}>{value}</li>)}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {item.features && item.features.length > 0 && (
+                    <ul className="plan-credit-feature-list">
+                      {item.features.map((feature) => <li key={feature}>{feature}</li>)}
+                    </ul>
+                  )}
+                </>
+              )}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
