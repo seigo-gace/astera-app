@@ -76,7 +76,11 @@ check('Native browser closes after callback', nativeShell.includes('Browser.clos
 
 check('Square checkout uses external bridge', checkoutPage.includes('await openExternalUrl(destination)'), 'Square must not remain inside Native WebView');
 check('Square direct WebView redirect removed', !checkoutPage.includes('window.location.assign(destination)'), 'Square direct redirect is forbidden');
-check('Square Native callback', checkoutPage.includes("nativeCallback('/account/billing/status')"), 'Square Native callback missing');
+check(
+  'Square Native callback',
+  /nativeCallback\((['"])\/account\/billing\/status\1\)/.test(checkoutPage),
+  'Square Native callback missing',
+);
 
 check('OAuth uses canonical social API', authPages.includes("submitForm('/api/auth/sign-in/social'"), 'OAuth must request the redirect URL through the canonical Better Auth social endpoint');
 check('OAuth uses external bridge', authPages.includes('await openExternalUrl(redirectUrl)'), 'OAuth redirect must use the verified system-browser bridge on Native');
