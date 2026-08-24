@@ -327,6 +327,8 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
     accepted &&
     submit.status !== "submitting";
   const cycleLabel = cycle === "annual" ? text.annualValue : text.monthlyValue;
+  const renewalLabel = cycle === "annual" ? text.annualRenewal : text.monthlyRenewal;
+  const showConnection = connection.status !== "ready" || submit.status === "error";
 
   return (
     <ResponsivePageShell route={route} fullWidth>
@@ -341,154 +343,149 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
           </div>
         ) : (
           <>
-            <section className="checkout-summary" aria-label={text.title}>
-              <div className="checkout-summary-top">
+            <a className="checkout-back" href={returnPath}>
+              <span aria-hidden="true">←</span>
+              <span>{returnLabel}</span>
+            </a>
+
+            <header className="checkout-heading">
+              <h1>{text.title}</h1>
+            </header>
+
+            <section className="checkout-order" aria-label={text.orderSummary}>
+              <div className="checkout-plan-row">
                 <div>
-                  <span>{text.selectedPlan}</span>
+                  <span className="checkout-eyebrow">{text.selectedPlan}</span>
                   <h2>{selectedPlan.name}</h2>
                 </div>
-                <div className="checkout-price-area">
-                  <div
-                    className="checkout-cycle-toggle"
-                    role="group"
-                    aria-label={`${planText.billingMonthly} / ${planText.billingAnnual}`}
+                <div
+                  className="checkout-cycle-toggle"
+                  role="group"
+                  aria-label={`${planText.billingMonthly} / ${planText.billingAnnual}`}
+                >
+                  <button
+                    type="button"
+                    className={cycle === "monthly" ? "is-active" : ""}
+                    aria-pressed={cycle === "monthly"}
+                    disabled={submit.status === "submitting"}
+                    onClick={() => switchCycle("monthly")}
                   >
-                    <button
-                      type="button"
-                      className={cycle === "monthly" ? "is-active" : ""}
-                      aria-pressed={cycle === "monthly"}
-                      disabled={submit.status === "submitting"}
-                      onClick={() => switchCycle("monthly")}
-                    >
-                      {planText.billingMonthly}
-                    </button>
-                    <button
-                      type="button"
-                      className={cycle === "annual" ? "is-active" : ""}
-                      aria-pressed={cycle === "annual"}
-                      disabled={submit.status === "submitting"}
-                      onClick={() => switchCycle("annual")}
-                    >
-                      {planText.billingAnnual}
-                    </button>
-                  </div>
-                  <strong className="checkout-summary-price">
-                    {selectedPrice}
-                  </strong>
-                  {cycle === "annual" && planId !== "free" && (
-                    <div className="checkout-annual-meta">
-                      <span className="checkout-saving-badge">
-                        {planText.annualSaving}
-                      </span>
-                      {annualMonthlyEquivalent && (
-                        <span>
-                          {planText.monthlyEquivalent}: {annualMonthlyEquivalent}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                    {planText.billingMonthly}
+                  </button>
+                  <button
+                    type="button"
+                    className={cycle === "annual" ? "is-active" : ""}
+                    aria-pressed={cycle === "annual"}
+                    disabled={submit.status === "submitting"}
+                    onClick={() => switchCycle("annual")}
+                  >
+                    {planText.billingAnnual}
+                  </button>
                 </div>
               </div>
-              <dl className="checkout-facts">
+
+              <div className="checkout-price-block">
+                <strong>{selectedPrice}</strong>
+                {cycle === "annual" && planId !== "free" && (
+                  <div className="checkout-annual-meta">
+                    <span className="checkout-saving-badge">
+                      {planText.annualSaving}
+                    </span>
+                    {annualMonthlyEquivalent && (
+                      <span>
+                        {planText.monthlyEquivalent}: {annualMonthlyEquivalent}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <dl className="checkout-order-rows">
+                <div>
+                  <dt>{text.dueToday}</dt>
+                  <dd>{selectedPrice}</dd>
+                </div>
                 <div>
                   <dt>{text.monthlyCredit}</dt>
                   <dd>{selectedPlan.creditValue}</dd>
                 </div>
                 <div>
                   <dt>{text.renewalCycle}</dt>
-                  <dd>{cycleLabel}</dd>
+                  <dd>{renewalLabel}</dd>
                 </div>
                 <div>
-                  <dt>{text.creditGrant}</dt>
-                  <dd>{text.creditGrantValue}</dd>
-                </div>
-                <div>
-                  <dt>{text.paymentProvider}</dt>
-                  <dd>{text.paymentProviderValue}</dd>
+                  <dt>{text.nextCharge}</dt>
+                  <dd>{selectedPrice}</dd>
                 </div>
               </dl>
+
+              <p className="checkout-order-note">
+                {text.creditGrantValue} · {cycleLabel}
+              </p>
             </section>
 
-            <section className="checkout-terms">
-              <h2>{text.contractTitle}</h2>
-              <div className="checkout-term-row">
-                <strong>{text.cancellationRefund}</strong>
-                <p>{text.cancellationRefundValue}</p>
-              </div>
-              <div className="checkout-term-row">
-                <strong>{text.paymentData}</strong>
-                <p>{text.paymentDataValue}</p>
-              </div>
-              <div className="checkout-term-row">
-                <strong>{text.dataRetention}</strong>
-                <p>{text.dataRetentionValue}</p>
-              </div>
-              <nav
-                className="checkout-legal-links"
-                aria-label={text.contractTitle}
-              >
-                <a href="/legal/terms">{text.terms}</a>
-                <a href="/legal/privacy">{text.privacy}</a>
-                <a href="/legal/commercial">{text.commercial}</a>
-              </nav>
-            </section>
-
-            <label className="checkout-agreement">
+            <div className="checkout-agreement">
               <input
+                id="checkout-agreement"
                 type="checkbox"
                 checked={accepted}
                 onChange={(event) => setAccepted(event.target.checked)}
                 disabled={submit.status === "submitting"}
               />
-              <span>{text.agreement}</span>
-            </label>
-
-            <div className="checkout-actions">
-              <button
-                className="platform-button is-primary"
-                type="button"
-                disabled={!canPay}
-                onClick={() => void createCheckoutIntent()}
-              >
-                {submit.status === "submitting" ? text.preparing : text.pay}
-              </button>
-              <a className="platform-button" href={returnPath}>
-                {returnLabel}
-              </a>
+              <div>
+                <label htmlFor="checkout-agreement">{text.agreementLead}</label>
+                <span className="checkout-agreement-links">
+                  <a href="/legal/terms">{text.terms}</a>
+                  <span>・</span>
+                  <a href="/legal/privacy">{text.privacy}</a>
+                  <span>・</span>
+                  <a href="/legal/commercial">{text.commercial}</a>
+                </span>
+                <span>{text.agreementTail}</span>
+              </div>
             </div>
 
-            <div
-              className={`checkout-connection is-${connection.status}`}
-              role={connection.status === "error" ? "alert" : "status"}
+            <button
+              className="platform-button is-primary checkout-pay-button"
+              type="button"
+              disabled={!canPay}
+              onClick={() => void createCheckoutIntent()}
             >
-              {connection.status === "checking" && (
-                <span>{text.connectionChecking}</span>
-              )}
-              {connection.status === "ready" && (
-                <span>{text.connectionReady}</span>
-              )}
-              {connection.status === "login-required" && (
-                <>
-                  <span>{text.loginRequired}</span>
-                  <div className="checkout-connection-actions">
-                    <a href={`/login?return_to=${loginReturn}`}>{text.login}</a>
-                    <a href={`/register?return_to=${loginReturn}`}>
-                      {text.register}
-                    </a>
-                  </div>
-                </>
-              )}
-              {connection.status === "error" && (
-                <>
-                  <span>{text.connectionBlocked}</span>
-                  <code>{connection.message}</code>
-                  <button type="button" onClick={() => void loadAccountCatalog()}>
-                    {text.retry}
-                  </button>
-                </>
-              )}
-              {submit.status === "error" && <code>{submit.message}</code>}
-            </div>
+              {submit.status === "submitting" ? text.preparing : text.pay}
+            </button>
+            <p className="checkout-square-note">{text.squareNote}</p>
+
+            {showConnection && (
+              <div
+                className={`checkout-connection is-${connection.status}`}
+                role={connection.status === "error" ? "alert" : "status"}
+              >
+                {connection.status === "checking" && (
+                  <span>{text.connectionChecking}</span>
+                )}
+                {connection.status === "login-required" && (
+                  <>
+                    <span>{text.loginRequired}</span>
+                    <div className="checkout-connection-actions">
+                      <a href={`/login?return_to=${loginReturn}`}>{text.login}</a>
+                      <a href={`/register?return_to=${loginReturn}`}>
+                        {text.register}
+                      </a>
+                    </div>
+                  </>
+                )}
+                {connection.status === "error" && (
+                  <>
+                    <span>{text.connectionBlocked}</span>
+                    <code>{connection.message}</code>
+                    <button type="button" onClick={() => void loadAccountCatalog()}>
+                      {text.retry}
+                    </button>
+                  </>
+                )}
+                {submit.status === "error" && <code>{submit.message}</code>}
+              </div>
+            )}
           </>
         )}
       </div>
