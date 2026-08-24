@@ -176,19 +176,18 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             <span>{isJapanese ? api.ja : api.en}</span>
             <small>{isJapanese ? api.descriptionJa : api.descriptionEn}</small>
           </div>
-          <button className="platform-button is-primary developer-mobile-issue" type="button" onClick={() => openIssueOverlay(api)} aria-label={isJapanese ? `${api.name} APIを発行` : `Issue ${api.name} API key`}>
-            + {isJapanese ? 'API発行' : 'Issue API'}
+          <button
+            className="platform-button is-primary developer-card-issue"
+            type="button"
+            onClick={() => openIssueOverlay(api)}
+            aria-label={isJapanese ? `${api.name} APIキーを発行` : `Issue ${api.name} API key`}
+            style={{ marginLeft: 'auto', flex: 'none', minHeight: 44, padding: '0 12px', whiteSpace: 'nowrap' }}
+          >
+            + {isJapanese ? 'APIキー発行' : 'Issue API key'}
           </button>
         </header>
 
         <section className="developer-card-section" aria-label={isJapanese ? `${api.name} APIキー管理` : `${api.name} API key management`}>
-          <div className="developer-card-section-head">
-            <h3>{text('apiKeys')}</h3>
-            <button className="platform-button is-primary" type="button" onClick={() => openIssueOverlay(api)}>
-              + {isJapanese ? 'APIキー発行' : 'Issue API key'}
-            </button>
-          </div>
-
           <div className={`developer-key-table${hasOverflow ? ' has-overflow' : ''}${isEmpty ? ' is-empty' : ''}`} aria-label={isJapanese ? `${api.name} APIキー一覧` : `${api.name} API key list`}>
             <div className="developer-key-table-head">
               <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
