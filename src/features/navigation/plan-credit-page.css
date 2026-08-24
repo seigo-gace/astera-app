@@ -1,1 +1,308 @@
-.platform-main:has(.plan-credit-page) > .platform-page-head{display:none}.plan-credit-page{display:flex;flex-direction:column;gap:28px;width:100%;padding:8px 0 40px}.plan-credit-local-head h1{margin:0;font-size:clamp(26px,2.1vw,32px);line-height:1.2;font-weight:700;letter-spacing:-.02em}.plan-credit-section{width:100%}.plan-credit-section>h2,.plan-credit-section-head h2{margin:0 0 12px;font-size:19px;line-height:1.3;font-weight:700}.plan-credit-section-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}.plan-credit-section-head h2{margin:0}.plan-credit-cycle-toggle{display:inline-flex;padding:3px;border:1px solid var(--border-color);border-radius:999px;background:var(--bg-secondary)}.plan-credit-cycle-toggle button{border:0;border-radius:999px;padding:7px 14px;color:var(--text-secondary);background:transparent;font:inherit;font-size:13px;font-weight:700;cursor:pointer}.plan-credit-cycle-toggle button.is-active{color:var(--text-primary);background:var(--bg-primary);box-shadow:0 1px 4px var(--shadow)}.plan-credit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.plan-credit-card{min-width:0;border:1px solid var(--border-color);border-radius:14px;padding:18px;color:inherit;background:var(--bg-primary);text-decoration:none;transition:transform 150ms ease,border-color 150ms ease,box-shadow 150ms ease,background-color 150ms ease}.plan-credit-card.is-plan{display:flex;flex-direction:column;min-height:320px}.plan-credit-card.is-actionable{cursor:pointer}.plan-credit-card.is-credit{min-height:150px}.plan-credit-card.is-storage{min-height:88px}.plan-credit-card:focus-visible{outline:2px solid var(--text-primary);outline-offset:3px}@media(hover:hover) and (pointer:fine){.plan-credit-card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--text-primary) 32%,var(--border-color));background:color-mix(in srgb,var(--text-primary) 2.5%,var(--bg-primary));box-shadow:0 9px 24px color-mix(in srgb,var(--text-primary) 9%,transparent)}}.plan-credit-card h3{margin:0;font-size:18px;line-height:1.3;font-weight:700;overflow-wrap:anywhere}.plan-credit-plan-top{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0}.plan-credit-plan-heading{min-width:0}.plan-credit-current-plan{display:inline-flex;flex:0 0 auto;align-items:center;gap:6px;padding:6px 9px;border:1px solid #9bd8fa;border-radius:999px;color:#176f9f;background:#e6f6ff;font-size:12px;line-height:1;font-weight:700;white-space:nowrap}.plan-credit-current-plan-icon{position:relative;display:inline-block;width:17px;height:17px;border:1.5px solid currentColor;border-radius:50%;box-sizing:border-box}.plan-credit-current-plan-icon:after{content:'';position:absolute;left:4px;top:4px;width:6px;height:3px;border-left:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg)}.plan-credit-price{margin-top:16px;font-size:25px;line-height:1.2;font-weight:800;letter-spacing:-.02em}.plan-credit-annual-meta{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;color:var(--text-secondary);font-size:12px}.plan-credit-saving-badge{padding:4px 8px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border-color));border-radius:999px;color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--bg-primary));font-weight:700}.plan-credit-fact{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:10px;padding:10px 0;border-top:1px solid var(--border-color);border-bottom:1px solid var(--border-color)}.plan-credit-fact span,.plan-credit-feature-title{color:var(--text-secondary);font-size:13px}.plan-credit-fact strong{font-size:15px;text-align:right}.plan-credit-monthly-grant{margin-top:8px;color:var(--text-secondary);font-size:12px}.plan-credit-feature-title{margin-top:16px;font-weight:700}.plan-credit-feature-list{display:grid;gap:7px;margin:10px 0 0;padding-left:18px;color:var(--text-primary);font-size:14px;line-height:1.45}.plan-credit-basic-feature{margin-top:10px}.plan-credit-basic-label{margin-bottom:9px;font-size:14px;font-weight:700}.plan-credit-basic-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.plan-credit-basic-column-title{margin-bottom:6px;font-size:13px;font-weight:700}.plan-credit-basic-list{display:grid;gap:5px;margin:0;padding-left:17px;font-size:13px;line-height:1.35}.plan-credit-plan-action{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:auto;padding-top:16px;border-top:1px solid var(--border-color);font-size:13px;font-weight:700}@media(max-width:1023px){.plan-credit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:599px){.plan-credit-page{gap:24px;padding-top:4px}.plan-credit-local-head h1{font-size:24px}.plan-credit-section-head{align-items:flex-start;flex-direction:column;gap:10px}.plan-credit-grid{grid-template-columns:1fr}.plan-credit-card,.plan-credit-card.is-plan,.plan-credit-card.is-credit,.plan-credit-card.is-storage{min-height:0;padding:16px}.plan-credit-plan-top{align-items:flex-start;flex-wrap:wrap;gap:10px}.plan-credit-basic-columns{gap:10px}.plan-credit-basic-list{font-size:12px}}@media(prefers-reduced-motion:reduce){.plan-credit-card{transition:none}.plan-credit-card:hover{transform:none}}
+.platform-main:has(.plan-credit-page) > .platform-page-head {
+  display: none;
+}
+.plan-credit-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  padding: 8px 0 40px;
+}
+.plan-credit-local-head h1 {
+  margin: 0;
+  font-size: clamp(26px, 2.1vw, 32px);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.plan-credit-section {
+  width: 100%;
+}
+.plan-credit-section > h2,
+.plan-credit-section-head h2 {
+  margin: 0 0 12px;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+.plan-credit-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.plan-credit-section-head h2 {
+  margin: 0;
+}
+.plan-credit-cycle-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+}
+.plan-credit-cycle-toggle button {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plan-credit-cycle-toggle button.is-active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  box-shadow: 0 1px 4px var(--shadow);
+}
+.plan-credit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.plan-credit-card {
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 18px;
+  color: inherit;
+  background: var(--bg-primary);
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+.plan-credit-card.is-plan {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+.plan-credit-card.is-actionable {
+  cursor: pointer;
+}
+.plan-credit-card.is-credit {
+  min-height: 150px;
+}
+.plan-credit-card.is-storage {
+  min-height: 88px;
+}
+.plan-credit-card:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .plan-credit-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(
+      in srgb,
+      var(--text-primary) 32%,
+      var(--border-color)
+    );
+    background: color-mix(in srgb, var(--text-primary) 2.5%, var(--bg-primary));
+    box-shadow: 0 9px 24px
+      color-mix(in srgb, var(--text-primary) 9%, transparent);
+  }
+}
+.plan-credit-card h3 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.plan-credit-plan-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+.plan-credit-plan-heading {
+  min-width: 0;
+}
+.plan-credit-current-plan {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid #9bd8fa;
+  border-radius: 999px;
+  color: #176f9f;
+  background: #e6f6ff;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.plan-credit-current-plan-icon {
+  position: relative;
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.plan-credit-current-plan-icon:after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 6px;
+  height: 3px;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+.plan-credit-price {
+  margin-top: 16px;
+  font-size: 25px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.plan-credit-annual-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.plan-credit-saving-badge {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-primary));
+  font-weight: 700;
+}
+.plan-credit-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.plan-credit-fact span,
+.plan-credit-feature-title {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.plan-credit-fact strong {
+  font-size: 15px;
+  text-align: right;
+}
+.plan-credit-monthly-grant {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.plan-credit-feature-title {
+  margin-top: 16px;
+  font-weight: 700;
+}
+.plan-credit-feature-list {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.plan-credit-basic-feature {
+  margin-top: 10px;
+}
+.plan-credit-basic-label {
+  margin-bottom: 9px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.plan-credit-basic-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.plan-credit-basic-column-title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.plan-credit-basic-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 17px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.plan-credit-plan-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+  font-weight: 700;
+}
+@media (max-width: 1023px) {
+  .plan-credit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 599px) {
+  .plan-credit-page {
+    gap: 24px;
+    padding-top: 4px;
+  }
+  .plan-credit-local-head h1 {
+    font-size: 24px;
+  }
+  .plan-credit-section-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .plan-credit-grid {
+    grid-template-columns: 1fr;
+  }
+  .plan-credit-card,
+  .plan-credit-card.is-plan,
+  .plan-credit-card.is-credit,
+  .plan-credit-card.is-storage {
+    min-height: 0;
+    padding: 16px;
+  }
+  .plan-credit-plan-top {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .plan-credit-basic-columns {
+    gap: 10px;
+  }
+  .plan-credit-basic-list {
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-credit-card {
+    transition: none;
+  }
+  .plan-credit-card:hover {
+    transform: none;
+  }
+}
