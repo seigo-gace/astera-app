@@ -12,16 +12,18 @@ export const PLAN_CREDIT_TEXT = {
         name: 'Free',
         price: '¥0 / 月',
         creditValue: '初回 20,000 C / 以後 10,000 C',
-        features: [
-          '用途選択：自動・レビュー・比較・検証・改善・調査・計画・検討',
-          '目的整理',
-          '前提・不足確認',
-          '事実確認',
-          'リスク確認',
-          '反対視点の確認',
-          '選択肢の比較',
-          '推奨案の整理',
-        ],
+        basicFeature: {
+          label: '基本機能',
+          columns: [
+            {
+              title: '用途選択',
+              items: ['レビュー', '比較', '検証', '改善', '調査', '計画', '検討'],
+            },
+            {
+              items: ['目的整理', '前提・不足確認', '事実確認', 'リスク確認', '反対視点の確認', '選択肢の比較', '推奨案の整理'],
+            },
+          ],
+        },
       },
       {
         name: 'Basic',
@@ -110,16 +112,18 @@ export const PLAN_CREDIT_TEXT = {
         name: 'Free',
         price: '¥0 / month',
         creditValue: '20,000 C first month / 10,000 C after',
-        features: [
-          'Use cases: Auto, Review, Compare, Verify, Improve, Research, Plan, Consider',
-          'Clarify purpose',
-          'Check missing context',
-          'Check facts',
-          'Check risks',
-          'Check opposing views',
-          'Compare options',
-          'Organize recommendations',
-        ],
+        basicFeature: {
+          label: 'Core features',
+          columns: [
+            {
+              title: 'Use cases',
+              items: ['Review', 'Compare', 'Verify', 'Improve', 'Research', 'Plan', 'Consider'],
+            },
+            {
+              items: ['Clarify purpose', 'Check missing context', 'Check facts', 'Check risks', 'Check opposing views', 'Compare options', 'Organize recommendations'],
+            },
+          ],
+        },
       },
       {
         name: 'Basic',
