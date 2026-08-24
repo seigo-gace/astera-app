@@ -125,28 +125,17 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 .developer-key-table {
   width: 100%;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   border: 1px solid var(--platform-border, var(--line));
   border-radius: 12px;
-  overscroll-behavior-x: contain;
-  scrollbar-gutter: stable;
-}
-
-.developer-key-table:focus-visible {
-  outline: 2px solid var(--platform-accent, #45b7e8);
-  outline-offset: 2px;
-}
-
-.developer-key-table-inner {
-  min-width: 720px;
 }
 
 .developer-key-table-head,
 .developer-key-row {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(240px, 2fr) minmax(120px, .9fr) minmax(120px, .9fr) 84px 84px;
-  gap: 10px;
+  grid-template-columns: minmax(0, 2fr) minmax(76px, .7fr) minmax(76px, .7fr) 74px 74px;
+  gap: 8px;
   align-items: center;
 }
 
@@ -161,18 +150,41 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   white-space: nowrap;
 }
 
-.developer-key-table-body {
-  min-width: 720px;
+.developer-key-table-head span:nth-child(2),
+.developer-key-table-head span:nth-child(3),
+.developer-key-usage,
+.developer-key-cost {
+  text-align: right;
 }
 
-.developer-key-row {
+.developer-key-table-body {
+  min-width: 0;
+  min-height: 162px;
+  max-height: 162px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.developer-key-table-body:focus-visible {
+  outline: 2px solid var(--platform-accent, #45b7e8);
+  outline-offset: -2px;
+}
+
+.developer-key-row,
+.developer-key-placeholder-row {
   min-height: 54px;
-  padding: 8px 12px;
   border-top: 1px solid var(--platform-border, var(--line));
 }
 
-.developer-key-row:first-child {
+.developer-key-row:first-child,
+.developer-key-placeholder-row:first-child {
   border-top: 0;
+}
+
+.developer-key-row {
+  padding: 8px 12px;
 }
 
 .developer-key-cell {
@@ -188,12 +200,15 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   font-weight: 650;
 }
 
-.developer-key-action {
-  display: flex;
-  justify-content: stretch;
+.developer-key-actions {
+  min-width: 0;
+  grid-column: 4 / 6;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.developer-key-action .platform-button {
+.developer-key-actions .platform-button {
   width: 100%;
   min-width: 0;
   min-height: 36px;
@@ -360,24 +375,86 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   line-height: 1.55;
 }
 
-@media (max-width: 620px) {
+@media (max-width: 700px) {
   .developer-console {
     gap: 23px;
     padding-bottom: 28px;
   }
 
+  .developer-api-card-head {
+    padding: 15px 14px;
+  }
+
+  .developer-card-section {
+    padding: 12px 14px 14px;
+  }
+
   .developer-card-section-head {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
   }
 
   .developer-card-section-head .platform-button {
-    width: 100%;
-    min-height: 44px;
+    width: auto;
+    min-height: 40px;
+    padding-left: 13px;
+    padding-right: 13px;
+    font-size: 11px;
   }
 
-  .developer-key-action .platform-button {
+  .developer-key-table-head {
+    grid-template-columns: minmax(0, 1.55fr) minmax(70px, .72fr) minmax(70px, .72fr);
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 10px;
+  }
+
+  .developer-key-table-head span:nth-child(4),
+  .developer-key-table-head span:nth-child(5) {
+    display: none;
+  }
+
+  .developer-key-table-body {
+    min-height: 264px;
+    max-height: 264px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .developer-key-row,
+  .developer-key-placeholder-row {
+    min-height: 88px;
+  }
+
+  .developer-key-row {
+    grid-template-columns: minmax(0, 1.55fr) minmax(70px, .72fr) minmax(70px, .72fr);
+    gap: 8px;
+    row-gap: 9px;
+    align-content: center;
+    padding: 9px 10px;
+  }
+
+  .developer-key-cell {
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
+
+  .developer-key-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .developer-key-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .developer-key-actions .platform-button {
     min-height: 44px;
+    font-size: 10px;
   }
 
   .developer-overlay {
