@@ -158,9 +158,8 @@
 }
 
 .checkout-connection.is-ready {
-  border-color: #9bd8fa;
-  background: #e6f6ff;
-  color: #0b5579;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .checkout-connection.is-error {
