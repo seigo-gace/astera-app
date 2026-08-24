@@ -169,12 +169,14 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 .developer-key-table-body {
   min-width: 0;
+  min-height: 124px;
   max-height: 124px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--platform-text, var(--text)) 34%, transparent) color-mix(in srgb, var(--platform-text, var(--text)) 7%, transparent);
 }
 
 .developer-key-table-body::-webkit-scrollbar {
@@ -182,7 +184,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-key-table-body::-webkit-scrollbar-track {
-  background: transparent;
+  background: color-mix(in srgb, var(--platform-text, var(--text)) 7%, transparent);
 }
 
 .developer-key-table-body::-webkit-scrollbar-thumb {
@@ -484,7 +486,9 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-key-table-body {
+    min-height: 168px;
     max-height: 168px;
+    overflow-y: scroll;
   }
 
   .developer-key-row {
