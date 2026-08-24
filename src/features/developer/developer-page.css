@@ -130,8 +130,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   flex: none;
   width: auto;
   min-height: 40px;
-  padding-left: 13px;
-  padding-right: 13px;
+  padding: 0 13px;
 }
 
 .developer-key-table {
@@ -142,23 +141,30 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   border-radius: 12px;
 }
 
+/* PC / Tablet share one list geometry: 3 labeled data columns + right action area. */
 .developer-key-table-head,
 .developer-key-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(76px, .65fr) minmax(76px, .65fr) 74px 74px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 120px 100px 168px;
+  gap: 12px;
   align-items: center;
 }
 
 .developer-key-table-head {
   min-height: 40px;
-  padding: 0 12px;
+  padding: 0 14px;
   background: color-mix(in srgb, var(--platform-text, var(--text)) 3%, transparent);
   color: var(--platform-muted, var(--muted));
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+/* Update/Delete are controls, not column titles. */
+.developer-key-table-head > span:nth-child(4),
+.developer-key-table-head > span:nth-child(5) {
+  display: none;
 }
 
 .developer-key-table-head > span:nth-child(2),
@@ -203,7 +209,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 .developer-key-row {
   min-height: 58px;
-  padding: 8px 12px;
+  padding: 8px 14px;
 }
 
 .developer-key-row + .developer-key-row {
@@ -225,7 +231,9 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 .developer-key-actions {
   min-width: 0;
-  grid-column: 4 / 6;
+  grid-column: 4;
+  justify-self: end;
+  width: 168px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -235,8 +243,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   width: 100%;
   min-width: 0;
   min-height: 36px;
-  padding-left: 8px;
-  padding-right: 8px;
+  padding: 0 8px;
   font-size: 10px;
 }
 
@@ -398,7 +405,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   line-height: 1.55;
 }
 
-@media (max-width: 900px) {
+/* Tablet keeps the same information architecture as PC, with tighter widths. */
+@media (max-width: 900px) and (min-width: 701px) {
   .developer-console {
     gap: 25px;
   }
@@ -413,10 +421,16 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1.5fr) minmax(70px, .6fr) minmax(70px, .6fr) 70px 70px;
+    grid-template-columns: minmax(0, 1fr) 100px 84px 148px;
+    gap: 10px;
+  }
+
+  .developer-key-actions {
+    width: 148px;
   }
 }
 
+/* Mobile is a dedicated layout: no nested scrolling. Keys append vertically. */
 @media (max-width: 700px) {
   .developer-console {
     gap: 18px;
@@ -495,12 +509,13 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-key-table {
+    overflow: visible;
     border-radius: 9px;
   }
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1.35fr) minmax(56px, .65fr) minmax(56px, .65fr);
+    grid-template-columns: minmax(0, 1fr) 64px 64px;
     column-gap: 7px;
   }
 
@@ -525,37 +540,22 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
     text-align: right;
   }
 
-  .developer-key-table-head > span:nth-child(4),
-  .developer-key-table-head > span:nth-child(5) {
-    display: none;
-  }
-
-  .developer-key-table-body {
-    max-height: 144px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding-right: 1px;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--platform-text, var(--text)) 38%, transparent) color-mix(in srgb, var(--platform-text, var(--text)) 7%, transparent);
+  .developer-key-table-body,
+  .developer-key-table.is-empty .developer-key-table-body {
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+    overscroll-behavior: auto;
+    scrollbar-width: none;
   }
 
   .developer-key-table.is-empty .developer-key-table-body {
-    min-height: 44px;
-    max-height: 44px;
+    min-height: 24px;
   }
 
   .developer-key-table-body::-webkit-scrollbar {
-    display: block;
-    width: 5px;
-  }
-
-  .developer-key-table-body::-webkit-scrollbar-track {
-    background: color-mix(in srgb, var(--platform-text, var(--text)) 7%, transparent);
-  }
-
-  .developer-key-table-body::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--platform-text, var(--text)) 38%, transparent);
+    display: none;
   }
 
   .developer-key-row {
@@ -598,6 +598,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   .developer-key-actions {
     grid-column: 2 / 4;
     grid-row: 2;
+    justify-self: stretch;
+    width: auto;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
@@ -607,8 +609,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
     width: 100%;
     min-width: 0;
     min-height: 44px;
-    padding-left: 8px;
-    padding-right: 8px;
+    padding: 0 8px;
     font-size: 10px;
   }
 
