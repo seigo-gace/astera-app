@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useDeveloperText, type DeveloperTextKey } from '../../developer-text';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useDeveloperText } from '../../developer-text';
 import { asArray, asRecord, recordText, textValue, type JsonObject } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
@@ -26,15 +26,6 @@ const APIS: ApiDefinition[] = [
   { id: 'libral-vault', family: 'platform', name: 'Libral Vault', ja: '暗号化・Vault・鍵管理', en: 'Encryption, vault, and key management', descriptionJa: 'Secret・Signature・Keyを安全に管理', descriptionEn: 'Manage secrets, signatures, and keys securely', aliases: ['libral-vault', 'libral vault', 'vault'] },
 ];
 
-const HOLD_PRIORITY = ['security_hold', 'account_suspended', 'plan_entitlement', 'target_suspended', 'credit_insufficient'] as const;
-const HOLD_TEXT_KEYS: Record<string, DeveloperTextKey> = {
-  security_hold: 'stateSecurityHold',
-  account_suspended: 'stateAccountSuspended',
-  plan_entitlement: 'statePlanEntitlement',
-  target_suspended: 'stateTargetSuspended',
-  credit_insufficient: 'stateCreditInsufficient',
-};
-
 function matchesApi(api: ApiDefinition, record: JsonObject): boolean {
   const haystack = `${recordText(record, ['target_id', 'target', 'id'])} ${recordText(record, ['display_name', 'name', 'label'])}`.toLowerCase();
   return api.aliases.some((alias) => haystack.includes(alias));
@@ -44,16 +35,6 @@ function targetCanIssue(record: JsonObject): boolean {
   const availability = recordText(record, ['availability', 'status']).toLowerCase();
   if (record.key_issuance_allowed === false) return false;
   return availability === 'available' || availability === 'active' || availability === 'ready';
-}
-
-function stringList(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
-  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
-  return [];
-}
-
-function holds(record: JsonObject): string[] {
-  return stringList(record.hold_reasons ?? record.holdReasons ?? record.runtime_holds ?? record.holds);
 }
 
 function firstScalar(record: JsonObject, keys: string[]): string {
@@ -80,109 +61,119 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   const isJapanese = language !== 'en';
   const [catalog] = useResource('/api/developer/catalog');
   const [keys, reloadKeys] = useResource('/api/developer/keys');
-  const [issueStates, setIssueStates] = useState<Record<string, SubmitState>>({});
-  const [createdSecrets, setCreatedSecrets] = useState<Record<string, string>>({});
+  const [overlayApiId, setOverlayApiId] = useState<string | null>(null);
+  const [issueName, setIssueName] = useState('');
+  const [issuedSecret, setIssuedSecret] = useState('');
+  const [issueState, setIssueState] = useState<SubmitState>({ type: 'idle' });
+  const [localNames, setLocalNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     document.documentElement.dataset.developerDedicatedOwner = 'true';
     return () => { delete document.documentElement.dataset.developerDedicatedOwner; };
   }, []);
 
+  useEffect(() => {
+    if (!overlayApiId) return;
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && issueState.type !== 'working') {
+        setOverlayApiId(null);
+        setIssueName('');
+        setIssuedSecret('');
+        setIssueState({ type: 'idle' });
+      }
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [overlayApiId, issueState.type]);
+
   const targets = catalog.status === 'ready' ? asArray(catalog.data, ['targets', 'catalog', 'items']).map(asRecord) : [];
   const keyItems = keys.status === 'ready' ? asArray(keys.data, ['keys', 'items']).map(asRecord) : [];
-
-  const holdLabel = (reason: string): string => {
-    const key = HOLD_TEXT_KEYS[reason];
-    return key ? text(key) : reason;
-  };
-
-  const effectiveState = (record: JsonObject): string => {
-    const control = recordText(record, ['control_status', 'controlStatus', 'status'], 'active');
-    if (control !== 'active') {
-      if (control === 'paused_user') return text('statePausedUser');
-      if (control === 'revoked') return text('stateRevoked');
-      if (control === 'expired') return text('stateExpired');
-      return control;
-    }
-    const reasons = holds(record);
-    const primary = HOLD_PRIORITY.find((reason) => reasons.includes(reason));
-    return primary ? holdLabel(primary) : text('stateActive');
-  };
+  const overlayApi = overlayApiId ? APIS.find((api) => api.id === overlayApiId) ?? null : null;
 
   const statusFor = (api: ApiDefinition): string => {
     const target = targets.find((item) => matchesApi(api, item));
-    if (!target) return text('notCataloged');
+    if (!target) return catalog.status === 'loading' ? (isJapanese ? '確認中' : 'Checking') : text('notCataloged');
     return recordText(target, ['availability', 'status'], text('statusUnknown'));
   };
 
-  const issueKey = async (api: ApiDefinition) => {
-    const target = targets.find((item) => matchesApi(api, item));
+  const openIssueOverlay = (api: ApiDefinition) => {
+    setOverlayApiId(api.id);
+    setIssueName('');
+    setIssuedSecret('');
+    setIssueState({ type: 'idle' });
+  };
+
+  const closeIssueOverlay = () => {
+    if (issueState.type === 'working') return;
+    setOverlayApiId(null);
+    setIssueName('');
+    setIssuedSecret('');
+    setIssueState({ type: 'idle' });
+  };
+
+  const issueKey = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!overlayApi) return;
+    const keyName = issueName.trim();
+    if (!keyName) return;
+
+    const target = targets.find((item) => matchesApi(overlayApi, item));
     const targetId = target ? recordText(target, ['target_id', 'id']) : '';
     if (!target || !targetId || !targetCanIssue(target)) {
-      setIssueStates((current) => ({ ...current, [api.id]: { type: 'error', message: text('targetUnavailable'), code: 'DEVELOPER_TARGET_UNAVAILABLE' } }));
+      setIssueState({ type: 'error', message: text('targetUnavailable'), code: 'DEVELOPER_TARGET_UNAVAILABLE' });
       return;
     }
 
-    setCreatedSecrets((current) => ({ ...current, [api.id]: '' }));
     const payload = await submitForm(
       `/api/developer/targets/${encodeURIComponent(targetId)}/keys`,
-      { environment: 'sandbox', scopes: ['execute', 'read:usage'] },
-      (state) => setIssueStates((current) => ({ ...current, [api.id]: state })),
+      { label: keyName, environment: 'sandbox', scopes: ['execute', 'read:usage'] },
+      setIssueState,
       { success: text('sandboxIssued'), idempotent: true },
     );
     if (!payload) return;
 
-    const secret = recordText(asRecord(payload), ['api_key', 'secret', 'key']);
+    const root = asRecord(payload);
+    const issued = asRecord(root.data ?? (typeof root.key === 'object' ? root.key : root));
+    const secret = recordText(root, ['api_key', 'secret', 'key']) || recordText(issued, ['api_key', 'secret', 'key']);
     if (!secret) {
-      setIssueStates((current) => ({ ...current, [api.id]: { type: 'error', message: text('secretMissing'), code: 'API_KEY_SECRET_MISSING' } }));
+      setIssueState({ type: 'error', message: text('secretMissing'), code: 'API_KEY_SECRET_MISSING' });
       return;
     }
 
-    setCreatedSecrets((current) => ({ ...current, [api.id]: secret }));
+    const issuedId = recordText(issued, ['key_id', 'id']) || recordText(root, ['key_id', 'id']);
+    if (issuedId) setLocalNames((current) => ({ ...current, [issuedId]: keyName }));
+    setIssuedSecret(secret);
     reloadKeys();
   };
 
-  const renderKey = (item: JsonObject, api: ApiDefinition) => {
+  const renderKeyRow = (item: JsonObject, api: ApiDefinition, index: number) => {
     const id = recordText(item, ['key_id', 'id']);
-    const scopes = stringList(item.scopes ?? item.scope);
+    const name = (id && localNames[id]) || recordText(item, ['label', 'name', 'display_name']) || (isJapanese ? `名称未設定 ${index + 1}` : `Unnamed key ${index + 1}`);
     const usage = nestedMetric(item, ['usage', 'usage_month', 'monthly_usage'], ['requests', 'request_count', 'total_requests', 'usage_count', 'credits_used', 'credit_used', 'used']);
     const cost = nestedMetric(item, ['cost', 'billing', 'charges', 'monthly_cost'], ['amount', 'total', 'cost', 'current_cost', 'usage_cost', 'charged_amount']);
 
     return (
-      <article className="developer-key-row" key={`${api.id}-${id}`}>
-        <div className="developer-key-identity">
-          <div>
-            <strong>{recordText(item, ['label', 'name'], id)}</strong>
-            <code>{recordText(item, ['key_prefix', 'prefix'], text('prefixMissing'))}</code>
-          </div>
-          <span>{effectiveState(item)}</span>
+      <div className="developer-key-row" key={`${api.id}-${id || index}`}>
+        <div className="developer-key-cell developer-key-name" data-label={isJapanese ? 'APIキー名' : 'API key name'}>{name}</div>
+        <div className="developer-key-cell" data-label={isJapanese ? '使用量' : 'Usage'}>{usage}</div>
+        <div className="developer-key-cell" data-label={isJapanese ? '使用料金' : 'Cost'}>{cost}</div>
+        <div className="developer-key-cell developer-key-action" data-label={isJapanese ? '更新' : 'Update'}>
+          <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{isJapanese ? '更新' : 'Update'}</button>
         </div>
-
-        <dl className="developer-key-facts">
-          <div><dt>{text('environment')}</dt><dd>{recordText(item, ['environment'], '—')}</dd></div>
-          <div><dt>{text('scope')}</dt><dd>{scopes.join(', ') || '—'}</dd></div>
-          <div><dt>{text('lastUsed')}</dt><dd>{recordText(item, ['last_used_at', 'last_used'], '—')}</dd></div>
-          <div><dt>Usage</dt><dd>{usage}</dd></div>
-          <div><dt>Cost</dt><dd>{cost}</dd></div>
-        </dl>
-
-        <div className="developer-key-actions" aria-label={isJapanese ? 'APIキー個別管理' : 'Individual API key management'}>
-          <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{text('rotate')}</button>
-          <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{text('pause')}</button>
-          <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{text('resume')}</button>
-          <button className="platform-button" type="button" disabled title={text('productionDeleteUnavailable')}>{text('delete')}</button>
+        <div className="developer-key-cell developer-key-action" data-label={isJapanese ? '削除' : 'Delete'}>
+          <button className="platform-button" type="button" disabled title={text('productionDeleteUnavailable')}>{isJapanese ? '削除' : 'Delete'}</button>
         </div>
-      </article>
+      </div>
     );
   };
 
   const renderApiCard = (api: ApiDefinition) => {
-    const target = targets.find((item) => matchesApi(api, item));
     const apiKeys = keyItems.filter((item) => matchesApi(api, item));
-    const canIssue = Boolean(target && targetCanIssue(target));
-    const issueState = issueStates[api.id] ?? { type: 'idle' as const };
-    const createdSecret = createdSecrets[api.id] ?? '';
-
     return (
       <article className="developer-api-card" key={api.id}>
         <header className="developer-api-card-head">
@@ -194,34 +185,36 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
           <span className="developer-status"><i aria-hidden="true" />{statusFor(api)}</span>
         </header>
 
-        <section className="developer-card-section developer-card-keys" aria-label={isJapanese ? `${api.name} APIキー` : `${api.name} API keys`}>
+        <section className="developer-card-section" aria-label={isJapanese ? `${api.name} APIキー管理` : `${api.name} API key management`}>
           <div className="developer-card-section-head">
-            <div><h3>{text('apiKeys')}</h3><p>{isJapanese ? '発行したKeyを1本ずつ個別に管理' : 'Manage each issued key individually'}</p></div>
-            <button className="platform-button is-primary" type="button" disabled={!canIssue || issueState.type === 'working'} onClick={() => void issueKey(api)}>
-              + {isJapanese ? 'APIキーを発行' : 'Issue API key'}
+            <h3>{text('apiKeys')}</h3>
+            <button className="platform-button is-primary" type="button" onClick={() => openIssueOverlay(api)}>
+              + {isJapanese ? 'APIキー発行' : 'Issue API key'}
             </button>
           </div>
 
-          <FormResult state={issueState} />
-          {createdSecret && (
-            <div className="developer-secret" role="status">
-              <strong>{text('secretOnce')}</strong>
-              <code>{createdSecret}</code>
-              <button className="platform-button" type="button" onClick={() => void navigator.clipboard.writeText(createdSecret)}>{text('copy')}</button>
+          <div className="developer-key-table">
+            <div className="developer-key-table-head" aria-hidden="true">
+              <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
+              <span>{isJapanese ? '使用量' : 'Usage'}</span>
+              <span>{isJapanese ? '使用料金' : 'Cost'}</span>
+              <span>{isJapanese ? '更新' : 'Update'}</span>
+              <span>{isJapanese ? '削除' : 'Delete'}</span>
             </div>
-          )}
-
-          {keys.status === 'loading' && <div className="developer-key-empty">{isJapanese ? 'APIキーを読み込み中…' : 'Loading API keys…'}</div>}
-          {keys.status === 'error' && <div className="developer-key-empty">{isJapanese ? 'APIキーを取得できませんでした。' : 'Unable to load API keys.'}</div>}
-          {keys.status === 'ready' && apiKeys.length === 0 && <div className="developer-key-empty">{isJapanese ? 'このAPIではまだKeyが発行されていません。' : 'No key has been issued for this API yet.'}</div>}
-          {keys.status === 'ready' && apiKeys.length > 0 && <div className="developer-key-list">{apiKeys.map((item) => renderKey(item, api))}</div>}
+            <div className="developer-key-table-body">
+              {keys.status === 'loading' && <div className="developer-key-empty">{isJapanese ? 'APIキーを読み込み中…' : 'Loading API keys…'}</div>}
+              {keys.status === 'error' && <div className="developer-key-empty">{isJapanese ? 'APIキーを取得できませんでした。' : 'Unable to load API keys.'}</div>}
+              {keys.status === 'ready' && apiKeys.length === 0 && <div className="developer-key-empty">{isJapanese ? '発行済みAPIキーはありません。' : 'No issued API keys.'}</div>}
+              {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
+            </div>
+          </div>
         </section>
       </article>
     );
   };
 
   return (
-    <ResponsivePageShell route={route} description={isJapanese ? 'APIと外部連携を管理' : 'Manage APIs and external integrations'}>
+    <ResponsivePageShell route={route} description={isJapanese ? 'APIと外部連携を1ページで管理' : 'Manage APIs and integrations on one page'}>
       <div className="developer-console">
         <header className="developer-page-header">
           <h1>Developer</h1>
@@ -229,15 +222,60 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
         </header>
 
         <section className="developer-family" aria-labelledby="developer-family-astera">
-          <div className="developer-family-heading"><h2 id="developer-family-astera">Astera APIs</h2><p>{isJapanese ? 'Astera本体のAPI' : 'Astera core APIs'}</p></div>
+          <div className="developer-family-heading"><h2 id="developer-family-astera">Astera APIs</h2><p>{isJapanese ? 'Astera本体の4 API' : 'Four Astera core APIs'}</p></div>
           <div className="developer-api-list">{APIS.filter((api) => api.family === 'astera').map(renderApiCard)}</div>
         </section>
 
         <section className="developer-family" aria-labelledby="developer-family-platform">
-          <div className="developer-family-heading"><h2 id="developer-family-platform">Platform APIs</h2><p>{isJapanese ? '外部接続・暗号化基盤' : 'External integration and secure platform APIs'}</p></div>
+          <div className="developer-family-heading"><h2 id="developer-family-platform">Platform APIs</h2><p>Webhook Gateway / Libral Vault</p></div>
           <div className="developer-api-list">{APIS.filter((api) => api.family === 'platform').map(renderApiCard)}</div>
         </section>
       </div>
+
+      {overlayApi && (
+        <div className="developer-overlay" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) closeIssueOverlay(); }}>
+          <section className="developer-overlay-dialog" role="dialog" aria-modal="true" aria-labelledby="developer-overlay-title">
+            {!issuedSecret ? (
+              <form className="developer-overlay-form" onSubmit={issueKey}>
+                <header className="developer-overlay-head">
+                  <div>
+                    <h2 id="developer-overlay-title">{isJapanese ? 'APIキーを発行' : 'Issue API key'}</h2>
+                    <p>{overlayApi.name}</p>
+                  </div>
+                  <button className="developer-overlay-close" type="button" onClick={closeIssueOverlay} disabled={issueState.type === 'working'} aria-label={isJapanese ? '閉じる' : 'Close'}>×</button>
+                </header>
+                <label className="developer-overlay-field">
+                  <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
+                  <input autoFocus required maxLength={80} value={issueName} onChange={(event) => setIssueName(event.target.value)} placeholder={isJapanese ? '例：Production Search' : 'e.g. Production Search'} />
+                </label>
+                <FormResult state={issueState} />
+                <div className="developer-overlay-actions">
+                  <button className="platform-button" type="button" onClick={closeIssueOverlay} disabled={issueState.type === 'working'}>{isJapanese ? 'キャンセル' : 'Cancel'}</button>
+                  <button className="platform-button is-primary" type="submit" disabled={!issueName.trim() || issueState.type === 'working'}>{isJapanese ? '発行' : 'Issue'}</button>
+                </div>
+              </form>
+            ) : (
+              <div className="developer-overlay-form">
+                <header className="developer-overlay-head">
+                  <div>
+                    <h2 id="developer-overlay-title">{isJapanese ? 'APIキーを発行しました' : 'API key issued'}</h2>
+                    <p>{overlayApi.name}</p>
+                  </div>
+                </header>
+                <div className="developer-overlay-secret">
+                  <div><span>{isJapanese ? 'APIキー名' : 'API key name'}</span><strong>{issueName.trim()}</strong></div>
+                  <div><span>API Key</span><code>{issuedSecret}</code></div>
+                </div>
+                <p className="developer-overlay-warning">{isJapanese ? 'このAPI KeyはこのOVERLAYを閉じると再表示されません。必要な場所へコピーしてください。' : 'This API key will not be shown again after this overlay is closed. Copy it now.'}</p>
+                <div className="developer-overlay-actions">
+                  <button className="platform-button" type="button" onClick={() => void navigator.clipboard.writeText(issuedSecret)}>{text('copy')}</button>
+                  <button className="platform-button is-primary" type="button" onClick={closeIssueOverlay}>{isJapanese ? '閉じる' : 'Close'}</button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </ResponsivePageShell>
   );
 }
