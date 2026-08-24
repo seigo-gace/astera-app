@@ -102,6 +102,11 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   line-height: 1.5;
 }
 
+.developer-mobile-issue,
+.developer-key-scroll-cue {
+  display: none;
+}
+
 .developer-card-section {
   display: grid;
   gap: 12px;
@@ -130,6 +135,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-key-table {
+  position: relative;
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -415,68 +421,94 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 @media (max-width: 700px) {
   .developer-console {
-    gap: 20px;
-    padding-bottom: 28px;
+    gap: 18px;
+    padding-bottom: 26px;
   }
 
   .developer-family,
   .developer-api-list {
-    gap: 10px;
+    gap: 9px;
+  }
+
+  .developer-family-heading {
+    gap: 2px;
+  }
+
+  .developer-family-heading h2 {
+    font-size: 14px;
+  }
+
+  .developer-family-heading p {
+    font-size: 10px;
   }
 
   .developer-api-card {
-    border-radius: 14px;
+    border-radius: 13px;
   }
 
   .developer-api-card-head {
-    padding: 13px 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+    padding: 10px 11px 9px;
   }
 
   .developer-api-title-block {
-    gap: 3px;
+    gap: 2px;
   }
 
   .developer-api-title-block strong {
     font-size: 15px;
+    line-height: 1.25;
   }
 
   .developer-api-title-block > span {
-    font-size: 11px;
+    font-size: 10.5px;
+    line-height: 1.3;
   }
 
   .developer-api-title-block small {
+    font-size: 9.5px;
+    line-height: 1.35;
+  }
+
+  .developer-mobile-issue {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: start;
+    width: auto;
+    min-width: 66px;
+    min-height: 44px;
+    padding: 0 11px;
     font-size: 10px;
+    white-space: nowrap;
   }
 
   .developer-card-section {
-    gap: 10px;
-    padding: 10px 12px 12px;
+    gap: 0;
+    padding: 0 11px 11px;
+    border-top: 0;
   }
 
   .developer-card-section-head {
-    gap: 8px;
-  }
-
-  .developer-card-section-head .platform-button {
-    min-height: 38px;
-    padding-left: 10px;
-    padding-right: 10px;
-    font-size: 10px;
+    display: none;
   }
 
   .developer-key-table {
-    border-radius: 10px;
+    border-radius: 9px;
   }
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1.45fr) minmax(64px, .62fr) minmax(64px, .62fr);
+    grid-template-columns: minmax(0, 1.45fr) minmax(62px, .62fr) minmax(62px, .62fr);
     column-gap: 7px;
   }
 
   .developer-key-table-head {
-    min-height: 38px;
-    padding: 0 9px;
+    min-height: 36px;
+    padding: 0 10px;
     font-size: 9.5px;
   }
 
@@ -486,21 +518,32 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-key-table-body {
-    min-height: 168px;
-    max-height: 168px;
-    overflow-y: scroll;
+    min-height: 154px;
+    max-height: 154px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 5px;
+    scrollbar-width: none;
+  }
+
+  .developer-key-table-body::-webkit-scrollbar {
+    display: none;
   }
 
   .developer-key-row {
-    min-height: 82px;
-    row-gap: 7px;
+    min-height: 73px;
+    row-gap: 6px;
     align-content: center;
-    padding: 8px 9px;
+    padding: 7px 8px 7px 9px;
+  }
+
+  .developer-key-row + .developer-key-row {
+    margin-top: 4px;
   }
 
   .developer-key-cell {
     font-size: 10px;
-    line-height: 1.3;
+    line-height: 1.25;
   }
 
   .developer-key-name {
@@ -511,13 +554,47 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
   .developer-key-actions {
     grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 7px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
   }
 
   .developer-key-actions .platform-button {
+    width: auto;
+    min-width: 68px;
     min-height: 44px;
+    padding-left: 10px;
+    padding-right: 10px;
     font-size: 10px;
+  }
+
+  .developer-key-scroll-cue {
+    position: absolute;
+    top: 40px;
+    right: 3px;
+    bottom: 4px;
+    z-index: 2;
+    display: block;
+    width: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--platform-text, var(--text)) 9%, transparent);
+    pointer-events: none;
+  }
+
+  .developer-key-scroll-cue::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 0;
+    right: 0;
+    height: 42%;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--platform-text, var(--text)) 36%, transparent);
+    opacity: 0;
+  }
+
+  .developer-key-table.has-overflow .developer-key-scroll-cue::after {
+    opacity: 1;
   }
 
   .developer-overlay {
