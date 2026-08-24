@@ -19,6 +19,10 @@ jobs:
     env:
       SQUARE_ACCESS_TOKEN: ${{ secrets.ASTERAKEY }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
       - name: Require Sandbox token
         run: |
           if [ -z "${SQUARE_ACCESS_TOKEN:-}" ]; then
@@ -51,7 +55,14 @@ jobs:
             jq -c '{errors: .errors // []}' /tmp/square-plans.json >&2 || true
             exit 1
           fi
-          jq -r '"PASS subscription plans=" + (((.objects // []) | length) | tostring)' /tmp/square-plans.json
+          jq -r '"PASS subscription plans before bootstrap=" + (((.objects // []) | length) | tostring)' /tmp/square-plans.json
+      - name: Bootstrap AsteraTest monthly and annual subscription variations
+        run: node scripts/square-sandbox-bootstrap.mjs
+      - name: Verify AsteraTest sandbox map
+        run: |
+          test -s audit-results/square-sandbox-billing-map.json
+          jq -e '.environment == "sandbox" and (.variants | length) == 8' audit-results/square-sandbox-billing-map.json >/dev/null
+          jq -r '"PASS AsteraTest plan=" + .subscription_plan_id + " variants=" + ((.variants | length) | tostring)' audit-results/square-sandbox-billing-map.json
 
   annual-billing-gate:
     runs-on: ubuntu-24.04
