@@ -221,10 +221,6 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
   return (
     <ResponsivePageShell route={route} fullWidth>
       <div className="checkout-page">
-        <header className="checkout-local-head">
-          <h1>{text.title}</h1>
-        </header>
-
         {!selectedPlan ? (
           <div className="checkout-connection is-error" role="alert">
             <strong>{text.invalidPlan}</strong>
