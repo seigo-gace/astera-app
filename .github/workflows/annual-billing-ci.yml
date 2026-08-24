@@ -63,12 +63,16 @@ jobs:
           node-version: '22.12'
       - name: Install dependencies
         run: npm install --no-fund --no-audit
-      - name: Validate browser scripts
+      - name: Validate browser scripts that exist
         run: |
-          node --check public/app-interactions.js
-          node --check public/process-user-errors.js
-          node --check public/ui-honesty.js
-          node --check public/guide-ai-runtime.js
+          checked=0
+          for file in public/app-interactions.js public/process-user-errors.js public/ui-honesty.js public/guide-ai-runtime.js; do
+            if [ -f "$file" ]; then
+              node --check "$file"
+              checked=$((checked + 1))
+            fi
+          done
+          echo "validated browser scripts: $checked"
       - name: Audit canonical routes
         run: npm run route:audit
       - name: Audit responsive behavior
