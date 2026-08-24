@@ -65,6 +65,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-api-card {
+  --developer-issue-width: 160px;
+  --developer-list-width: calc(var(--developer-issue-width) * 2);
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -73,20 +75,20 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   background: transparent;
 }
 
-/* PC / Tablet: keep the title block at two issue-button widths and place the issue action immediately after it. */
+/* PC / Tablet: content stays left, issue action stays at the far right. */
 .developer-api-card-head {
   min-width: 0;
   display: grid;
-  grid-template-columns: 320px max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 16px;
   padding: 18px;
 }
 
 .developer-api-title-block {
-  min-width: 320px;
-  width: 320px;
-  max-width: 320px;
+  min-width: 0;
+  width: auto;
+  max-width: none;
   display: grid;
   gap: 4px;
 }
@@ -110,10 +112,10 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 .developer-card-issue {
   grid-column: 2;
-  justify-self: start;
+  justify-self: end;
   margin-left: 0;
   align-self: center;
-  width: auto;
+  width: var(--developer-issue-width);
   min-height: 44px;
   padding: 0 12px;
   white-space: nowrap;
@@ -121,6 +123,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 .developer-card-section {
   display: grid;
+  justify-items: start;
   gap: 12px;
   padding: 15px 18px 18px;
   border-top: 1px solid var(--platform-border, var(--line));
@@ -146,26 +149,27 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-key-table {
-  width: 100%;
+  width: var(--developer-list-width);
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--platform-border, var(--line));
   border-radius: 12px;
 }
 
-/* PC / Tablet share one list geometry: 3 labeled data columns + right action area. */
+/* PC / Tablet: compact list = key / usage / cost / right-side actions. */
 .developer-key-table-head,
 .developer-key-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 120px 100px 168px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 54px 48px 88px;
+  gap: 6px;
   align-items: center;
 }
 
 .developer-key-table-head {
   min-height: 40px;
-  padding: 0 14px;
+  padding: 0 10px;
   background: color-mix(in srgb, var(--platform-text, var(--text)) 3%, transparent);
   color: var(--platform-muted, var(--muted));
   font-size: 10px;
@@ -222,7 +226,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 
 .developer-key-row {
   min-height: 58px;
-  padding: 8px 14px;
+  padding: 8px 10px;
 }
 
 .developer-key-row + .developer-key-row {
@@ -246,18 +250,18 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   min-width: 0;
   grid-column: 4;
   justify-self: end;
-  width: 168px;
+  width: 88px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 4px;
 }
 
 .developer-key-actions .platform-button {
   width: 100%;
   min-width: 0;
-  min-height: 36px;
-  padding: 0 8px;
-  font-size: 10px;
+  min-height: 34px;
+  padding: 0 4px;
+  font-size: 9px;
 }
 
 .developer-overlay {
@@ -418,36 +422,26 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   line-height: 1.55;
 }
 
-/* Tablet follows the same shell boundary as ResponsivePageShell: desktop/tablet begins at 761px. */
+/* Tablet shares the PC compact list and right-aligned issue action. */
 @media (max-width: 900px) and (min-width: 761px) {
   .developer-console {
     gap: 25px;
   }
 
   .developer-api-card-head {
-    grid-template-columns: 320px max-content minmax(0, 1fr);
-    column-gap: 10px;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 14px;
     padding: 16px;
   }
 
   .developer-api-title-block {
-    min-width: 320px;
-    width: 320px;
-    max-width: 320px;
+    min-width: 0;
+    width: auto;
+    max-width: none;
   }
 
   .developer-card-section {
     padding: 13px 16px 16px;
-  }
-
-  .developer-key-table-head,
-  .developer-key-row {
-    grid-template-columns: minmax(0, 1fr) 100px 84px 148px;
-    gap: 10px;
-  }
-
-  .developer-key-actions {
-    width: 148px;
   }
 }
 
@@ -476,6 +470,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-api-card {
+    --developer-issue-width: auto;
+    --developer-list-width: 100%;
     border-radius: 13px;
   }
 
@@ -534,6 +530,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-key-table {
+    width: 100%;
+    max-width: none;
     overflow: visible;
     border-radius: 9px;
   }
