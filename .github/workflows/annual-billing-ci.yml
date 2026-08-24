@@ -1,0 +1,61 @@
+name: Annual Billing CI
+
+on:
+  push:
+    branches:
+      - feature/annual-billing-cycle
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  annual-billing-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Validate browser scripts
+        run: |
+          node --check public/app-interactions.js
+          node --check public/process-user-errors.js
+          node --check public/ui-honesty.js
+          node --check public/guide-ai-runtime.js
+      - name: Audit canonical routes
+        run: npm run route:audit
+      - name: Audit responsive behavior
+        run: npm run responsive:audit
+      - name: Audit device compatibility
+        run: npm run device:audit
+      - name: Audit mobile boundaries
+        run: npm run mobile:audit
+      - name: Audit user journeys
+        run: npm run story:audit:strict
+      - name: Typecheck contracts and Contabo runtime
+        run: npm run contract:check
+      - name: Typecheck and build frontend
+        run: npm run build
+      - name: Build Cloudflare Pages Functions
+        run: npm run cloudflare:functions:build
+      - name: Build Contabo runtime
+        run: npm run contabo:build
+      - name: Test Contabo runtime
+        run: npm run contabo:test
+      - name: Run Contabo runtime smoke
+        run: npm --prefix contabo/app-api run smoke
+      - name: Build non-root Contabo container
+        run: docker build -f contabo/app-api/Dockerfile .
+      - name: Generate Notion source audit report
+        run: npm run notion:audit
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run browser device and user journey matrix
+        run: npm run e2e:devices
+      - name: Enforce final Notion source gate
+        if: always()
+        run: npm run notion:audit:strict
