@@ -447,37 +447,37 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   .developer-api-card-head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
+    align-items: center;
     gap: 8px;
-    padding: 8px 10px 7px;
+    padding: 7px 10px;
   }
 
   .developer-api-title-block {
-    gap: 2px;
+    gap: 1px;
   }
 
   .developer-api-title-block strong {
     font-size: 15px;
-    line-height: 1.22;
+    line-height: 1.2;
   }
 
   .developer-api-title-block > span {
     font-size: 10.5px;
-    line-height: 1.25;
+    line-height: 1.2;
   }
 
   .developer-api-title-block small {
     font-size: 9.5px;
-    line-height: 1.3;
+    line-height: 1.25;
   }
 
   .developer-mobile-issue {
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    align-self: start;
+    align-self: center;
     width: auto;
-    min-width: 82px;
+    min-width: 88px;
     min-height: 44px;
     padding: 0 10px;
     font-size: 10.5px;
@@ -505,40 +505,29 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-key-table-head {
-    grid-template-rows: 22px 22px;
-    min-height: 52px;
-    padding: 4px 9px;
+    min-height: 36px;
+    padding: 0 9px;
     font-size: 9.5px;
     line-height: 1.2;
   }
 
   .developer-key-table-head > span:nth-child(1) {
     grid-column: 1;
-    grid-row: 1;
   }
 
   .developer-key-table-head > span:nth-child(2) {
     grid-column: 2;
-    grid-row: 1;
     text-align: right;
   }
 
   .developer-key-table-head > span:nth-child(3) {
     grid-column: 3;
-    grid-row: 1;
     text-align: right;
   }
 
-  .developer-key-table-head > span:nth-child(4) {
-    grid-column: 2;
-    grid-row: 2;
-    text-align: center;
-  }
-
+  .developer-key-table-head > span:nth-child(4),
   .developer-key-table-head > span:nth-child(5) {
-    grid-column: 3;
-    grid-row: 2;
-    text-align: center;
+    display: none;
   }
 
   .developer-key-table-body {
@@ -547,7 +536,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
     overflow-y: auto;
     padding-right: 1px;
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--platform-text, var(--text)) 38%, transparent) transparent;
+    scrollbar-color: color-mix(in srgb, var(--platform-text, var(--text)) 38%, transparent) color-mix(in srgb, var(--platform-text, var(--text)) 7%, transparent);
   }
 
   .developer-key-table.is-empty .developer-key-table-body {
@@ -561,7 +550,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-key-table-body::-webkit-scrollbar-track {
-    background: transparent;
+    background: color-mix(in srgb, var(--platform-text, var(--text)) 7%, transparent);
   }
 
   .developer-key-table-body::-webkit-scrollbar-thumb {
