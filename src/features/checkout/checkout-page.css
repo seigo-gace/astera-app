@@ -3,7 +3,7 @@
 }
 
 .checkout-page {
-  width: min(100%, 640px);
+  width: min(100%, 560px);
   margin: 0 auto;
   padding: 8px 0 40px;
 }
@@ -12,7 +12,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 650;
@@ -25,7 +25,7 @@
 }
 
 .checkout-heading {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .checkout-heading h1 {
@@ -45,10 +45,10 @@
 
 .checkout-plan-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 18px 18px 14px;
+  gap: 12px;
+  padding: 16px 16px 10px;
 }
 
 .checkout-eyebrow {
@@ -57,9 +57,9 @@
 }
 
 .checkout-plan-row h2 {
-  margin: 3px 0 0;
-  font-size: 21px;
-  line-height: 1.25;
+  margin: 2px 0 0;
+  font-size: 20px;
+  line-height: 1.2;
 }
 
 .checkout-cycle-toggle {
@@ -74,11 +74,11 @@
 .checkout-cycle-toggle button {
   border: 0;
   border-radius: 999px;
-  padding: 7px 13px;
+  padding: 6px 12px;
   color: var(--text-secondary);
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -95,13 +95,13 @@
 }
 
 .checkout-price-block {
-  padding: 0 18px 18px;
+  padding: 2px 16px 16px;
 }
 
 .checkout-price-block > strong {
   display: block;
-  font-size: 30px;
-  line-height: 1.15;
+  font-size: 28px;
+  line-height: 1.1;
   letter-spacing: -0.025em;
 }
 
@@ -110,13 +110,13 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
-  margin-top: 8px;
+  margin-top: 7px;
   color: var(--text-secondary);
   font-size: 12px;
 }
 
 .checkout-saving-badge {
-  padding: 4px 8px;
+  padding: 3px 7px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
   border-radius: 999px;
   color: var(--accent);
@@ -129,13 +129,22 @@
   border-top: 1px solid var(--border-color);
 }
 
+/* The large price block above already communicates the amount due today. */
+.checkout-order-rows > div:first-child {
+  display: none;
+}
+
 .checkout-order-rows > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
+  gap: 14px;
   align-items: baseline;
-  padding: 12px 18px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.checkout-order-rows > div:last-child {
+  border-bottom: 0;
 }
 
 .checkout-order-rows dt {
@@ -152,19 +161,17 @@
   overflow-wrap: anywhere;
 }
 
+/* Monthly credit is already stated in the order rows, so do not repeat the note. */
 .checkout-order-note {
-  margin: 0;
-  padding: 11px 18px 13px;
-  color: var(--text-secondary);
-  font-size: 12px;
+  display: none;
 }
 
 .checkout-agreement {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  margin-top: 16px;
-  padding: 13px 14px;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 12px 13px;
   border: 1px solid var(--border-color);
   border-radius: 11px;
   background: var(--bg-primary);
@@ -177,8 +184,8 @@
 .checkout-agreement > div {
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .checkout-agreement label {
@@ -201,14 +208,14 @@
 .checkout-pay-button {
   width: 100%;
   justify-content: center;
-  margin-top: 14px;
-  min-height: 46px;
+  margin-top: 12px;
+  min-height: 44px;
 }
 
 .checkout-square-note {
-  margin: 8px 0 0;
+  margin: 7px 0 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -217,7 +224,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 12px;
-  margin-top: 14px;
+  margin-top: 12px;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -248,11 +255,12 @@
 
 @media (max-width: 599px) {
   .checkout-page {
-    padding-top: 4px;
+    width: 100%;
+    padding: 4px 0 32px;
   }
 
   .checkout-back {
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
 
   .checkout-heading h1 {
@@ -260,9 +268,10 @@
   }
 
   .checkout-plan-row {
+    align-items: flex-start;
     flex-direction: column;
-    gap: 12px;
-    padding: 16px 16px 12px;
+    gap: 10px;
+    padding: 15px 15px 10px;
   }
 
   .checkout-cycle-toggle {
@@ -274,19 +283,20 @@
   }
 
   .checkout-price-block {
-    padding: 0 16px 16px;
+    padding: 0 15px 15px;
   }
 
   .checkout-price-block > strong {
-    font-size: 27px;
+    font-size: 26px;
   }
 
   .checkout-order-rows > div {
-    padding: 11px 16px;
+    gap: 12px;
+    padding: 10px 15px;
   }
 
-  .checkout-order-note {
-    padding: 10px 16px 12px;
+  .checkout-agreement {
+    padding: 11px 12px;
   }
 }
 
