@@ -8,18 +8,6 @@
   padding: 8px 0 40px;
 }
 
-.checkout-local-head {
-  margin-bottom: 18px;
-}
-
-.checkout-local-head h1 {
-  margin: 0;
-  font-size: clamp(24px, 2vw, 30px);
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
 .checkout-summary,
 .checkout-terms {
   border: 1px solid var(--border-color);
@@ -186,10 +174,6 @@
 @media (max-width: 699px) {
   .checkout-page {
     padding-top: 4px;
-  }
-
-  .checkout-local-head h1 {
-    font-size: 24px;
   }
 
   .checkout-summary,
