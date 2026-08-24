@@ -73,19 +73,20 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   background: transparent;
 }
 
+/* PC / Tablet: title block is roughly two issue-button widths; the issue action sits immediately beside it. */
 .developer-api-card-head {
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 300px) auto 1fr;
+  display: flex;
   align-items: center;
-  column-gap: 16px;
+  gap: 16px;
   padding: 18px;
 }
 
 .developer-api-title-block {
   min-width: 0;
-  width: 100%;
+  width: 300px;
   max-width: 300px;
+  flex: 0 1 300px;
   display: grid;
   gap: 4px;
 }
@@ -108,8 +109,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
 }
 
 .developer-card-issue {
-  grid-column: 2;
-  justify-self: start;
+  flex: 0 0 auto;
+  margin-left: 0;
   align-self: center;
   width: auto;
   min-height: 44px;
@@ -416,8 +417,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   line-height: 1.55;
 }
 
-/* Tablet keeps the same information architecture as PC, with roughly two issue-button widths for the title block. */
-@media (max-width: 900px) and (min-width: 701px) {
+/* Tablet follows the same shell boundary as ResponsivePageShell: desktop/tablet begins at 761px. */
+@media (max-width: 900px) and (min-width: 761px) {
   .developer-console {
     gap: 25px;
   }
@@ -427,8 +428,9 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 
   .developer-api-title-block {
-    width: 100%;
+    width: 300px;
     max-width: 300px;
+    flex-basis: 300px;
   }
 
   .developer-card-section {
@@ -446,8 +448,8 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   }
 }
 
-/* Mobile is a dedicated layout: no nested scrolling. Keys append vertically. */
-@media (max-width: 700px) {
+/* Mobile follows the AppShell mobile boundary: 760px and below. No nested scrolling. */
+@media (max-width: 760px) {
   .developer-console {
     gap: 18px;
     padding-bottom: 26px;
@@ -485,6 +487,7 @@ html[data-developer-dedicated-owner="true"] .platform-page-head,
   .developer-api-title-block {
     width: auto;
     max-width: none;
+    flex: none;
     gap: 1px;
   }
 

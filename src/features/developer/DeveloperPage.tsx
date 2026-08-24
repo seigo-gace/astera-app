@@ -181,7 +181,6 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             type="button"
             onClick={() => openIssueOverlay(api)}
             aria-label={isJapanese ? `${api.name} APIキーを発行` : `Issue ${api.name} API key`}
-            style={{ marginLeft: 'auto', flex: 'none', minHeight: 44, padding: '0 12px', whiteSpace: 'nowrap' }}
           >
             + {isJapanese ? 'APIキー発行' : 'Issue API key'}
           </button>
