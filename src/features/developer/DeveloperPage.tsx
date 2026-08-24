@@ -167,6 +167,7 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   const renderApiCard = (api: ApiDefinition) => {
     const apiKeys = keyItems.filter((item) => matchesApi(api, item));
     const hasOverflow = apiKeys.length > 2;
+    const isEmpty = apiKeys.length === 0;
     return (
       <article className="developer-api-card" key={api.id}>
         <header className="developer-api-card-head">
@@ -175,8 +176,8 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             <span>{isJapanese ? api.ja : api.en}</span>
             <small>{isJapanese ? api.descriptionJa : api.descriptionEn}</small>
           </div>
-          <button className="platform-button is-primary developer-mobile-issue" type="button" onClick={() => openIssueOverlay(api)} aria-label={isJapanese ? `${api.name} APIキーを発行` : `Issue ${api.name} API key`}>
-            + {isJapanese ? '発行' : 'Issue'}
+          <button className="platform-button is-primary developer-mobile-issue" type="button" onClick={() => openIssueOverlay(api)} aria-label={isJapanese ? `${api.name} APIを発行` : `Issue ${api.name} API key`}>
+            + {isJapanese ? 'API発行' : 'Issue API'}
           </button>
         </header>
 
@@ -188,7 +189,7 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             </button>
           </div>
 
-          <div className={`developer-key-table${hasOverflow ? ' has-overflow' : ''}`} aria-label={isJapanese ? `${api.name} APIキー一覧` : `${api.name} API key list`}>
+          <div className={`developer-key-table${hasOverflow ? ' has-overflow' : ''}${isEmpty ? ' is-empty' : ''}`} aria-label={isJapanese ? `${api.name} APIキー一覧` : `${api.name} API key list`}>
             <div className="developer-key-table-head">
               <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
               <span>{isJapanese ? '使用量' : 'Usage'}</span>
@@ -199,7 +200,6 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             <div className="developer-key-table-body" tabIndex={hasOverflow ? 0 : -1}>
               {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
             </div>
-            <span className="developer-key-scroll-cue" aria-hidden="true" />
           </div>
         </section>
       </article>
