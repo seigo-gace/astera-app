@@ -13,6 +13,46 @@ permissions:
   contents: read
 
 jobs:
+  square-sandbox-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SQUARE_ACCESS_TOKEN: ${{ secrets.ASTERAKEY }}
+    steps:
+      - name: Require Sandbox token
+        run: |
+          if [ -z "${SQUARE_ACCESS_TOKEN:-}" ]; then
+            echo "ASTERAKEY secret is empty or unavailable" >&2
+            exit 1
+          fi
+      - name: Verify Square Sandbox locations
+        run: |
+          code=$(curl -sS -o /tmp/square-locations.json -w '%{http_code}' \
+            -H "Square-Version: 2026-08-19" \
+            -H "Authorization: Bearer ${SQUARE_ACCESS_TOKEN}" \
+            -H "Accept: application/json" \
+            https://connect.squareupsandbox.com/v2/locations)
+          if [ "$code" != "200" ]; then
+            echo "Square Sandbox locations probe failed: HTTP $code" >&2
+            jq -c '{errors: .errors // []}' /tmp/square-locations.json >&2 || true
+            exit 1
+          fi
+          jq -e '.locations | type == "array" and length > 0' /tmp/square-locations.json >/dev/null
+          jq -r '.locations[] | "PASS location id=\(.id) status=\(.status // "UNKNOWN") name=\(.name // "")"' /tmp/square-locations.json
+      - name: Verify Square Sandbox subscription catalog access
+        run: |
+          code=$(curl -sS -o /tmp/square-plans.json -w '%{http_code}' \
+            -H "Square-Version: 2026-08-19" \
+            -H "Authorization: Bearer ${SQUARE_ACCESS_TOKEN}" \
+            -H "Accept: application/json" \
+            'https://connect.squareupsandbox.com/v2/catalog/list?types=SUBSCRIPTION_PLAN')
+          if [ "$code" != "200" ]; then
+            echo "Square Sandbox subscription catalog probe failed: HTTP $code" >&2
+            jq -c '{errors: .errors // []}' /tmp/square-plans.json >&2 || true
+            exit 1
+          fi
+          jq -r '"PASS subscription plans=" + (((.objects // []) | length) | tostring)' /tmp/square-plans.json
+
   annual-billing-gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
