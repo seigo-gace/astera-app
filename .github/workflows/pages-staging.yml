@@ -70,3 +70,5 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
+
+# publish-trigger: monthly-annual-toggle
