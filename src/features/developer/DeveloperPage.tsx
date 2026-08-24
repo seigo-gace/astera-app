@@ -154,12 +154,10 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
     return (
       <div className="developer-key-row" key={`${api.id}-${id || index}`}>
         <div className="developer-key-cell developer-key-name">{name}</div>
-        <div className="developer-key-cell">{usage}</div>
-        <div className="developer-key-cell">{cost}</div>
-        <div className="developer-key-cell developer-key-action">
+        <div className="developer-key-cell developer-key-usage">{usage}</div>
+        <div className="developer-key-cell developer-key-cost">{cost}</div>
+        <div className="developer-key-actions">
           <button className="platform-button" type="button" disabled title={text('lifecycleUnavailable')}>{isJapanese ? '更新' : 'Update'}</button>
-        </div>
-        <div className="developer-key-cell developer-key-action">
           <button className="platform-button" type="button" disabled title={text('productionDeleteUnavailable')}>{isJapanese ? '削除' : 'Delete'}</button>
         </div>
       </div>
@@ -168,6 +166,7 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
 
   const renderApiCard = (api: ApiDefinition) => {
     const apiKeys = keyItems.filter((item) => matchesApi(api, item));
+    const placeholderCount = Math.max(0, 3 - apiKeys.length);
     return (
       <article className="developer-api-card" key={api.id}>
         <header className="developer-api-card-head">
@@ -186,18 +185,19 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
             </button>
           </div>
 
-          <div className="developer-key-table" tabIndex={0} aria-label={isJapanese ? `${api.name} APIキー一覧` : `${api.name} API key list`}>
-            <div className="developer-key-table-inner">
-              <div className="developer-key-table-head">
-                <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
-                <span>{isJapanese ? '使用量' : 'Usage'}</span>
-                <span>{isJapanese ? '料金' : 'Cost'}</span>
-                <span>{isJapanese ? '更新' : 'Update'}</span>
-                <span>{isJapanese ? '削除' : 'Delete'}</span>
-              </div>
-              <div className="developer-key-table-body">
-                {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
-              </div>
+          <div className="developer-key-table" aria-label={isJapanese ? `${api.name} APIキー一覧` : `${api.name} API key list`}>
+            <div className="developer-key-table-head">
+              <span>{isJapanese ? 'APIキー名' : 'API key name'}</span>
+              <span>{isJapanese ? '使用量' : 'Usage'}</span>
+              <span>{isJapanese ? '料金' : 'Cost'}</span>
+              <span>{isJapanese ? '更新' : 'Update'}</span>
+              <span>{isJapanese ? '削除' : 'Delete'}</span>
+            </div>
+            <div className="developer-key-table-body" tabIndex={apiKeys.length > 3 ? 0 : -1}>
+              {keys.status === 'ready' && apiKeys.map((item, index) => renderKeyRow(item, api, index))}
+              {Array.from({ length: placeholderCount }, (_, index) => (
+                <div className="developer-key-placeholder-row" key={`${api.id}-placeholder-${index}`} aria-hidden="true" />
+              ))}
             </div>
           </div>
         </section>
