@@ -11,7 +11,7 @@
  * - Tablet must keep its own layout even on coarse-pointer devices; the global
  *   44px touch min-width must not force these desktop/tablet lifecycle controls wider.
  * - When there is no issued key yet, a disabled visual preview is shown so placement can be verified.
- * - TEMPORARY: vertical width-guide lines are shown for Master width inspection.
+ * - TEMPORARY: full-height vertical width-guide lines are shown for Master width inspection.
  * - Mobile (<= 760px) remains owned by developer-page.css and is not changed by the layout correction.
  */
 
@@ -31,9 +31,44 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
   }
 
   .developer-key-table {
-    --developer-width-guide: color-mix(in srgb, var(--platform-text, var(--text)) 28%, transparent);
+    --developer-width-guide: color-mix(in srgb, var(--platform-text, var(--text)) 34%, transparent);
+    --developer-guide-1: calc(50% - 108px);
+    --developer-guide-2: calc(75% - 157px);
+    --developer-guide-3: calc(100% - 206px);
+    --developer-guide-4: calc(100% - 102px);
+    --developer-guide-5: calc(100% - 58px);
+    position: relative;
     width: 100% !important;
     max-width: none !important;
+  }
+
+  /*
+   * TEMPORARY width guides.
+   * These are real full-height vertical guides across the entire table,
+   * not short borders attached to header text or individual row cells.
+   * They consume no layout width and do not change the grid tracks.
+   */
+  .developer-key-table::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    border-radius: inherit;
+    background-image:
+      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
+      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
+      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
+      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
+      linear-gradient(var(--developer-width-guide), var(--developer-width-guide));
+    background-size: 1px 100%, 1px 100%, 1px 100%, 1px 100%, 1px 100%;
+    background-position:
+      var(--developer-guide-1) 0,
+      var(--developer-guide-2) 0,
+      var(--developer-guide-3) 0,
+      var(--developer-guide-4) 0,
+      var(--developer-guide-5) 0;
+    background-repeat: no-repeat;
   }
 
   .developer-key-table-head,
@@ -44,16 +79,6 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
   .developer-key-table-head {
     padding: 0 14px !important;
-  }
-
-  /* TEMPORARY width guides: no layout width is consumed. */
-  .developer-key-table-head > span:nth-child(1),
-  .developer-key-table-head > span:nth-child(2),
-  .developer-key-table-head > span:nth-child(3),
-  .developer-key-name,
-  .developer-key-usage,
-  .developer-key-cost {
-    box-shadow: inset -1px 0 0 var(--developer-width-guide) !important;
   }
 
   .developer-key-table-body,
@@ -70,7 +95,6 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     grid-column: 5 !important;
     width: 88px !important;
     gap: 8px !important;
-    box-shadow: inset 1px 0 0 var(--developer-width-guide) !important;
   }
 
   .developer-key-actions .platform-button {
@@ -78,10 +102,6 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     min-height: 36px !important;
     padding: 0 4px !important;
     font-size: 10px !important;
-  }
-
-  .developer-key-actions .platform-button + .platform-button {
-    box-shadow: inset 1px 0 0 var(--developer-width-guide) !important;
   }
 
   /*
@@ -127,6 +147,14 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 }
 
 @media (max-width: 900px) and (min-width: 761px) {
+  .developer-key-table {
+    --developer-guide-1: calc(50% - 94px);
+    --developer-guide-2: calc(75% - 138px);
+    --developer-guide-3: calc(100% - 182px);
+    --developer-guide-4: calc(100% - 92px);
+    --developer-guide-5: calc(100% - 53px);
+  }
+
   .developer-key-table-head,
   .developer-key-row {
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 70px 78px !important;
