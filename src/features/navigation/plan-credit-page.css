@@ -46,6 +46,14 @@
   font-weight: 700;
 }
 
+.plan-credit-section-description {
+  margin: -6px 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
 .plan-credit-section-head {
   display: flex;
   align-items: center;
