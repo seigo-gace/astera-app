@@ -4,6 +4,8 @@
  * - Desktop/Tablet only (>= 761px).
  * - The key list uses the full inner width of its API card.
  * - The list body height equals two API-issue controls (44px x 2 = 88px).
+ * - API key name / Usage / Cost scale across the available data area at 2:1:1,
+ *   preserving the original relative balance instead of fixed narrow Usage/Cost columns.
  * - Update/Delete remain at the far right and use half of their prior width;
  *   when there is no issued key yet, a disabled visual preview is shown so placement can be verified.
  * - Mobile (<= 760px) remains owned by developer-page.css and is untouched.
@@ -20,7 +22,7 @@
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1fr) 120px 100px 88px !important;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 88px !important;
     gap: 12px !important;
   }
 
@@ -94,7 +96,7 @@
 @media (max-width: 900px) and (min-width: 761px) {
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1fr) 100px 84px 78px !important;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 78px !important;
     gap: 10px !important;
   }
 
