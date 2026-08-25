@@ -4,8 +4,8 @@
  * - Desktop/Tablet only (>= 761px).
  * - The key list uses the full inner width of its API card.
  * - The list body height equals two API-issue controls (44px x 2 = 88px).
- * - Update/Delete remain at the far right; when there is no issued key yet,
- *   a disabled visual preview is shown so placement can be verified.
+ * - Update/Delete remain at the far right and use half of their prior width;
+ *   when there is no issued key yet, a disabled visual preview is shown so placement can be verified.
  * - Mobile (<= 760px) remains owned by developer-page.css and is untouched.
  */
 @media (min-width: 761px) {
@@ -20,7 +20,7 @@
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1fr) 120px 100px 168px !important;
+    grid-template-columns: minmax(0, 1fr) 120px 100px 88px !important;
     gap: 12px !important;
   }
 
@@ -39,13 +39,13 @@
   }
 
   .developer-key-actions {
-    width: 168px !important;
+    width: 88px !important;
     gap: 8px !important;
   }
 
   .developer-key-actions .platform-button {
     min-height: 36px !important;
-    padding: 0 8px !important;
+    padding: 0 4px !important;
     font-size: 10px !important;
   }
 
@@ -62,7 +62,7 @@
   .developer-key-table.is-empty .developer-key-table-body::after {
     position: absolute;
     top: 50%;
-    width: 80px;
+    width: 40px;
     min-height: 36px;
     transform: translateY(-50%);
     display: grid;
@@ -82,7 +82,7 @@
 
   .developer-key-table.is-empty .developer-key-table-body::before {
     content: "更新";
-    right: 102px;
+    right: 62px;
   }
 
   .developer-key-table.is-empty .developer-key-table-body::after {
@@ -94,21 +94,21 @@
 @media (max-width: 900px) and (min-width: 761px) {
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 1fr) 100px 84px 148px !important;
+    grid-template-columns: minmax(0, 1fr) 100px 84px 78px !important;
     gap: 10px !important;
   }
 
   .developer-key-actions {
-    width: 148px !important;
+    width: 78px !important;
   }
 
   .developer-key-table.is-empty .developer-key-table-body::before,
   .developer-key-table.is-empty .developer-key-table-body::after {
-    width: 70px;
+    width: 35px;
   }
 
   .developer-key-table.is-empty .developer-key-table-body::before {
-    right: 94px;
+    right: 59px;
   }
 
   .developer-key-table.is-empty .developer-key-table-body::after {
