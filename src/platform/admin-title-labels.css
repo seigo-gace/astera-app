@@ -1,0 +1,209 @@
+/* Master decision 2026-08-25: compact English pill titles for management/settings pages. */
+html[data-route-path="/app/about"]{--admin-page-label:"ABOUT ASTERA"}
+html[data-route-path="/app/settings/options"]{--admin-page-label:"OPTIONS"}
+html[data-route-path="/app/plan-credit"]{--admin-page-label:"PLAN / CREDIT"}
+html[data-route-path="/app/developer"]{--admin-page-label:"DEVELOPER MODE"}
+html[data-route-path="/app/history"]{--admin-page-label:"HISTORY"}
+html[data-route-path="/app/settings"]{--admin-page-label:"SETTINGS"}
+html[data-route-path="/app/settings/language"]{--admin-page-label:"LANGUAGE"}
+html[data-route-path="/app/settings/templates"]{--admin-page-label:"TEMPLATES"}
+html[data-route-path="/app/settings/storage-destinations"]{--admin-page-label:"STORAGE CONNECTIONS"}
+html[data-route-path="/app/settings/astera-storage"]{--admin-page-label:"ASTERA STORAGE"}
+html[data-route-path="/app/settings/data-privacy"]{--admin-page-label:"DATA / PRIVACY"}
+html[data-route-path="/app/settings/notifications"]{--admin-page-label:"NOTIFICATIONS"}
+html[data-route-path="/app/settings/legal-support"]{--admin-page-label:"LEGAL / SUPPORT"}
+
+html:is(
+  [data-route-path="/app/about"],
+  [data-route-path="/app/settings/options"],
+  [data-route-path="/app/plan-credit"],
+  [data-route-path="/app/developer"],
+  [data-route-path="/app/history"],
+  [data-route-path="/app/settings"],
+  [data-route-path="/app/settings/language"],
+  [data-route-path="/app/settings/templates"],
+  [data-route-path="/app/settings/storage-destinations"],
+  [data-route-path="/app/settings/astera-storage"],
+  [data-route-path="/app/settings/data-privacy"],
+  [data-route-path="/app/settings/notifications"],
+  [data-route-path="/app/settings/legal-support"]
+) .platform-page-head{
+  max-width:none!important;
+  margin:0 0 22px!important;
+  align-items:flex-start!important;
+}
+
+html:is(
+  [data-route-path="/app/about"],
+  [data-route-path="/app/settings/options"],
+  [data-route-path="/app/plan-credit"],
+  [data-route-path="/app/developer"],
+  [data-route-path="/app/history"],
+  [data-route-path="/app/settings"],
+  [data-route-path="/app/settings/language"],
+  [data-route-path="/app/settings/templates"],
+  [data-route-path="/app/settings/storage-destinations"],
+  [data-route-path="/app/settings/astera-storage"],
+  [data-route-path="/app/settings/data-privacy"],
+  [data-route-path="/app/settings/notifications"],
+  [data-route-path="/app/settings/legal-support"]
+) .platform-page-head>div:first-child{
+  min-width:0;
+  display:grid;
+  justify-items:start;
+  gap:10px;
+}
+
+html:is(
+  [data-route-path="/app/about"],
+  [data-route-path="/app/settings/options"],
+  [data-route-path="/app/plan-credit"],
+  [data-route-path="/app/developer"],
+  [data-route-path="/app/history"],
+  [data-route-path="/app/settings"],
+  [data-route-path="/app/settings/language"],
+  [data-route-path="/app/settings/templates"],
+  [data-route-path="/app/settings/storage-destinations"],
+  [data-route-path="/app/settings/astera-storage"],
+  [data-route-path="/app/settings/data-privacy"],
+  [data-route-path="/app/settings/notifications"],
+  [data-route-path="/app/settings/legal-support"]
+) .platform-page-head .platform-eyebrow{
+  display:none!important;
+}
+
+html:is(
+  [data-route-path="/app/about"],
+  [data-route-path="/app/settings/options"],
+  [data-route-path="/app/plan-credit"],
+  [data-route-path="/app/developer"],
+  [data-route-path="/app/history"],
+  [data-route-path="/app/settings"],
+  [data-route-path="/app/settings/language"],
+  [data-route-path="/app/settings/templates"],
+  [data-route-path="/app/settings/storage-destinations"],
+  [data-route-path="/app/settings/astera-storage"],
+  [data-route-path="/app/settings/data-privacy"],
+  [data-route-path="/app/settings/notifications"],
+  [data-route-path="/app/settings/legal-support"]
+) .platform-page-head h1{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:max-content!important;
+  max-width:100%!important;
+  min-height:32px!important;
+  margin:0!important;
+  padding:0 13px!important;
+  border:1px solid var(--platform-border)!important;
+  border-radius:999px!important;
+  background:var(--platform-bg)!important;
+  color:var(--platform-text)!important;
+  box-shadow:none!important;
+  font-size:0!important;
+  line-height:1!important;
+  letter-spacing:0!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+}
+
+html:is(
+  [data-route-path="/app/about"],
+  [data-route-path="/app/settings/options"],
+  [data-route-path="/app/plan-credit"],
+  [data-route-path="/app/developer"],
+  [data-route-path="/app/history"],
+  [data-route-path="/app/settings"],
+  [data-route-path="/app/settings/language"],
+  [data-route-path="/app/settings/templates"],
+  [data-route-path="/app/settings/storage-destinations"],
+  [data-route-path="/app/settings/astera-storage"],
+  [data-route-path="/app/settings/data-privacy"],
+  [data-route-path="/app/settings/notifications"],
+  [data-route-path="/app/settings/legal-support"]
+) .platform-page-head h1::after{
+  content:var(--admin-page-label);
+  font-size:12px!important;
+  font-weight:600!important;
+  line-height:1!important;
+  letter-spacing:.16em!important;
+  text-transform:uppercase!important;
+}
+
+html:is(
+  [data-route-path="/app/about"],
+  [data-route-path="/app/settings/options"],
+  [data-route-path="/app/plan-credit"],
+  [data-route-path="/app/developer"],
+  [data-route-path="/app/history"],
+  [data-route-path="/app/settings"],
+  [data-route-path="/app/settings/language"],
+  [data-route-path="/app/settings/templates"],
+  [data-route-path="/app/settings/storage-destinations"],
+  [data-route-path="/app/settings/astera-storage"],
+  [data-route-path="/app/settings/data-privacy"],
+  [data-route-path="/app/settings/notifications"],
+  [data-route-path="/app/settings/legal-support"]
+) .platform-page-head p{
+  margin:0!important;
+}
+
+html[data-route-path="/app/plan-credit"] .plan-credit-local-head{
+  display:none!important;
+}
+
+@media(max-width:760px){
+  html:is(
+    [data-route-path="/app/about"],
+    [data-route-path="/app/settings/options"],
+    [data-route-path="/app/plan-credit"],
+    [data-route-path="/app/developer"],
+    [data-route-path="/app/history"],
+    [data-route-path="/app/settings"],
+    [data-route-path="/app/settings/language"],
+    [data-route-path="/app/settings/templates"],
+    [data-route-path="/app/settings/storage-destinations"],
+    [data-route-path="/app/settings/astera-storage"],
+    [data-route-path="/app/settings/data-privacy"],
+    [data-route-path="/app/settings/notifications"],
+    [data-route-path="/app/settings/legal-support"]
+  ) .platform-page-head{
+    margin-bottom:18px!important;
+  }
+  html:is(
+    [data-route-path="/app/about"],
+    [data-route-path="/app/settings/options"],
+    [data-route-path="/app/plan-credit"],
+    [data-route-path="/app/developer"],
+    [data-route-path="/app/history"],
+    [data-route-path="/app/settings"],
+    [data-route-path="/app/settings/language"],
+    [data-route-path="/app/settings/templates"],
+    [data-route-path="/app/settings/storage-destinations"],
+    [data-route-path="/app/settings/astera-storage"],
+    [data-route-path="/app/settings/data-privacy"],
+    [data-route-path="/app/settings/notifications"],
+    [data-route-path="/app/settings/legal-support"]
+  ) .platform-page-head h1{
+    min-height:30px!important;
+    padding-inline:11px!important;
+  }
+  html:is(
+    [data-route-path="/app/about"],
+    [data-route-path="/app/settings/options"],
+    [data-route-path="/app/plan-credit"],
+    [data-route-path="/app/developer"],
+    [data-route-path="/app/history"],
+    [data-route-path="/app/settings"],
+    [data-route-path="/app/settings/language"],
+    [data-route-path="/app/settings/templates"],
+    [data-route-path="/app/settings/storage-destinations"],
+    [data-route-path="/app/settings/astera-storage"],
+    [data-route-path="/app/settings/data-privacy"],
+    [data-route-path="/app/settings/notifications"],
+    [data-route-path="/app/settings/legal-support"]
+  ) .platform-page-head h1::after{
+    font-size:11px!important;
+    letter-spacing:.14em!important;
+  }
+}
