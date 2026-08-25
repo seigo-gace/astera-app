@@ -130,3 +130,36 @@ html[data-route-path="/app/plan-credit"] .plan-credit-local-head{
     margin-bottom:20px!important;
   }
 }
+
+/* Master decision 2026-08-26: compact PLAN / CREDIT top spacing and match the Plan section heading to the same pill exterior. */
+html[data-route-path="/app/plan-credit"] .platform-page-head{
+  margin-bottom:10px!important;
+}
+
+html[data-route-path="/app/plan-credit"] .plan-credit-page{
+  padding-top:0!important;
+}
+
+html[data-route-path="/app/plan-credit"] .plan-credit-section-head h2{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:max-content!important;
+  max-width:100%!important;
+  height:32px!important;
+  min-height:32px!important;
+  margin:0!important;
+  padding:0 14px!important;
+  box-sizing:border-box!important;
+  border:1px solid var(--border-color)!important;
+  border-radius:999px!important;
+  background:var(--bg-primary)!important;
+  color:var(--text-primary)!important;
+  box-shadow:none!important;
+  font-family:inherit!important;
+  font-size:12px!important;
+  font-weight:500!important;
+  line-height:30px!important;
+  letter-spacing:.08em!important;
+  white-space:nowrap!important;
+}
