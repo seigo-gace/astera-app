@@ -7,6 +7,7 @@
  * - API key name / Usage / Cost scale across the available data area at 2:1:1.
  * - There is NO dedicated spacer track between Usage Cost and Update/Delete.
  * - Update/Delete remain at the far right and use half of their prior width.
+ * - Update/Delete are inset inside their own action area so they do not touch the Usage Cost boundary guide.
  * - Tablet must keep its own layout even on coarse-pointer devices; the global
  *   44px touch min-width must not force these desktop/tablet lifecycle controls wider.
  * - When there is no issued key yet, a disabled visual preview is shown so placement can be verified.
@@ -96,6 +97,7 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     grid-column: 4 !important;
     width: 88px !important;
     gap: 8px !important;
+    transform: translateX(8px);
   }
 
   .developer-key-actions .platform-button {
@@ -138,12 +140,12 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
   .developer-key-table.is-empty .developer-key-table-body::before {
     content: "更新";
-    right: 62px;
+    right: 54px;
   }
 
   .developer-key-table.is-empty .developer-key-table-body::after {
     content: "削除";
-    right: 14px;
+    right: 6px;
   }
 }
 
@@ -171,11 +173,11 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
   }
 
   .developer-key-table.is-empty .developer-key-table-body::before {
-    right: 59px;
+    right: 51px;
   }
 
   .developer-key-table.is-empty .developer-key-table-body::after {
-    right: 16px;
+    right: 8px;
   }
 }
 
