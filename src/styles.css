@@ -55,7 +55,7 @@
   transition: width .45s ease, background-color .25s ease;
 }
 
-.platform-credit-meter > .platform-credit-number {
+.platform-credit-meter > .platform-credit-balance-value {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -125,18 +125,6 @@
   box-shadow: none !important;
 }
 
-.platform-credit-meter.is-error > .platform-credit-number {
-  font-size: 0;
-}
-
-.platform-credit-meter.is-error > .platform-credit-number::after {
-  content: '0 ©';
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .02em;
-  color: var(--text-primary);
-}
-
 .platform-credit-meter.is-loading {
   opacity: .72;
 }
@@ -155,12 +143,8 @@
     height: 40px;
   }
 
-  .platform-credit-meter > .platform-credit-number {
+  .platform-credit-meter > .platform-credit-balance-value {
     max-width: calc(100% - 28px);
-    font-size: 12px;
-  }
-
-  .platform-credit-meter.is-error > .platform-credit-number::after {
     font-size: 12px;
   }
 }
