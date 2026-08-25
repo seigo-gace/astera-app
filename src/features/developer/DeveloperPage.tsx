@@ -261,10 +261,10 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
         <div
           className="developer-total-summary"
           style={{ display: 'grid', justifySelf: 'end', justifyItems: 'end', gap: '2px', textAlign: 'right' }}
-          aria-label={isJapanese ? '合計使用量と合計使用料金' : 'Total usage and total usage cost'}
+          aria-label={isJapanese ? '合計使用量と合計使用料' : 'Total usage and total usage cost'}
         >
           <p style={{ margin: 0, whiteSpace: 'nowrap' }}>{isJapanese ? '合計使用量：' : 'Total usage: '}<strong>{totalUsageText}</strong></p>
-          <p style={{ margin: 0, whiteSpace: 'nowrap' }}>{isJapanese ? '合計使用料金：' : 'Total usage cost: '}<strong>{totalCostText}</strong></p>
+          <p style={{ margin: 0, whiteSpace: 'nowrap' }}>{isJapanese ? '合計使用料：' : 'Total usage cost: '}<strong>{totalCostText}</strong></p>
         </div>
 
         <section className="developer-family" aria-labelledby="developer-family-astera">
