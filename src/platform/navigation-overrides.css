@@ -438,3 +438,21 @@ html .platform-mobile-account-actions > .platform-main-evidence-toggle > button:
     font-size:10px!important;
   }
 }
+
+/* Result-only file controls. Keep AI available on every authenticated page. */
+html .platform-mobile-account-actions > .platform-header-ai{
+  order:1!important;
+  flex:0 0 40px!important;
+}
+html .platform-mobile-account-actions > .platform-header-organize{
+  order:2!important;
+}
+html .platform-mobile-account-actions > .platform-main-evidence-toggle{
+  order:3!important;
+}
+html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled){
+  display:none!important;
+}
+html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled) + .platform-header-organize{
+  display:none!important;
+}
