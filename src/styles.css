@@ -42,7 +42,7 @@
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
   border-radius: 999px;
-  background: transparent;
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent) !important;
   box-shadow: none !important;
   overflow: hidden;
 }
@@ -92,7 +92,7 @@
 .platform-credit-meter.is-depleted > .platform-credit-track {
   width: auto !important;
   border: 1px solid color-mix(in srgb, var(--text-primary) 24%, transparent) !important;
-  background: color-mix(in srgb, var(--bg-tertiary) 86%, transparent) !important;
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent) !important;
   box-shadow: none !important;
 }
 
@@ -115,7 +115,7 @@
 .platform-credit-meter.is-error > .platform-credit-track {
   width: auto !important;
   border: 1px solid color-mix(in srgb, var(--text-primary) 24%, transparent) !important;
-  background: color-mix(in srgb, var(--bg-tertiary) 86%, transparent) !important;
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent) !important;
   box-shadow: none !important;
 }
 
