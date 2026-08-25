@@ -212,14 +212,16 @@ function PlanGrid({
   );
 }
 
-function SimpleGrid({ title, items, defaultCreditLabel }: {
+function SimpleGrid({ title, items, defaultCreditLabel, description }: {
   title: string;
   items: readonly PlanCreditCard[];
   defaultCreditLabel?: string;
+  description?: string;
 }) {
   return (
     <section className="plan-credit-section">
       <h2>{title}</h2>
+      {description && <p className="plan-credit-section-description">{description}</p>}
       <div className="plan-credit-grid">
         {items.map((item) => (
           <article className={`plan-credit-card${item.price ? ' is-credit' : ' is-storage'}`} key={item.name}>
@@ -302,7 +304,11 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           items={pageText.credits}
           defaultCreditLabel={pageText.grantedCredit}
         />
-        <SimpleGrid title={pageText.storageSectionTitle} items={pageText.storage} />
+        <SimpleGrid
+          title={pageText.storageSectionTitle}
+          items={pageText.storage}
+          description={pageText.storageSectionDescription}
+        />
       </div>
     </ResponsivePageShell>
   );
