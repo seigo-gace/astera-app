@@ -112,7 +112,7 @@
 }
 
 .plan-credit-card.is-credit {
-  min-height: 150px;
+  min-height: 0;
 }
 
 .plan-credit-card.is-storage {
@@ -222,6 +222,11 @@
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: -0.02em;
+}
+
+.plan-credit-card.is-credit .plan-credit-price {
+  margin-top: 6px;
+  text-align: left;
 }
 
 .plan-credit-annual-meta {
