@@ -456,3 +456,85 @@ html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> but
 html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled) + .platform-header-organize{
   display:none!important;
 }
+
+/* Master decision 2026-08-25: keep the credit gauge clear of header controls at every width. */
+@media (min-width:761px){
+  html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
+    left:calc(var(--safe-left) + var(--ex-sidebar) + 16px)!important;
+    right:calc(var(--safe-right) + 224px)!important;
+    width:min(340px,calc(100vw - var(--safe-left) - var(--safe-right) - var(--ex-sidebar) - 256px))!important;
+    max-width:340px!important;
+    margin-inline:auto!important;
+    transform:none!important;
+  }
+  html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
+    left:calc(var(--safe-left) + var(--ex-compact) + 16px)!important;
+    width:min(340px,calc(100vw - var(--safe-left) - var(--safe-right) - var(--ex-compact) - 256px))!important;
+  }
+}
+
+@media (max-width:760px){
+  /* Non-page screens only have menu + AI, so the gauge owns the free middle strip. */
+  html .platform-credit-layer,
+  html .platform-shell.exterior-sidebar-collapsed .platform-credit-layer{
+    left:calc(var(--safe-left) + 58px)!important;
+    right:calc(var(--safe-right) + 58px)!important;
+    width:auto!important;
+    max-width:320px!important;
+    margin-inline:auto!important;
+    transform:none!important;
+  }
+
+  /* Page / Result screens have three right-side controls; put the gauge on its own row. */
+  html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)),
+  html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)){
+    padding-top:calc(118px + var(--safe-top))!important;
+  }
+  html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer,
+  html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
+    top:calc(var(--safe-top) + 65px)!important;
+    left:calc(var(--safe-left) + 12px)!important;
+    right:calc(var(--safe-right) + 12px)!important;
+    width:auto!important;
+    max-width:360px!important;
+    margin-inline:auto!important;
+    transform:none!important;
+  }
+}
+
+@media (max-width:360px){
+  html .platform-mobile-header{
+    grid-template-columns:44px minmax(0,1fr) auto!important;
+    padding-inline:6px!important;
+  }
+  html .platform-mobile-account-actions{
+    gap:0!important;
+  }
+  html .platform-mobile-account-actions > .platform-header-organize{
+    width:36px!important;
+    height:36px!important;
+    min-width:36px!important;
+    min-height:36px!important;
+    padding:6px!important;
+  }
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle{
+    min-width:88px!important;
+    margin:0!important;
+  }
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle > a,
+  html .platform-mobile-account-actions > .platform-main-evidence-toggle > button{
+    min-width:40px!important;
+    padding-inline:4px!important;
+  }
+}
+
+@media (orientation:landscape) and (max-height:560px) and (max-width:760px){
+  html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)),
+  html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)){
+    padding-top:calc(108px + var(--safe-top))!important;
+  }
+  html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer,
+  html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
+    top:calc(var(--safe-top) + 55px)!important;
+  }
+}
