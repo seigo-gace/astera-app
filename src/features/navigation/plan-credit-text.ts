@@ -22,10 +22,14 @@ export const PLAN_CREDIT_TEXT = {
         annualPrice: '¥0 / 年',
         creditValue: '初回 20,000 © / 以後 10,000 ©',
         basicFeature: {
-          label: '用途選択',
+          label: '基本機能',
           columns: [
             {
+              title: '用途選択',
               items: ['├レビュー', '├比較', '├検証', '├改善', '├調査', '├計画', '└検討'],
+            },
+            {
+              items: ['目的整理', '前提・不足確認', '事実確認', 'リスク確認', '反対視点の確認', '選択肢の比較', '推奨案の整理'],
             },
           ],
         },
@@ -138,10 +142,14 @@ export const PLAN_CREDIT_TEXT = {
         annualPrice: '¥0 / year',
         creditValue: '20,000 © first month / 10,000 © after',
         basicFeature: {
-          label: 'Use cases',
+          label: 'Core features',
           columns: [
             {
+              title: 'Use cases',
               items: ['├Review', '├Compare', '├Verify', '├Improve', '├Research', '├Plan', '└Consider'],
+            },
+            {
+              items: ['Clarify purpose', 'Check missing context', 'Check facts', 'Check risks', 'Check opposing views', 'Compare options', 'Organize recommendations'],
             },
           ],
         },
