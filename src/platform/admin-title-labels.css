@@ -1,4 +1,8 @@
-/* Master decision 2026-08-25: compact English pill titles for management/settings pages. */
+/*
+ * Master decision 2026-08-25
+ * Management/settings pages use the compact English pill title shown in the reference image.
+ * The previous eyebrow / large H1 / description head is intentionally removed on these routes.
+ */
 html[data-route-path="/app/about"]{--admin-page-label:"ABOUT ASTERA"}
 html[data-route-path="/app/settings/options"]{--admin-page-label:"OPTIONS"}
 html[data-route-path="/app/plan-credit"]{--admin-page-label:"PLAN / CREDIT"}
@@ -28,11 +32,16 @@ html:is(
   [data-route-path="/app/settings/notifications"],
   [data-route-path="/app/settings/legal-support"]
 ) .platform-page-head{
+  display:block!important;
+  width:100%!important;
   max-width:none!important;
-  margin:0 0 22px!important;
-  align-items:flex-start!important;
+  min-height:32px!important;
+  margin:0 0 24px!important;
+  padding:0!important;
+  text-align:left!important;
 }
 
+/* Remove the old page-head presentation completely on these pages. */
 html:is(
   [data-route-path="/app/about"],
   [data-route-path="/app/settings/options"],
@@ -47,31 +56,11 @@ html:is(
   [data-route-path="/app/settings/data-privacy"],
   [data-route-path="/app/settings/notifications"],
   [data-route-path="/app/settings/legal-support"]
-) .platform-page-head>div:first-child{
-  min-width:0;
-  display:grid;
-  justify-items:start;
-  gap:10px;
-}
-
-html:is(
-  [data-route-path="/app/about"],
-  [data-route-path="/app/settings/options"],
-  [data-route-path="/app/plan-credit"],
-  [data-route-path="/app/developer"],
-  [data-route-path="/app/history"],
-  [data-route-path="/app/settings"],
-  [data-route-path="/app/settings/language"],
-  [data-route-path="/app/settings/templates"],
-  [data-route-path="/app/settings/storage-destinations"],
-  [data-route-path="/app/settings/astera-storage"],
-  [data-route-path="/app/settings/data-privacy"],
-  [data-route-path="/app/settings/notifications"],
-  [data-route-path="/app/settings/legal-support"]
-) .platform-page-head .platform-eyebrow{
+) .platform-page-head > *{
   display:none!important;
 }
 
+/* Reference-image pill: thin neutral outline, system background, compact English label. */
 html:is(
   [data-route-path="/app/about"],
   [data-route-path="/app/settings/options"],
@@ -86,68 +75,33 @@ html:is(
   [data-route-path="/app/settings/data-privacy"],
   [data-route-path="/app/settings/notifications"],
   [data-route-path="/app/settings/legal-support"]
-) .platform-page-head h1{
+) .platform-page-head::before{
+  content:var(--admin-page-label);
   display:inline-flex!important;
   align-items:center!important;
   justify-content:center!important;
   width:max-content!important;
   max-width:100%!important;
+  height:32px!important;
   min-height:32px!important;
-  margin:0!important;
-  padding:0 13px!important;
-  border:1px solid var(--platform-border)!important;
+  padding:0 14px!important;
+  box-sizing:border-box!important;
+  border:1px solid var(--border-color)!important;
   border-radius:999px!important;
-  background:var(--platform-bg)!important;
-  color:var(--platform-text)!important;
+  background:var(--bg-primary)!important;
+  color:var(--text-primary)!important;
   box-shadow:none!important;
-  font-size:0!important;
-  line-height:1!important;
-  letter-spacing:0!important;
-  white-space:nowrap!important;
-  overflow:hidden!important;
-}
-
-html:is(
-  [data-route-path="/app/about"],
-  [data-route-path="/app/settings/options"],
-  [data-route-path="/app/plan-credit"],
-  [data-route-path="/app/developer"],
-  [data-route-path="/app/history"],
-  [data-route-path="/app/settings"],
-  [data-route-path="/app/settings/language"],
-  [data-route-path="/app/settings/templates"],
-  [data-route-path="/app/settings/storage-destinations"],
-  [data-route-path="/app/settings/astera-storage"],
-  [data-route-path="/app/settings/data-privacy"],
-  [data-route-path="/app/settings/notifications"],
-  [data-route-path="/app/settings/legal-support"]
-) .platform-page-head h1::after{
-  content:var(--admin-page-label);
+  font-family:inherit!important;
   font-size:12px!important;
-  font-weight:600!important;
-  line-height:1!important;
+  font-weight:500!important;
+  line-height:30px!important;
   letter-spacing:.16em!important;
   text-transform:uppercase!important;
+  white-space:nowrap!important;
+  vertical-align:top!important;
 }
 
-html:is(
-  [data-route-path="/app/about"],
-  [data-route-path="/app/settings/options"],
-  [data-route-path="/app/plan-credit"],
-  [data-route-path="/app/developer"],
-  [data-route-path="/app/history"],
-  [data-route-path="/app/settings"],
-  [data-route-path="/app/settings/language"],
-  [data-route-path="/app/settings/templates"],
-  [data-route-path="/app/settings/storage-destinations"],
-  [data-route-path="/app/settings/astera-storage"],
-  [data-route-path="/app/settings/data-privacy"],
-  [data-route-path="/app/settings/notifications"],
-  [data-route-path="/app/settings/legal-support"]
-) .platform-page-head p{
-  margin:0!important;
-}
-
+/* PLAN / CREDIT had an additional local H1; it is obsolete once the common pill title is used. */
 html[data-route-path="/app/plan-credit"] .plan-credit-local-head{
   display:none!important;
 }
@@ -168,42 +122,6 @@ html[data-route-path="/app/plan-credit"] .plan-credit-local-head{
     [data-route-path="/app/settings/notifications"],
     [data-route-path="/app/settings/legal-support"]
   ) .platform-page-head{
-    margin-bottom:18px!important;
-  }
-  html:is(
-    [data-route-path="/app/about"],
-    [data-route-path="/app/settings/options"],
-    [data-route-path="/app/plan-credit"],
-    [data-route-path="/app/developer"],
-    [data-route-path="/app/history"],
-    [data-route-path="/app/settings"],
-    [data-route-path="/app/settings/language"],
-    [data-route-path="/app/settings/templates"],
-    [data-route-path="/app/settings/storage-destinations"],
-    [data-route-path="/app/settings/astera-storage"],
-    [data-route-path="/app/settings/data-privacy"],
-    [data-route-path="/app/settings/notifications"],
-    [data-route-path="/app/settings/legal-support"]
-  ) .platform-page-head h1{
-    min-height:30px!important;
-    padding-inline:11px!important;
-  }
-  html:is(
-    [data-route-path="/app/about"],
-    [data-route-path="/app/settings/options"],
-    [data-route-path="/app/plan-credit"],
-    [data-route-path="/app/developer"],
-    [data-route-path="/app/history"],
-    [data-route-path="/app/settings"],
-    [data-route-path="/app/settings/language"],
-    [data-route-path="/app/settings/templates"],
-    [data-route-path="/app/settings/storage-destinations"],
-    [data-route-path="/app/settings/astera-storage"],
-    [data-route-path="/app/settings/data-privacy"],
-    [data-route-path="/app/settings/notifications"],
-    [data-route-path="/app/settings/legal-support"]
-  ) .platform-page-head h1::after{
-    font-size:11px!important;
-    letter-spacing:.14em!important;
+    margin-bottom:20px!important;
   }
 }
