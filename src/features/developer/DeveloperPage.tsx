@@ -258,10 +258,22 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   return (
     <ResponsivePageShell route={route}>
       <div className="developer-console">
+        <section className="developer-api-card" aria-label={isJapanese ? '全API使用量と合計使用料金' : 'Total API usage and cost'}>
+          <div className="developer-api-card-head">
+            <div className="developer-api-title-block">
+              <span>{isJapanese ? '全API使用量' : 'Total API usage'}</span>
+              <strong>{totalUsageText}</strong>
+            </div>
+            <div className="developer-api-title-block">
+              <span>{isJapanese ? '合計使用料金' : 'Total usage cost'}</span>
+              <strong>{totalCostText}</strong>
+            </div>
+          </div>
+        </section>
+
         <section className="developer-family" aria-labelledby="developer-family-astera">
           <div className="developer-family-heading">
             <h2 id="developer-family-astera">Astera APIs</h2>
-            <p><span>{isJapanese ? '全API使用量' : 'Total API usage'} <strong>{totalUsageText}</strong></span>{' / '}<span>{isJapanese ? '合計使用料金' : 'Total usage cost'} <strong>{totalCostText}</strong></span></p>
             <p>{isJapanese ? 'Astera本体の4 API' : 'Four Astera core APIs'}</p>
           </div>
           <div className="developer-api-list">{APIS.filter((api) => api.family === 'astera').map(renderApiCard)}</div>
