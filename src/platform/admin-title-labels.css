@@ -41,6 +41,11 @@ html:is(
   text-align:left!important;
 }
 
+/* Developer dedicated CSS historically hid the entire page head. Keep only the old contents hidden, not the canonical pill host. */
+html[data-route-path="/app/developer"] .platform-main:has(.developer-console) > .platform-page-head{
+  display:block!important;
+}
+
 /* Remove the old page-head presentation completely on these pages. */
 html:is(
   [data-route-path="/app/about"],
