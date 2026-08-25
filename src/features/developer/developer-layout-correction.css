@@ -4,6 +4,7 @@
  * - Desktop/Tablet only (>= 761px) for the layout correction below.
  * - The key list uses the full inner width of its API card.
  * - The list body height equals two API-issue controls (44px x 2 = 88px).
+ * - Up to three API key rows must be visible at once inside that 88px body; additional rows scroll.
  * - API key name / Usage / Cost scale across the available data area at 2:1:1.
  * - There is NO dedicated spacer track between Usage Cost and Update/Delete.
  * - Update/Delete remain at the far right and use half of their prior width.
@@ -89,8 +90,22 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     max-height: 88px !important;
   }
 
+  /* Three compact API rows fit exactly inside the fixed 88px list body. */
   .developer-key-row {
-    padding: 8px 14px !important;
+    min-height: calc(88px / 3) !important;
+    height: calc(88px / 3);
+    padding: 2px 14px !important;
+    overflow: hidden;
+  }
+
+  .developer-key-row + .developer-key-row {
+    margin-top: 0 !important;
+  }
+
+  .developer-key-cell {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .developer-key-actions {
@@ -102,7 +117,8 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
   .developer-key-actions .platform-button {
     min-width: 0 !important;
-    min-height: 36px !important;
+    min-height: 26px !important;
+    height: 26px;
     padding: 0 4px !important;
     font-size: 10px !important;
   }
@@ -121,7 +137,8 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     position: absolute;
     top: 50%;
     width: 40px;
-    min-height: 36px;
+    min-height: 26px;
+    height: 26px;
     transform: translateY(-50%);
     display: grid;
     place-items: center;
