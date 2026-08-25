@@ -156,3 +156,67 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     font-size: 9.5px;
   }
 }
+
+/* Master decision 2026-08-25: API issuance hover affordance. */
+.developer-card-issue,
+.developer-overlay-actions .platform-button,
+.developer-overlay-close {
+  transition:
+    transform .16s ease,
+    box-shadow .16s ease,
+    border-color .16s ease,
+    background-color .16s ease,
+    color .16s ease,
+    filter .16s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .developer-card-issue:not(:disabled):hover,
+  .developer-overlay-actions .platform-button:not(:disabled):hover,
+  .developer-overlay-close:not(:disabled):hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--platform-accent, #45b7e8) 34%, var(--platform-border, var(--line)));
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--platform-text, var(--text)) 10%, transparent);
+    filter: brightness(1.035);
+  }
+
+  /* Action hover is reserved for the controls that actually start API-key issuance. */
+  .developer-card-issue:not(:disabled):hover,
+  .developer-overlay-form button[type="submit"].is-primary:not(:disabled):hover {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow:
+      0 10px 26px color-mix(in srgb, var(--platform-accent, #45b7e8) 23%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--platform-accent, #45b7e8) 28%, transparent);
+    filter: brightness(1.07);
+  }
+}
+
+.developer-card-issue:not(:disabled):active,
+.developer-overlay-actions .platform-button:not(:disabled):active,
+.developer-overlay-close:not(:disabled):active {
+  transform: translateY(0) scale(.985);
+}
+
+.developer-card-issue:focus-visible,
+.developer-overlay-actions .platform-button:focus-visible,
+.developer-overlay-close:focus-visible {
+  outline: 2px solid var(--platform-accent, #45b7e8);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .developer-card-issue,
+  .developer-overlay-actions .platform-button,
+  .developer-overlay-close {
+    transition: none;
+  }
+
+  .developer-card-issue:not(:disabled):hover,
+  .developer-overlay-actions .platform-button:not(:disabled):hover,
+  .developer-overlay-close:not(:disabled):hover,
+  .developer-card-issue:not(:disabled):active,
+  .developer-overlay-actions .platform-button:not(:disabled):active,
+  .developer-overlay-close:not(:disabled):active {
+    transform: none;
+  }
+}
