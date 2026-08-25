@@ -130,7 +130,7 @@
 }
 
 .platform-credit-meter.is-error > .platform-credit-number::after {
-  content: '0 C';
+  content: '0 ©';
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .02em;
