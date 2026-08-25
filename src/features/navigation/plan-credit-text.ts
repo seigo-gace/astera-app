@@ -25,7 +25,7 @@ export const PLAN_CREDIT_TEXT = {
           label: '基本機能',
           columns: [
             {
-              title: '・用途選択',
+              title: '用途選択',
               items: ['├レビュー', '├比較', '├検証', '├改善', '├調査', '├計画', '└検討'],
             },
             {
