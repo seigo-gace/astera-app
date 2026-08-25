@@ -339,6 +339,24 @@
   min-width: 0;
 }
 
+.plan-credit-section:last-child .plan-credit-card.is-credit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 88px;
+}
+
+.plan-credit-section:last-child .plan-credit-card.is-credit h3 {
+  text-align: left;
+}
+
+.plan-credit-section:last-child .plan-credit-card.is-credit .plan-credit-price {
+  margin-top: 0;
+  margin-left: auto;
+  text-align: right;
+}
+
 @media (max-width: 1023px) {
   .plan-credit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
