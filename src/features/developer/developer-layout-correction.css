@@ -10,7 +10,7 @@
  * - Tablet must keep its own layout even on coarse-pointer devices; the global
  *   44px touch min-width must not force these desktop/tablet lifecycle controls wider.
  * - When there is no issued key yet, a disabled visual preview is shown so placement can be verified.
- * - TEMPORARY: full-height vertical width-guide lines are shown only between the three data columns.
+ * - TEMPORARY: full-height vertical width-guide lines are shown at the three requested boundaries.
  * - Mobile (<= 760px) remains owned by developer-page.css and is not changed by the layout correction.
  */
 
@@ -30,9 +30,10 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
   }
 
   .developer-key-table {
-    --developer-width-guide: color-mix(in srgb, var(--platform-text, var(--text)) 34%, transparent);
+    --developer-width-guide: var(--platform-border, var(--line));
     --developer-guide-1: calc(50% - 56px);
     --developer-guide-2: calc(75% - 82px);
+    --developer-guide-3: calc(100% - 108px);
     position: relative;
     width: 100% !important;
     max-width: none !important;
@@ -40,8 +41,9 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
   /*
    * TEMPORARY width guides.
-   * Only the boundaries between API key name / Usage / Usage Cost are shown.
-   * No guide is drawn through or around Update/Delete.
+   * Boundaries: API key name / Usage / Usage Cost / Update-Delete controls.
+   * The action controls themselves are not split by an additional guide.
+   * Guide color matches the table/card border color.
    */
   .developer-key-table::before {
     content: "";
@@ -52,11 +54,13 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     border-radius: inherit;
     background-image:
       linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
+      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
       linear-gradient(var(--developer-width-guide), var(--developer-width-guide));
-    background-size: 1px 100%, 1px 100%;
+    background-size: 1px 100%, 1px 100%, 1px 100%;
     background-position:
       var(--developer-guide-1) 0,
-      var(--developer-guide-2) 0;
+      var(--developer-guide-2) 0,
+      var(--developer-guide-3) 0;
     background-repeat: no-repeat;
   }
 
@@ -147,6 +151,7 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
   .developer-key-table {
     --developer-guide-1: calc(50% - 49px);
     --developer-guide-2: calc(75% - 72px);
+    --developer-guide-3: calc(100% - 97px);
   }
 
   .developer-key-table-head,
