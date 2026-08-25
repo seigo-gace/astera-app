@@ -333,6 +333,10 @@
   color: var(--text-primary);
 }
 
+.plan-credit-basic-column:first-child .plan-credit-basic-column-title {
+  font-weight: 400;
+}
+
 .plan-credit-basic-list {
   display: grid;
   gap: 5px;
