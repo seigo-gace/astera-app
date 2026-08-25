@@ -439,7 +439,7 @@ html .platform-mobile-account-actions > .platform-main-evidence-toggle > button:
   }
 }
 
-/* Result-only file controls. Keep AI available on every authenticated page. */
+/* Page / Result file controls. Keep AI available on every authenticated page. */
 html .platform-mobile-account-actions > .platform-header-ai{
   order:1!important;
   flex:0 0 40px!important;
@@ -450,15 +450,16 @@ html .platform-mobile-account-actions > .platform-header-organize{
 html .platform-mobile-account-actions > .platform-main-evidence-toggle{
   order:3!important;
 }
-html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled){
+html:not(.native-composer-route) .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled){
   display:none!important;
 }
-html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled) + .platform-header-organize{
+html:not(.native-composer-route) .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> button:disabled) + .platform-header-organize{
   display:none!important;
 }
 
 /* Master decision 2026-08-25: keep the credit gauge clear of header controls at every width. */
 @media (min-width:761px){
+  html.native-composer-route .platform-shell .platform-credit-layer,
   html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
     left:calc(var(--safe-left) + var(--ex-sidebar) + 16px)!important;
     right:calc(var(--safe-right) + 224px)!important;
@@ -467,6 +468,7 @@ html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> but
     margin-inline:auto!important;
     transform:none!important;
   }
+  html.native-composer-route .platform-shell.exterior-sidebar-collapsed .platform-credit-layer,
   html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
     left:calc(var(--safe-left) + var(--ex-compact) + 16px)!important;
     width:min(340px,calc(100vw - var(--safe-left) - var(--safe-right) - var(--ex-compact) - 256px))!important;
@@ -486,10 +488,14 @@ html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> but
   }
 
   /* Page / Result screens have three right-side controls; put the gauge on its own row. */
+  html.native-composer-route .platform-shell,
+  html.native-composer-route .platform-shell.exterior-sidebar-collapsed,
   html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)),
   html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)){
     padding-top:calc(118px + var(--safe-top))!important;
   }
+  html.native-composer-route .platform-shell .platform-credit-layer,
+  html.native-composer-route .platform-shell.exterior-sidebar-collapsed .platform-credit-layer,
   html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer,
   html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
     top:calc(var(--safe-top) + 65px)!important;
@@ -529,10 +535,14 @@ html .platform-mobile-account-actions > .platform-main-evidence-toggle:has(> but
 }
 
 @media (orientation:landscape) and (max-height:560px) and (max-width:760px){
+  html.native-composer-route .platform-shell,
+  html.native-composer-route .platform-shell.exterior-sidebar-collapsed,
   html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)),
   html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)){
     padding-top:calc(108px + var(--safe-top))!important;
   }
+  html.native-composer-route .platform-shell .platform-credit-layer,
+  html.native-composer-route .platform-shell.exterior-sidebar-collapsed .platform-credit-layer,
   html .platform-shell:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer,
   html .platform-shell.exterior-sidebar-collapsed:has(.platform-main-evidence-toggle > button:not(:disabled)) .platform-credit-layer{
     top:calc(var(--safe-top) + 55px)!important;
