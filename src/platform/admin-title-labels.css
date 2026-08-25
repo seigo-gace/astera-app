@@ -166,3 +166,12 @@ html[data-route-path="/app/plan-credit"] :is(
   letter-spacing:.08em!important;
   white-space:nowrap!important;
 }
+
+/* Keep the heading-to-card gap identical for Plan, additional credits, and storage. */
+html[data-route-path="/app/plan-credit"] .plan-credit-section-head{
+  margin-bottom:12px!important;
+}
+
+html[data-route-path="/app/plan-credit"] .plan-credit-section > h2{
+  margin:0 0 12px!important;
+}
