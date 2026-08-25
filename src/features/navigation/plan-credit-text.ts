@@ -19,7 +19,7 @@ export const PLAN_CREDIT_TEXT = {
         name: 'Free',
         monthlyPrice: '¥0 / 月',
         annualPrice: '¥0 / 年',
-        creditValue: '初回 20,000 C / 以後 10,000 C',
+        creditValue: '初回 20,000 © / 以後 10,000 ©',
         basicFeature: {
           label: '基本機能',
           columns: [
@@ -39,7 +39,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥980 / 月',
         annualPrice: '¥9,800 / 年',
         annualMonthlyEquivalent: '約 ¥817 / 月',
-        creditValue: '180,000 C',
+        creditValue: '180,000 ©',
         features: [
           '基本機能',
           '高精度翻訳',
@@ -55,7 +55,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥2,980 / 月',
         annualPrice: '¥29,800 / 年',
         annualMonthlyEquivalent: '約 ¥2,483 / 月',
-        creditValue: '640,000 C',
+        creditValue: '640,000 ©',
         features: [
           '基本機能',
           '高精度翻訳',
@@ -73,7 +73,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥9,980 / 月',
         annualPrice: '¥99,800 / 年',
         annualMonthlyEquivalent: '約 ¥8,317 / 月',
-        creditValue: '2,200,000 C',
+        creditValue: '2,200,000 ©',
         features: [
           '基本機能',
           '高精度翻訳',
@@ -91,7 +91,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥29,800 / 月',
         annualPrice: '¥298,000 / 年',
         annualMonthlyEquivalent: '約 ¥24,833 / 月',
-        creditValue: '6,600,000 C',
+        creditValue: '6,600,000 ©',
         features: [
           '基本機能',
           '高精度翻訳',
@@ -105,11 +105,11 @@ export const PLAN_CREDIT_TEXT = {
       },
     ],
     credits: [
-      { name: 'Credit Pack 1', price: '¥500', creditValue: '75,000 C' },
-      { name: 'Credit Pack 2', price: '¥1,000', creditValue: '155,000 C' },
-      { name: 'Credit Pack 3', price: '¥3,000', creditValue: '480,000 C' },
-      { name: 'Credit Pack 4', price: '¥10,000', creditValue: '1,650,000 C' },
-      { name: 'Credit Pack 5', price: '¥30,000', creditValue: '5,000,000 C' },
+      { name: 'Credit Pack 1', price: '¥500', creditValue: '75,000 ©' },
+      { name: 'Credit Pack 2', price: '¥1,000', creditValue: '155,000 ©' },
+      { name: 'Credit Pack 3', price: '¥3,000', creditValue: '480,000 ©' },
+      { name: 'Credit Pack 4', price: '¥10,000', creditValue: '1,650,000 ©' },
+      { name: 'Credit Pack 5', price: '¥30,000', creditValue: '5,000,000 ©' },
     ],
     storage: [
       { name: 'Free' },
@@ -139,7 +139,7 @@ export const PLAN_CREDIT_TEXT = {
         name: 'Free',
         monthlyPrice: '¥0 / month',
         annualPrice: '¥0 / year',
-        creditValue: '20,000 C first month / 10,000 C after',
+        creditValue: '20,000 © first month / 10,000 © after',
         basicFeature: {
           label: 'Core features',
           columns: [
@@ -159,7 +159,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥980 / month',
         annualPrice: '¥9,800 / year',
         annualMonthlyEquivalent: 'About ¥817 / month',
-        creditValue: '180,000 C',
+        creditValue: '180,000 ©',
         features: [
           'Core features',
           'High-accuracy translation',
@@ -175,7 +175,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥2,980 / month',
         annualPrice: '¥29,800 / year',
         annualMonthlyEquivalent: 'About ¥2,483 / month',
-        creditValue: '640,000 C',
+        creditValue: '640,000 ©',
         features: [
           'Core features',
           'High-accuracy translation',
@@ -193,7 +193,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥9,980 / month',
         annualPrice: '¥99,800 / year',
         annualMonthlyEquivalent: 'About ¥8,317 / month',
-        creditValue: '2,200,000 C',
+        creditValue: '2,200,000 ©',
         features: [
           'Core features',
           'High-accuracy translation',
@@ -211,7 +211,7 @@ export const PLAN_CREDIT_TEXT = {
         monthlyPrice: '¥29,800 / month',
         annualPrice: '¥298,000 / year',
         annualMonthlyEquivalent: 'About ¥24,833 / month',
-        creditValue: '6,600,000 C',
+        creditValue: '6,600,000 ©',
         features: [
           'Core features',
           'High-accuracy translation',
@@ -225,11 +225,11 @@ export const PLAN_CREDIT_TEXT = {
       },
     ],
     credits: [
-      { name: 'Credit Pack 1', price: '¥500', creditValue: '75,000 C' },
-      { name: 'Credit Pack 2', price: '¥1,000', creditValue: '155,000 C' },
-      { name: 'Credit Pack 3', price: '¥3,000', creditValue: '480,000 C' },
-      { name: 'Credit Pack 4', price: '¥10,000', creditValue: '1,650,000 C' },
-      { name: 'Credit Pack 5', price: '¥30,000', creditValue: '5,000,000 C' },
+      { name: 'Credit Pack 1', price: '¥500', creditValue: '75,000 ©' },
+      { name: 'Credit Pack 2', price: '¥1,000', creditValue: '155,000 ©' },
+      { name: 'Credit Pack 3', price: '¥3,000', creditValue: '480,000 ©' },
+      { name: 'Credit Pack 4', price: '¥10,000', creditValue: '1,650,000 ©' },
+      { name: 'Credit Pack 5', price: '¥30,000', creditValue: '5,000,000 ©' },
     ],
     storage: [
       { name: 'Free' },
