@@ -4,6 +4,8 @@
 
 /* Credit gauge exterior only. Credit balance/state logic remains unchanged. */
 .platform-credit-meter {
+  --credit-gauge-surface: color-mix(in srgb, var(--bg-tertiary) 86%, transparent);
+  --credit-gauge-border: color-mix(in srgb, var(--border-color) 82%, transparent);
   width: min(560px, 100%);
   height: 44px;
   grid-template-columns: minmax(0, 1fr);
@@ -40,11 +42,13 @@
   width: auto;
   height: auto;
   min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
+  border: 1px solid var(--credit-gauge-border) !important;
   border-radius: 999px;
-  background: transparent;
+  background: var(--credit-gauge-surface) !important;
   box-shadow: none !important;
   overflow: hidden;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .platform-credit-meter > .platform-credit-track > .platform-credit-fill {
@@ -91,8 +95,8 @@
 
 .platform-credit-meter.is-depleted > .platform-credit-track {
   width: auto !important;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
-  background: transparent !important;
+  border: 1px solid var(--credit-gauge-border) !important;
+  background: var(--credit-gauge-surface) !important;
   box-shadow: none !important;
 }
 
@@ -114,8 +118,8 @@
 
 .platform-credit-meter.is-error > .platform-credit-track {
   width: auto !important;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 42%, transparent) !important;
-  background: transparent !important;
+  border: 1px solid var(--credit-gauge-border) !important;
+  background: var(--credit-gauge-surface) !important;
   box-shadow: none !important;
 }
 
