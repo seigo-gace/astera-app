@@ -11,7 +11,8 @@
  * - Update/Delete are inset inside their own action area so they do not touch the Usage Cost boundary guide.
  * - Tablet must keep its own layout even on coarse-pointer devices; the global
  *   44px touch min-width must not force these desktop/tablet lifecycle controls wider.
- * - When there is no issued key yet, three disabled lifecycle preview rows are shown so the 3-row density is visible.
+ * - Update/Delete are shown only on real issued-key rows; no empty-state lifecycle preview is rendered.
+ * - The vertical scrollbar remains visible on the fixed-height key list.
  * - TEMPORARY: full-height vertical width-guide lines are shown at the three requested boundaries.
  * - Mobile (<= 760px) remains owned by developer-page.css and is not changed by the layout correction.
  */
@@ -90,6 +91,13 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     max-height: 88px !important;
   }
 
+  /* Keep the base vertical scrollbar behavior; only the body height is corrected here. */
+  .developer-key-table-body {
+    overflow-x: hidden !important;
+    overflow-y: scroll !important;
+    scrollbar-gutter: stable;
+  }
+
   /* Three compact API rows fit exactly inside the fixed 88px list body. */
   .developer-key-row {
     min-height: calc(88px / 3) !important;
@@ -122,52 +130,6 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     padding: 0 4px !important;
     font-size: 10px !important;
   }
-
-  /*
-   * Empty list: no real key rows exist yet because issuance is unavailable.
-   * Put the preview pair in row 1 and mirror its rendered silhouette into rows 2 and 3.
-   * This is visual-only and does not change API lifecycle behavior.
-   */
-  .developer-key-table.is-empty .developer-key-table-body {
-    position: relative;
-    overflow: hidden !important;
-  }
-
-  .developer-key-table.is-empty .developer-key-table-body::before,
-  .developer-key-table.is-empty .developer-key-table-body::after {
-    position: absolute;
-    top: calc(88px / 6);
-    width: 40px;
-    min-height: 26px;
-    height: 26px;
-    transform: translateY(-50%);
-    display: grid;
-    place-items: center;
-    box-sizing: border-box;
-    border: 1px solid var(--platform-border, var(--line));
-    border-radius: 9px;
-    background: transparent;
-    color: var(--platform-muted, var(--muted));
-    font-size: 10px;
-    font-weight: 650;
-    line-height: 1;
-    opacity: .62;
-    pointer-events: none;
-    user-select: none;
-    filter:
-      drop-shadow(0 calc(88px / 3) 0 var(--platform-border, var(--line)))
-      drop-shadow(0 calc(176px / 3) 0 var(--platform-border, var(--line)));
-  }
-
-  .developer-key-table.is-empty .developer-key-table-body::before {
-    content: "更新";
-    right: 54px;
-  }
-
-  .developer-key-table.is-empty .developer-key-table-body::after {
-    content: "削除";
-    right: 6px;
-  }
 }
 
 @media (max-width: 900px) and (min-width: 761px) {
@@ -186,19 +148,6 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
   .developer-key-actions {
     grid-column: 4 !important;
     width: 78px !important;
-  }
-
-  .developer-key-table.is-empty .developer-key-table-body::before,
-  .developer-key-table.is-empty .developer-key-table-body::after {
-    width: 35px;
-  }
-
-  .developer-key-table.is-empty .developer-key-table-body::before {
-    right: 51px;
-  }
-
-  .developer-key-table.is-empty .developer-key-table-body::after {
-    right: 8px;
   }
 }
 
