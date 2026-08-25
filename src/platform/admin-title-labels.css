@@ -131,7 +131,7 @@ html[data-route-path="/app/plan-credit"] .plan-credit-local-head{
   }
 }
 
-/* Master decision 2026-08-26: compact PLAN / CREDIT top spacing and match the Plan section heading to the same pill exterior. */
+/* Master decision 2026-08-26: compact PLAN / CREDIT top spacing and match all three section headings to the same pill exterior. */
 html[data-route-path="/app/plan-credit"] .platform-page-head{
   margin-bottom:10px!important;
 }
@@ -140,7 +140,10 @@ html[data-route-path="/app/plan-credit"] .plan-credit-page{
   padding-top:0!important;
 }
 
-html[data-route-path="/app/plan-credit"] .plan-credit-section-head h2{
+html[data-route-path="/app/plan-credit"] :is(
+  .plan-credit-section-head h2,
+  .plan-credit-section > h2
+){
   display:inline-flex!important;
   align-items:center!important;
   justify-content:center!important;
