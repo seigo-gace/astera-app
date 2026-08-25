@@ -26,6 +26,11 @@ const APIS: ApiDefinition[] = [
   { id: 'libral-vault', family: 'platform', name: 'Libral Vault', ja: '暗号化・Vault・鍵管理', en: 'Encryption, vault, and key management', descriptionJa: 'Secret・Signature・Keyを安全に管理', descriptionEn: 'Manage secrets, signatures, and keys securely', aliases: ['libral-vault', 'libral vault', 'vault'] },
 ];
 
+const USAGE_PARENTS = ['usage', 'usage_month', 'monthly_usage'];
+const USAGE_KEYS = ['requests', 'request_count', 'total_requests', 'usage_count', 'credits_used', 'credit_used', 'used'];
+const COST_PARENTS = ['cost', 'billing', 'charges', 'monthly_cost'];
+const COST_KEYS = ['amount', 'total', 'cost', 'current_cost', 'usage_cost', 'charged_amount'];
+
 function matchesApi(api: ApiDefinition, record: JsonObject): boolean {
   const haystack = `${recordText(record, ['target_id', 'target', 'id'])} ${recordText(record, ['display_name', 'name', 'label'])}`.toLowerCase();
   return api.aliases.some((alias) => haystack.includes(alias));
@@ -54,6 +59,47 @@ function nestedMetric(record: JsonObject, parents: string[], keys: string[]): st
     if (nestedValue) return nestedValue;
   }
   return '—';
+}
+
+function metricNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const match = value.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstNumber(record: JsonObject, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined || typeof value === 'object') continue;
+    const parsed = metricNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function nestedMetricNumber(record: JsonObject, parents: string[], keys: string[]): number | null {
+  const direct = firstNumber(record, keys);
+  if (direct !== null) return direct;
+  for (const parent of parents) {
+    const nested = asRecord(record[parent]);
+    const nestedValue = firstNumber(nested, keys);
+    if (nestedValue !== null) return nestedValue;
+  }
+  return null;
+}
+
+function sumMetric(items: JsonObject[], parents: string[], keys: string[]): number | null {
+  if (items.length === 0) return 0;
+  let total = 0;
+  for (const item of items) {
+    const value = nestedMetricNumber(item, parents, keys);
+    if (value === null) return null;
+    total += value;
+  }
+  return total;
 }
 
 export default function DeveloperPage({ route }: { route: RouteMatch }) {
@@ -93,6 +139,11 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
 
   const targets = catalog.status === 'ready' ? asArray(catalog.data, ['targets', 'catalog', 'items']).map(asRecord) : [];
   const keyItems = keys.status === 'ready' ? asArray(keys.data, ['keys', 'items']).map(asRecord) : [];
+  const totalUsage = keys.status === 'ready' ? sumMetric(keyItems, USAGE_PARENTS, USAGE_KEYS) : null;
+  const totalCost = keys.status === 'ready' ? sumMetric(keyItems, COST_PARENTS, COST_KEYS) : null;
+  const numberFormatter = new Intl.NumberFormat(isJapanese ? 'ja-JP' : 'en-US', { maximumFractionDigits: 4 });
+  const totalUsageText = totalUsage === null ? '—' : numberFormatter.format(totalUsage);
+  const totalCostText = totalCost === null ? '—' : `¥${numberFormatter.format(totalCost)}`;
   const overlayApi = overlayApiId ? APIS.find((api) => api.id === overlayApiId) ?? null : null;
 
   const openIssueOverlay = (api: ApiDefinition) => {
@@ -148,8 +199,8 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
   const renderKeyRow = (item: JsonObject, api: ApiDefinition, index: number) => {
     const id = recordText(item, ['key_id', 'id']);
     const name = (id && localNames[id]) || recordText(item, ['label', 'name', 'display_name']) || (isJapanese ? `名称未設定 ${index + 1}` : `Unnamed key ${index + 1}`);
-    const usage = nestedMetric(item, ['usage', 'usage_month', 'monthly_usage'], ['requests', 'request_count', 'total_requests', 'usage_count', 'credits_used', 'credit_used', 'used']);
-    const cost = nestedMetric(item, ['cost', 'billing', 'charges', 'monthly_cost'], ['amount', 'total', 'cost', 'current_cost', 'usage_cost', 'charged_amount']);
+    const usage = nestedMetric(item, USAGE_PARENTS, USAGE_KEYS);
+    const cost = nestedMetric(item, COST_PARENTS, COST_KEYS);
 
     return (
       <div className="developer-key-row" key={`${api.id}-${id || index}`}>
@@ -208,7 +259,11 @@ export default function DeveloperPage({ route }: { route: RouteMatch }) {
     <ResponsivePageShell route={route}>
       <div className="developer-console">
         <section className="developer-family" aria-labelledby="developer-family-astera">
-          <div className="developer-family-heading"><h2 id="developer-family-astera">Astera APIs</h2><p>{isJapanese ? 'Astera本体の4 API' : 'Four Astera core APIs'}</p></div>
+          <div className="developer-family-heading">
+            <h2 id="developer-family-astera">Astera APIs</h2>
+            <p><span>{isJapanese ? '全API使用量' : 'Total API usage'} <strong>{totalUsageText}</strong></span>{' / '}<span>{isJapanese ? '合計使用料金' : 'Total usage cost'} <strong>{totalCostText}</strong></span></p>
+            <p>{isJapanese ? 'Astera本体の4 API' : 'Four Astera core APIs'}</p>
+          </div>
           <div className="developer-api-list">{APIS.filter((api) => api.family === 'astera').map(renderApiCard)}</div>
         </section>
 
