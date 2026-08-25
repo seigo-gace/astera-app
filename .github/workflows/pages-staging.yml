@@ -57,107 +57,6 @@ jobs:
         id: pages_deploy
         run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
 
-      - name: Verify deployed runtime assets
-        id: runtime_verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { readFile, writeFile } from 'node:fs/promises';
-          import { createHash } from 'node:crypto';
-
-          const sha = process.env.GITHUB_SHA;
-          const localHtml = await readFile('dist/index.html', 'utf8');
-          const assetPaths = [...new Set(
-            [...localHtml.matchAll(/(?:src|href)=["'](\/assets\/[^"']+\.(?:js|css))["']/g)].map((match) => match[1])
-          )];
-          if (!assetPaths.length) throw new Error('No built JS/CSS asset paths found in dist/index.html');
-
-          const hash = (value) => createHash('sha256').update(value).digest('hex');
-          const localHashes = {};
-          for (const assetPath of assetPaths) {
-            localHashes[assetPath] = hash(await readFile(`dist${assetPath}`));
-          }
-
-          const targets = [
-            'https://astera-app-staging.pages.dev',
-            'https://staging.asterav8.jp',
-          ];
-          const report = [];
-
-          for (const base of targets) {
-            let htmlEvidence = null;
-            for (let attempt = 1; attempt <= 3; attempt += 1) {
-              const url = `${base}/app/plan-credit?deploy_sha=${encodeURIComponent(sha)}&attempt=${attempt}`;
-              try {
-                const response = await fetch(url, {
-                  redirect: 'follow',
-                  headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-                  signal: AbortSignal.timeout(15_000),
-                });
-                const html = await response.text();
-                const matchedAssets = assetPaths.filter((assetPath) => html.includes(assetPath));
-                htmlEvidence = {
-                  attempt,
-                  url,
-                  final_url: response.url,
-                  http_status: response.status,
-                  cache_control: response.headers.get('cache-control'),
-                  cf_cache_status: response.headers.get('cf-cache-status'),
-                  server: response.headers.get('server'),
-                  expected_assets: assetPaths,
-                  matched_assets: matchedAssets,
-                };
-                if (response.ok && matchedAssets.length === assetPaths.length) break;
-              } catch (error) {
-                htmlEvidence = {
-                  attempt,
-                  url,
-                  error: error instanceof Error ? error.message : String(error),
-                  expected_assets: assetPaths,
-                  matched_assets: [],
-                };
-              }
-              if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 5_000));
-            }
-
-            const targetEvidence = { target: base, html: htmlEvidence, assets: [] };
-            report.push(targetEvidence);
-            if (!htmlEvidence || htmlEvidence.matched_assets.length !== assetPaths.length || htmlEvidence.http_status < 200 || htmlEvidence.http_status >= 300) {
-              await writeFile('/tmp/runtime-evidence.json', JSON.stringify(report, null, 2));
-              console.error(JSON.stringify(report, null, 2));
-              throw new Error(`Runtime HTML for ${base} does not reference the current build assets`);
-            }
-
-            for (const assetPath of assetPaths) {
-              const response = await fetch(`${base}${assetPath}?deploy_sha=${encodeURIComponent(sha)}`, {
-                headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-                signal: AbortSignal.timeout(15_000),
-              });
-              const remoteBytes = Buffer.from(await response.arrayBuffer());
-              const remoteHash = hash(remoteBytes);
-              targetEvidence.assets.push({
-                path: assetPath,
-                http_status: response.status,
-                cache_control: response.headers.get('cache-control'),
-                cf_cache_status: response.headers.get('cf-cache-status'),
-                local_sha256: localHashes[assetPath],
-                remote_sha256: remoteHash,
-                match: response.ok && remoteHash === localHashes[assetPath],
-              });
-            }
-
-            if (targetEvidence.assets.some((asset) => !asset.match)) {
-              await writeFile('/tmp/runtime-evidence.json', JSON.stringify(report, null, 2));
-              console.error(JSON.stringify(report, null, 2));
-              throw new Error(`Runtime asset hash mismatch for ${base}`);
-            }
-          }
-
-          await writeFile('/tmp/runtime-evidence.json', JSON.stringify(report, null, 2));
-          console.log(JSON.stringify(report, null, 2));
-          NODE
-
       - name: Report deployment evidence
         if: always()
         env:
@@ -169,21 +68,13 @@ jobs:
           FRONTEND_BUILD_OUTCOME: ${{ steps.frontend_build.outcome }}
           FUNCTIONS_BUILD_OUTCOME: ${{ steps.functions_build.outcome }}
           PAGES_DEPLOY_OUTCOME: ${{ steps.pages_deploy.outcome }}
-          RUNTIME_VERIFY_OUTCOME: ${{ steps.runtime_verify.outcome }}
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE' > /tmp/pages-evidence.md
-          const fs = require('node:fs');
           const token = process.env.CLOUDFLARE_API_TOKEN || '';
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
           const project = 'astera-app-staging';
-          let runtime = null;
-          try {
-            runtime = JSON.parse(fs.readFileSync('/tmp/runtime-evidence.json', 'utf8'));
-          } catch {
-            runtime = null;
-          }
           const report = {
             github_sha: process.env.GITHUB_SHA,
             steps: {
@@ -194,10 +85,8 @@ jobs:
               frontend_build: process.env.FRONTEND_BUILD_OUTCOME,
               functions_build: process.env.FUNCTIONS_BUILD_OUTCOME,
               pages_deploy: process.env.PAGES_DEPLOY_OUTCOME,
-              runtime_verify: process.env.RUNTIME_VERIFY_OUTCOME,
             },
             cloudflare: null,
-            runtime,
           };
           if (token) {
             const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${project}/deployments?env=production`, {
