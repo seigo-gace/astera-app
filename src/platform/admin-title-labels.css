@@ -175,3 +175,50 @@ html[data-route-path="/app/plan-credit"] .plan-credit-section-head{
 html[data-route-path="/app/plan-credit"] .plan-credit-section > h2{
   margin:0 0 12px!important;
 }
+
+/* Master decision 2026-08-26: Developer API family headings use the same pill exterior and stay on one line with their subheading. */
+html[data-route-path="/app/developer"] .developer-family-heading{
+  display:flex!important;
+  align-items:center!important;
+  flex-wrap:nowrap!important;
+  gap:10px!important;
+  min-width:0!important;
+}
+
+html[data-route-path="/app/developer"] .developer-family-heading h2{
+  display:inline-flex!important;
+  flex:0 0 auto!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:max-content!important;
+  max-width:100%!important;
+  height:32px!important;
+  min-height:32px!important;
+  margin:0!important;
+  padding:0 14px!important;
+  box-sizing:border-box!important;
+  border:1px solid var(--border-color)!important;
+  border-radius:999px!important;
+  background:var(--bg-primary)!important;
+  color:var(--text-primary)!important;
+  box-shadow:none!important;
+  font-family:inherit!important;
+  font-size:12px!important;
+  font-weight:500!important;
+  line-height:30px!important;
+  letter-spacing:.08em!important;
+  white-space:nowrap!important;
+}
+
+html[data-route-path="/app/developer"] .developer-family-heading p{
+  min-width:0!important;
+  margin:0!important;
+  overflow:hidden!important;
+  color:var(--text-primary)!important;
+  font-family:inherit!important;
+  font-size:12px!important;
+  font-weight:500!important;
+  line-height:1.4!important;
+  white-space:nowrap!important;
+  text-overflow:ellipsis!important;
+}
