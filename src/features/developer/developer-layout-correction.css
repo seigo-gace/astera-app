@@ -5,13 +5,12 @@
  * - The key list uses the full inner width of its API card.
  * - The list body height equals two API-issue controls (44px x 2 = 88px).
  * - API key name / Usage / Cost scale across the available data area at 2:1:1.
- * - The left space before Update/Delete equals two Update-control widths:
- *   Desktop 80px (40px x 2), Tablet 70px (35px x 2).
+ * - There is NO dedicated spacer track between Usage Cost and Update/Delete.
  * - Update/Delete remain at the far right and use half of their prior width.
  * - Tablet must keep its own layout even on coarse-pointer devices; the global
  *   44px touch min-width must not force these desktop/tablet lifecycle controls wider.
  * - When there is no issued key yet, a disabled visual preview is shown so placement can be verified.
- * - TEMPORARY: full-height vertical width-guide lines are shown for Master width inspection.
+ * - TEMPORARY: full-height vertical width-guide lines are shown only between the three data columns.
  * - Mobile (<= 760px) remains owned by developer-page.css and is not changed by the layout correction.
  */
 
@@ -32,11 +31,8 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
   .developer-key-table {
     --developer-width-guide: color-mix(in srgb, var(--platform-text, var(--text)) 34%, transparent);
-    --developer-guide-1: calc(50% - 108px);
-    --developer-guide-2: calc(75% - 157px);
-    --developer-guide-3: calc(100% - 206px);
-    --developer-guide-4: calc(100% - 102px);
-    --developer-guide-5: calc(100% - 58px);
+    --developer-guide-1: calc(50% - 56px);
+    --developer-guide-2: calc(75% - 82px);
     position: relative;
     width: 100% !important;
     max-width: none !important;
@@ -44,9 +40,8 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
   /*
    * TEMPORARY width guides.
-   * These are real full-height vertical guides across the entire table,
-   * not short borders attached to header text or individual row cells.
-   * They consume no layout width and do not change the grid tracks.
+   * Only the boundaries between API key name / Usage / Usage Cost are shown.
+   * No guide is drawn through or around Update/Delete.
    */
   .developer-key-table::before {
     content: "";
@@ -57,28 +52,30 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
     border-radius: inherit;
     background-image:
       linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
-      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
-      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
-      linear-gradient(var(--developer-width-guide), var(--developer-width-guide)),
       linear-gradient(var(--developer-width-guide), var(--developer-width-guide));
-    background-size: 1px 100%, 1px 100%, 1px 100%, 1px 100%, 1px 100%;
+    background-size: 1px 100%, 1px 100%;
     background-position:
       var(--developer-guide-1) 0,
-      var(--developer-guide-2) 0,
-      var(--developer-guide-3) 0,
-      var(--developer-guide-4) 0,
-      var(--developer-guide-5) 0;
+      var(--developer-guide-2) 0;
     background-repeat: no-repeat;
   }
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 80px 88px !important;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 88px !important;
     gap: 12px !important;
   }
 
   .developer-key-table-head {
     padding: 0 14px !important;
+  }
+
+  .developer-key-table-head > span:nth-child(1),
+  .developer-key-table-head > span:nth-child(2),
+  .developer-key-table-head > span:nth-child(3) {
+    width: 100%;
+    justify-self: stretch !important;
+    text-align: center !important;
   }
 
   .developer-key-table-body,
@@ -92,7 +89,7 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
   }
 
   .developer-key-actions {
-    grid-column: 5 !important;
+    grid-column: 4 !important;
     width: 88px !important;
     gap: 8px !important;
   }
@@ -148,21 +145,18 @@ html:lang(ja) .developer-key-table-head > span:nth-child(3)::after {
 
 @media (max-width: 900px) and (min-width: 761px) {
   .developer-key-table {
-    --developer-guide-1: calc(50% - 94px);
-    --developer-guide-2: calc(75% - 138px);
-    --developer-guide-3: calc(100% - 182px);
-    --developer-guide-4: calc(100% - 92px);
-    --developer-guide-5: calc(100% - 53px);
+    --developer-guide-1: calc(50% - 49px);
+    --developer-guide-2: calc(75% - 72px);
   }
 
   .developer-key-table-head,
   .developer-key-row {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 70px 78px !important;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) 78px !important;
     gap: 10px !important;
   }
 
   .developer-key-actions {
-    grid-column: 5 !important;
+    grid-column: 4 !important;
     width: 78px !important;
   }
 
