@@ -20,7 +20,7 @@ type CurrentExecutionOptionKey = Exclude<ExecutionOptionKey, 'document'>;
 type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pending' | 'credited' | 'resume_available' | 'resume_blocked';
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'confirmation' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
-type PickerKind = 'add' | 'context' | null;
+type PickerKind = 'add' | 'purpose' | 'context' | null;
 
 type UploadedFile = {
   localId: string;
@@ -89,6 +89,18 @@ const OPTION_LABELS: Record<CurrentExecutionOptionKey, string> = {
   'agent-mode': 'Agent Mode',
   'external-storage-transfer': '外部Storage転送',
 };
+
+const PURPOSE_CHOICES: ReadonlyArray<{ key: Exclude<PurposeKey, 'auto'>; label: string }> = [
+  { key: 'review', label: 'レビュー' },
+  { key: 'compare', label: '比較' },
+  { key: 'verify', label: '検証' },
+  { key: 'improve', label: '改善' },
+  { key: 'research', label: '調査' },
+  { key: 'plan', label: '計画' },
+  { key: 'consider', label: '検討' },
+];
+
+const PURPOSE_LABELS = Object.fromEntries(PURPOSE_CHOICES.map((item) => [item.key, item.label])) as Record<Exclude<PurposeKey, 'auto'>, string>;
 
 const RESULT_TITLES: Record<(typeof RESULT_KEYS)[number], string> = {
   true_purpose: '真の目的',
@@ -720,19 +732,37 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) setPicker(null);
     }}>
-      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加・実行Option' : 'Option・対象選択'}>
+      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加・実行Option' : picker === 'purpose' ? '用途・目的' : 'Option・対象選択'}>
         <header>
-          <strong>{picker === 'add' ? '＋ 追加・実行Option' : '@ Option・対象を選択'}</strong>
+          <strong>{picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : 'Option・対象'}</strong>
           <button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button>
         </header>
         <div className="native-picker-body">
           {picker === 'add' && (
             <>
               <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
+              <button type="button" onClick={() => setPicker('purpose')}><span>用途・目的</span><b>{purpose === 'auto' ? '›' : PURPOSE_LABELS[purpose]}</b></button>
               <div className="native-picker-group-label">実行Option</div>
               {visibleOptionKeys.map((key) => (
                 <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
-                  <span>{OPTION_LABELS[key]}</span><b>{selectedOptions.includes(key) ? 'ON' : 'OFF'}</b>
+                  <span>{OPTION_LABELS[key]}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {picker === 'purpose' && (
+            <>
+              {PURPOSE_CHOICES.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={purpose === item.key ? 'is-selected' : ''}
+                  onClick={() => {
+                    setPurpose((current) => current === item.key ? 'auto' : item.key);
+                    setPicker('add');
+                  }}
+                >
+                  <span>{item.label}</span>
                 </button>
               ))}
             </>
@@ -743,7 +773,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
               <div className="native-picker-group-label">実行Option</div>
               {visibleOptionKeys.map((key) => (
                 <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
-                  <span>{OPTION_LABELS[key]}</span><b>{selectedOptions.includes(key) ? 'ON' : 'OFF'}</b>
+                  <span>{OPTION_LABELS[key]}</span>
                 </button>
               ))}
               {selectedOptions.includes('translation') && optionVisibility.translation && (
