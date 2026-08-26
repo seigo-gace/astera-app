@@ -20,4 +20,30 @@
 .platform-shell.exterior-sidebar-collapsed .sidebar-pinned-label,.platform-shell.exterior-sidebar-collapsed .sidebar-pinned-heading .sidebar-organization-chevron{display:none!important}
 .platform-shell.exterior-sidebar-collapsed .sidebar-archive-trigger{justify-content:center;padding:0;font-size:0}
 .platform-shell.exterior-sidebar-collapsed .sidebar-archive-label{display:none!important}
-@media(prefers-reduced-motion:reduce){.sidebar-organization-chevron{transition:none}}
+
+/* Sidebar Options: public exterior layer. Structure lives in ResponsivePageShell. */
+.platform-nav .platform-sidebar-options{display:block!important;width:100%!important;min-width:0!important;margin:0!important;color:var(--ex-text,var(--platform-text))!important}
+.platform-nav .platform-sidebar-options>summary{display:grid!important;grid-template-columns:20px minmax(0,1fr) 16px!important;align-items:center!important;gap:10px!important;width:100%!important;min-height:40px!important;margin:0!important;padding:0 10px!important;border:0!important;border-radius:9px!important;background:transparent!important;color:inherit!important;list-style:none!important;cursor:pointer!important;font:inherit!important;font-size:14px!important;font-weight:450!important;user-select:none!important;box-sizing:border-box!important}
+.platform-nav .platform-sidebar-options>summary::-webkit-details-marker{display:none!important}
+.platform-nav .platform-sidebar-options>summary::marker{content:""!important}
+.platform-nav .platform-sidebar-options>summary:hover,.platform-nav .platform-sidebar-options>summary:focus-visible{background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent))!important;outline:0!important}
+.platform-sidebar-options-icon{display:block!important;width:20px!important;height:20px!important;min-width:20px!important;background:currentColor!important;-webkit-mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/sliders-horizontal.svg") center/20px 20px no-repeat!important;mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/sliders-horizontal.svg") center/20px 20px no-repeat!important;opacity:.92!important}
+.platform-sidebar-options-label{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.platform-sidebar-options-chevron{display:block!important;width:16px!important;height:16px!important;margin:0!important;background:currentColor!important;font-size:0!important;opacity:.72!important;-webkit-mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/chevron-right.svg") center/16px 16px no-repeat!important;mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/chevron-right.svg") center/16px 16px no-repeat!important;transition:transform .14s ease!important}
+.platform-sidebar-options[open] .platform-sidebar-options-chevron{transform:rotate(90deg)!important}
+.platform-sidebar-options-body{display:grid!important;gap:1px!important;min-width:0!important;padding:2px 4px 6px 28px!important}
+.platform-sidebar-option-toggle{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;min-width:0!important;min-height:34px!important;padding:0 6px 0 8px!important;border-radius:8px!important;color:var(--ex-muted,var(--platform-muted))!important;font-size:12px!important;cursor:pointer!important}
+.platform-sidebar-option-toggle:hover{background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent))!important;color:var(--ex-text,var(--platform-text))!important}
+.platform-sidebar-option-toggle>span:first-child{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.platform-sidebar-option-switch{position:relative!important;display:inline-flex!important;width:32px!important;height:18px!important;min-width:32px!important;flex:0 0 32px!important}
+.platform-sidebar-option-switch input{position:absolute!important;width:1px!important;height:1px!important;margin:0!important;opacity:0!important}
+.platform-sidebar-option-switch>span{position:absolute!important;inset:0!important;border-radius:999px!important;background:color-mix(in srgb,currentColor 20%,transparent)!important;transition:background-color .15s ease!important}
+.platform-sidebar-option-switch>span::after{content:""!important;position:absolute!important;top:2px!important;left:2px!important;width:14px!important;height:14px!important;border-radius:50%!important;background:var(--platform-bg,var(--ex-bg,#fff))!important;box-shadow:0 1px 2px rgba(0,0,0,.24)!important;transition:transform .15s ease!important}
+.platform-sidebar-option-switch input:checked+span{background:var(--ex-text,var(--platform-text))!important}
+.platform-sidebar-option-switch input:checked+span::after{transform:translateX(14px)!important}
+.platform-sidebar-option-switch input:focus-visible+span{outline:2px solid var(--gpt-ui-focus,currentColor)!important;outline-offset:2px!important}
+.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options>summary{grid-template-columns:20px!important;justify-content:center!important;padding:0!important;font-size:0!important}
+.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options-label,.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options-chevron,.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options-body{display:none!important}
+@media(max-width:760px){.platform-mobile-drawer .platform-sidebar-options>summary{min-height:44px!important}.platform-mobile-drawer .platform-sidebar-option-toggle{min-height:42px!important}}
+@media(pointer:coarse){.platform-sidebar-options>summary,.platform-sidebar-option-toggle{min-height:44px!important}}
+@media(prefers-reduced-motion:reduce){.sidebar-organization-chevron,.platform-sidebar-options-chevron,.platform-sidebar-option-switch>span,.platform-sidebar-option-switch>span::after{transition:none!important}}
