@@ -394,17 +394,15 @@ html.native-composer-route .platform-credit-layer {
   padding: 12px;
 }
 .native-picker {
-  width: 360px;
-  height: 460px;
-  max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(72dvh, 520px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--native-line);
-  border-radius: 20px;
+  border-radius: 18px;
   background: var(--native-bg);
-  box-shadow: 0 24px 70px var(--shadow);
+  box-shadow: 0 18px 54px var(--shadow);
 }
 .native-picker > header,
 .native-confirm-sheet > header,
@@ -416,6 +414,9 @@ html.native-composer-route .platform-credit-layer {
   gap: 12px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--native-line);
+}
+.native-picker > header {
+  flex: 0 0 auto;
 }
 .native-picker > header button,
 .native-confirm-sheet > header button,
@@ -429,9 +430,10 @@ html.native-composer-route .platform-credit-layer {
 }
 .native-picker-body {
   min-height: 0;
+  flex: 0 1 auto;
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 4px;
   padding: 8px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -448,7 +450,7 @@ html.native-composer-route .platform-credit-layer {
   justify-content: space-between;
   gap: 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 11px;
   background: transparent;
   color: inherit;
   padding: 0 12px;
@@ -474,7 +476,14 @@ html.native-composer-route .platform-credit-layer {
 }
 .native-option-accordion {
   display: grid;
-  gap: 4px;
+  gap: 3px;
+}
+.native-option-accordion > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.native-option-accordion > summary::-webkit-details-marker {
+  display: none;
 }
 .native-agent-mode-choices {
   display: grid;
@@ -483,7 +492,7 @@ html.native-composer-route .platform-credit-layer {
 }
 .native-agent-mode-choices > button {
   min-height: 42px;
-  border-radius: 10px;
+  border-radius: 9px;
   padding-left: 14px;
 }
 .native-picker-field {
@@ -656,12 +665,10 @@ html.native-composer-route .platform-credit-layer {
   .native-composer-hint { display: none; }
   .native-picker-backdrop { place-items: center; padding: 12px; }
   .native-picker {
-    width: 360px;
-    height: 460px;
-    max-width: calc(100vw - 24px);
+    width: min(360px, calc(100vw - 24px));
     max-height: calc(100dvh - 24px);
     border: 1px solid var(--native-line);
-    border-radius: 20px;
+    border-radius: 18px;
     padding-bottom: 0;
   }
   .native-sheet-backdrop { align-items: end; justify-items: stretch; }
@@ -689,10 +696,7 @@ html.native-composer-route .platform-credit-layer {
     margin-top: 52px;
   }
   .native-timeline-inner { padding-top: 44px; }
-  .native-picker {
-    height: calc(100dvh - 16px);
-    max-height: calc(100dvh - 16px);
-  }
+  .native-picker { max-height: calc(100dvh - 16px); }
   .native-confirm-sheet { max-height: 92dvh; }
 }
 

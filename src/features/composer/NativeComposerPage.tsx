@@ -21,7 +21,7 @@ type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pe
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'confirmation' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
 type AgentMode = 'low' | 'medium' | 'high';
-type PickerKind = 'add' | 'purpose' | 'context' | null;
+type PickerKind = 'add' | 'context' | null;
 
 type UploadedFile = {
   localId: string;
@@ -750,6 +750,35 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     ...(projectId ? [`Project:${selectedProject?.title ?? projectId}`] : []),
   ];
 
+  const renderPurposeAccordion = () => (
+    <details className="native-option-accordion native-purpose-accordion">
+      <summary className={purpose === 'auto' ? 'native-option-accordion-trigger' : 'native-option-accordion-trigger is-selected'}>
+        <span>用途・目的</span>
+        <b>{purpose === 'auto' ? '›' : PURPOSE_LABELS[purpose]}</b>
+      </summary>
+      <div className="native-agent-mode-choices">
+        {PURPOSE_CHOICES.map((item) => {
+          const active = purpose === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              className={active ? 'is-selected' : ''}
+              aria-pressed={active}
+              onClick={(event) => {
+                setPurpose((current) => current === item.key ? 'auto' : item.key);
+                event.currentTarget.closest('details')?.removeAttribute('open');
+              }}
+            >
+              <span>{item.label}</span>
+              {active && <b aria-hidden="true">✓</b>}
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+
   const renderVisibleOptions = () => visibleOptionKeys.map((key) => {
     if (key === 'agent-mode') {
       const selected = selectedOptions.includes('agent-mode');
@@ -790,34 +819,17 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) setPicker(null);
     }}>
-      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加・実行Option' : picker === 'purpose' ? '用途・目的' : 'Option・対象選択'}>
+      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加' : 'Option・対象選択'}>
         <header>
-          <strong>{picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : 'Option・対象'}</strong>
+          <strong>{picker === 'add' ? '追加' : 'Option・対象'}</strong>
           <button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button>
         </header>
         <div className="native-picker-body">
           {picker === 'add' && (
             <>
               <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
-              <button type="button" onClick={() => setPicker('purpose')}><span>用途・目的</span><b>{purpose === 'auto' ? '›' : PURPOSE_LABELS[purpose]}</b></button>
+              {renderPurposeAccordion()}
               {renderVisibleOptions()}
-            </>
-          )}
-          {picker === 'purpose' && (
-            <>
-              {PURPOSE_CHOICES.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={purpose === item.key ? 'is-selected' : ''}
-                  onClick={() => {
-                    setPurpose((current) => current === item.key ? 'auto' : item.key);
-                    setPicker('add');
-                  }}
-                >
-                  <span>{item.label}</span>
-                </button>
-              ))}
             </>
           )}
           {picker === 'context' && (
