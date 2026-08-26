@@ -704,13 +704,8 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     pollController.current?.abort();
     clearPrivateOutputTimer();
     setPrompt('');
-    setPurpose('auto');
-    setSelectedOptions([]);
-    setTargetLanguage(defaultLanguage());
-    setAgentMode('medium');
     setDocumentTemplateId('');
     setDocumentTemplateSource('personal');
-    setStorageDestinationId('');
     setProjectId('');
     setFiles([]);
     setEstimate(null);
@@ -745,10 +740,12 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const preview = prompt.replace(/\s+/g, ' ').trim().slice(0, 96);
   const selectedProject = projects.find((item) => item.id === projectId);
   const visibleOptionKeys = CURRENT_OPTION_KEYS.filter((key) => optionVisibility[key]);
-  const chips = [
+  const messageChips = [
     ...selectedOptions.filter((key): key is CurrentExecutionOptionKey => key !== 'document').map((key) => OPTION_LABELS[key]),
     ...(projectId ? [`Project:${selectedProject?.title ?? projectId}`] : []),
   ];
+  const selectedPurposeLabel = purpose === 'auto' ? '' : PURPOSE_LABELS[purpose];
+  const selectedExecutionOptions = selectedOptions.filter((key): key is CurrentExecutionOptionKey => key !== 'document');
 
   const renderPurposeAccordion = () => (
     <details className="native-option-accordion native-purpose-accordion">
@@ -875,7 +872,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                     <b aria-hidden="true">{promptExpanded ? '⌃' : '⌄'}</b>
                   </button>
                   {promptExpanded && <p>{prompt}</p>}
-                  {chips.length > 0 && <div className="native-message-chips">{chips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
+                  {messageChips.length > 0 && <div className="native-message-chips">{messageChips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
                 </section>
 
                 {activeWork && (
@@ -914,7 +911,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
 
         <section className="native-composer-dock">
           {notice && <div className="native-notice" role="status">{notice}</div>}
-          {chips.length > 0 && <div className="native-selected-chips">{chips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
           {files.length > 0 && (
             <ul className="native-file-queue" aria-label="File Queue">
               {files.map((file, index) => (
@@ -952,6 +948,18 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
             <div className="native-composer-actions">
               <div className="native-left-tools">
                 <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => setPicker('add')}>＋</button>
+                {selectedPurposeLabel && (
+                  <span className="native-form-chip is-purpose">
+                    <span>{selectedPurposeLabel}</span>
+                    <button type="button" aria-label={`${selectedPurposeLabel}を削除`} onClick={() => setPurpose('auto')}>×</button>
+                  </span>
+                )}
+                {selectedExecutionOptions.map((key) => (
+                  <span className="native-form-chip is-option" key={key}>
+                    <span>{OPTION_LABELS[key]}</span>
+                    <button type="button" aria-label={`${OPTION_LABELS[key]}を削除`} onClick={() => toggleOption(key)}>×</button>
+                  </span>
+                ))}
               </div>
               <div className="native-right-tools">
                 {resultSections.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer}>新規</button>}

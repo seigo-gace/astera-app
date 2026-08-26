@@ -111,16 +111,14 @@ html.native-composer-route .platform-credit-layer {
   white-space: pre-wrap;
   line-height: 1.75;
 }
-.native-message-chips,
-.native-selected-chips {
+.native-message-chips {
   min-width: 0;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  padding: 0 14px 13px;
 }
-.native-message-chips { padding: 0 14px 13px; }
-.native-message-chips span,
-.native-selected-chips span {
+.native-message-chips span {
   max-width: 100%;
   padding: 5px 9px;
   border: 1px solid var(--native-line);
@@ -250,11 +248,6 @@ html.native-composer-route .platform-credit-layer {
   color: var(--native-muted);
   font-size: 12px;
 }
-.native-selected-chips {
-  max-height: 68px;
-  margin: 0 8px 7px;
-  overflow-y: auto;
-}
 .native-composer {
   border: 1px solid var(--native-line);
   border-radius: 24px;
@@ -286,6 +279,15 @@ html.native-composer-route .platform-credit-layer {
 }
 .native-left-tools,
 .native-right-tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.native-left-tools {
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.native-left-tools::-webkit-scrollbar { display: none; }
+.native-right-tools { flex: 0 0 auto; }
 .native-round-button,
 .native-run-button {
   width: 36px;
@@ -300,6 +302,48 @@ html.native-composer-route .platform-credit-layer {
   color: inherit;
   cursor: pointer;
 }
+.native-form-chip {
+  flex: 0 0 auto;
+  max-width: 190px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.native-form-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.native-form-chip.is-purpose {
+  border-color: color-mix(in srgb, var(--native-danger) 25%, var(--native-line));
+  background: color-mix(in srgb, var(--native-danger) 10%, var(--native-bg));
+}
+.native-form-chip.is-option {
+  border-color: color-mix(in srgb, var(--native-accent) 30%, var(--native-line));
+  background: color-mix(in srgb, var(--native-accent) 11%, var(--native-bg));
+}
+.native-form-chip > button {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.native-form-chip > button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
 .native-run-button {
   background: var(--native-text);
   color: var(--native-bg);
@@ -658,7 +702,8 @@ html.native-composer-route .platform-credit-layer {
   .native-composer { border-radius: 20px; }
   .native-composer textarea { min-height: 50px; max-height: 150px; padding: 13px 13px 5px; }
   .native-composer-actions { padding-inline: 6px; }
-  .native-left-tools { gap: 3px; }
+  .native-left-tools { gap: 4px; }
+  .native-form-chip { max-width: 150px; }
   .native-round-button, .native-run-button { width: 34px; height: 34px; min-width: 34px; }
   .native-text-button { padding-inline: 5px; font-size: 11px; }
   .native-private-toggle { padding-inline: 5px; }
@@ -712,6 +757,11 @@ html.native-composer-route .platform-credit-layer {
   .native-sheet-actions button,
   .native-sheet-actions a {
     min-height: 44px;
+  }
+  .native-form-chip > button {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
   }
 }
 
