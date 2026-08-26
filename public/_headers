@@ -39,3 +39,6 @@
 
 /result-organization.css
   Cache-Control: no-cache, no-store, must-revalidate
+
+/canonical-option-visibility.js
+  Cache-Control: no-cache, no-store, must-revalidate
