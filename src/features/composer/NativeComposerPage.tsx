@@ -92,15 +92,15 @@ const OPTION_LABELS: Record<CurrentExecutionOptionKey, string> = {
 };
 
 const AGENT_MODE_CHOICES: ReadonlyArray<{ key: AgentMode; label: string }> = [
-  { key: 'low', label: 'エージェント低' },
-  { key: 'medium', label: 'エージェント中' },
-  { key: 'high', label: 'エージェント高' },
+  { key: 'low', label: 'Fast' },
+  { key: 'medium', label: 'Balanced' },
+  { key: 'high', label: 'Deep' },
 ];
 
 const AGENT_MODE_LABELS: Record<AgentMode, string> = {
-  low: 'エージェント低',
-  medium: 'エージェント中',
-  high: 'エージェント高',
+  low: 'Fast',
+  medium: 'Balanced',
+  high: 'Deep',
 };
 
 const PURPOSE_CHOICES: ReadonlyArray<{ key: Exclude<PurposeKey, 'auto'>; label: string }> = [
@@ -794,7 +794,10 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                   type="button"
                   className={active ? 'is-selected' : ''}
                   aria-pressed={active}
-                  onClick={() => selectAgentMode(choice.key)}
+                  onClick={(event) => {
+                    selectAgentMode(choice.key);
+                    event.currentTarget.closest('details')?.removeAttribute('open');
+                  }}
                 >
                   <span>{choice.label}</span>
                   {active && <b aria-hidden="true">✓</b>}
@@ -940,12 +943,18 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={handleComposerKeyDown}
               onPaste={onPaste}
+              onFocus={(event) => {
+                event.currentTarget.style.setProperty('outline', 'none', 'important');
+                event.currentTarget.style.setProperty('box-shadow', 'none', 'important');
+                event.currentTarget.style.setProperty('border', '0', 'important');
+              }}
+              style={{ border: 0, outline: 'none', boxShadow: 'none' }}
               maxLength={MAX_INPUT_CHARACTERS}
               rows={1}
               placeholder="Asteraに判断材料へ変えてほしい内容を入力"
               aria-label="Astera入力"
             />
-            <div className="native-composer-actions">
+            <div className="native-composer-actions" style={{ border: 0, borderTop: 0, boxShadow: 'none' }}>
               <div className="native-left-tools">
                 <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => setPicker('add')}>＋</button>
                 {selectedPurposeLabel && (
@@ -954,12 +963,15 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                     <button type="button" aria-label={`${selectedPurposeLabel}を削除`} onClick={() => setPurpose('auto')}>×</button>
                   </span>
                 )}
-                {selectedExecutionOptions.map((key) => (
-                  <span className="native-form-chip is-option" key={key}>
-                    <span>{OPTION_LABELS[key]}</span>
-                    <button type="button" aria-label={`${OPTION_LABELS[key]}を削除`} onClick={() => toggleOption(key)}>×</button>
-                  </span>
-                ))}
+                {selectedExecutionOptions.map((key) => {
+                  const label = key === 'agent-mode' ? `${OPTION_LABELS[key]}：${AGENT_MODE_LABELS[agentMode]}` : OPTION_LABELS[key];
+                  return (
+                    <span className="native-form-chip is-option" key={key}>
+                      <span>{label}</span>
+                      <button type="button" aria-label={`${label}を削除`} onClick={() => toggleOption(key)}>×</button>
+                    </span>
+                  );
+                })}
               </div>
               <div className="native-right-tools">
                 {resultSections.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer}>新規</button>}
