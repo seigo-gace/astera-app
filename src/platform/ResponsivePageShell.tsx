@@ -15,6 +15,37 @@ const APP_NAV = [
   { href: '/app/history', label: 'navHistory', key: 'history' },
 ] as const;
 
+const SIDEBAR_OPTIONS = [
+  { key: 'translation', label: 'optionTranslation' },
+  { key: 'agent_mode', label: 'optionAgentMode' },
+  { key: 'storage_transfer', label: 'optionStorageTransfer' },
+] as const;
+
+const SIDEBAR_OPTIONS_CSS = `
+.platform-sidebar-options{width:100%;min-width:0}
+.platform-sidebar-options>summary{display:flex;align-items:center;min-height:40px;padding:0 10px;border-radius:9px;gap:10px;list-style:none;cursor:pointer;color:inherit;font-size:14px;font-weight:450;transition:background-color .14s ease,color .14s ease;user-select:none}
+.platform-sidebar-options>summary::-webkit-details-marker{display:none}
+.platform-sidebar-options>summary::marker{content:""}
+.platform-sidebar-options>summary:hover,.platform-sidebar-options>summary:focus-visible{background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent));outline:0}
+.platform-sidebar-options-icon{display:block;width:20px;height:20px;min-width:20px;flex:0 0 20px;background:currentColor;-webkit-mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/sliders-horizontal.svg") center/20px 20px no-repeat;mask:url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/sliders-horizontal.svg") center/20px 20px no-repeat;opacity:.92}
+.platform-sidebar-options-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.platform-sidebar-options-chevron{width:16px;height:16px;margin-left:auto;display:grid;place-items:center;transition:transform .16s ease;font-size:16px;line-height:1;opacity:.7}
+.platform-sidebar-options[open] .platform-sidebar-options-chevron{transform:rotate(180deg)}
+.platform-sidebar-options-body{display:grid;gap:2px;padding:2px 6px 8px 38px}
+.platform-sidebar-option-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:34px;padding:0 4px 0 6px;border-radius:8px;color:inherit;font-size:12px;cursor:pointer}
+.platform-sidebar-option-toggle:hover{background:var(--gpt-ui-hover,color-mix(in srgb,currentColor 7%,transparent))}
+.platform-sidebar-option-toggle>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.platform-sidebar-option-switch{position:relative;display:inline-flex;width:32px;height:18px;min-width:32px;flex:0 0 32px}
+.platform-sidebar-option-switch input{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.platform-sidebar-option-switch>span{position:absolute;inset:0;border-radius:999px;background:color-mix(in srgb,currentColor 20%,transparent);transition:background-color .15s ease}
+.platform-sidebar-option-switch>span::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--platform-bg,#fff);box-shadow:0 1px 2px rgba(0,0,0,.24);transition:transform .15s ease}
+.platform-sidebar-option-switch input:checked+span{background:currentColor}
+.platform-sidebar-option-switch input:checked+span::after{transform:translateX(14px)}
+.platform-sidebar-option-switch input:focus-visible+span{outline:2px solid var(--gpt-ui-focus,currentColor);outline-offset:2px}
+.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options>summary{justify-content:center;padding-inline:0}
+.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options-label,.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options-chevron,.platform-shell.exterior-sidebar-collapsed .platform-sidebar-options-body{display:none!important}
+`;
+
 function focusableElements(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
     .filter((node) => {
@@ -30,6 +61,30 @@ function Brand() {
       <img src="/logo-mark.svg" alt="" style={{ filter: 'var(--logo-filter)' }} />
       <span><strong>ASTERA</strong></span>
     </a>
+  );
+}
+
+function SidebarOptionsAccordion() {
+  const { text: appText } = useAppText();
+  return (
+    <details className="platform-sidebar-options">
+      <summary>
+        <span className="platform-sidebar-options-icon" aria-hidden="true" />
+        <span className="platform-sidebar-options-label">{appText('navOptions')}</span>
+        <span className="platform-sidebar-options-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="platform-sidebar-options-body">
+        {SIDEBAR_OPTIONS.map((item) => (
+          <label className="platform-sidebar-option-toggle" key={item.key}>
+            <span>{appText(item.label)}</span>
+            <span className="platform-sidebar-option-switch">
+              <input type="checkbox" defaultChecked aria-label={appText(item.label)} />
+              <span aria-hidden="true" />
+            </span>
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -282,7 +337,9 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
   const nav = <>
     <Brand />
     <nav className="platform-nav" aria-label={platformText('appNavigation')}>
-      {APP_NAV.map((item) => <a key={item.key} href={item.href} aria-current={route.nav === item.key ? 'page' : undefined} onClick={() => setMenuOpen(false)}><span>{appText(item.label)}</span></a>)}
+      {APP_NAV.map((item) => item.key === 'options'
+        ? <SidebarOptionsAccordion key={item.key} />
+        : <a key={item.key} href={item.href} aria-current={route.nav === item.key ? 'page' : undefined} onClick={() => setMenuOpen(false)}><span>{appText(item.label)}</span></a>)}
     </nav>
     <section className="platform-side-section" aria-label={appText('recent')}>
       <div className="platform-side-section-title">{appText('recent')}</div>
@@ -339,6 +396,7 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
   </> : null;
 
   return <div className={`platform-shell${fullWidth ? ' is-full-width' : ''}`}>
+    <style>{SIDEBAR_OPTIONS_CSS}</style>
     <CreditMeter enabled={route.access === 'authenticated'} />
     <header className="platform-mobile-header">
       <div className="platform-mobile-header-left">
