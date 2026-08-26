@@ -1,0 +1,93 @@
+.native-picker-backdrop {
+  place-items: center;
+  padding: 12px;
+}
+
+.native-picker {
+  width: 360px;
+  height: 460px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.native-picker-body {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.native-option-accordion {
+  display: grid;
+  gap: 4px;
+}
+
+.native-option-accordion-trigger,
+.native-agent-mode-choices > button {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.native-option-accordion-trigger:hover,
+.native-option-accordion-trigger.is-selected,
+.native-agent-mode-choices > button:hover,
+.native-agent-mode-choices > button.is-selected {
+  background: var(--native-surface-2);
+}
+
+.native-option-accordion-trigger b,
+.native-agent-mode-choices > button b {
+  color: var(--native-accent-strong);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.native-agent-mode-choices {
+  display: grid;
+  gap: 2px;
+  padding: 0 8px 4px 18px;
+}
+
+.native-agent-mode-choices > button {
+  min-height: 42px;
+  border-radius: 10px;
+  padding-left: 14px;
+}
+
+@media (max-width: 600px) {
+  .native-picker-backdrop {
+    place-items: center;
+    padding: 12px;
+  }
+
+  .native-picker {
+    width: 360px;
+    height: 460px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    border: 1px solid var(--native-line);
+    border-radius: 20px;
+    padding-bottom: 0;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .native-picker {
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+}
