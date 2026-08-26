@@ -6,13 +6,12 @@ import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/Respo
 import { FormResult, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
 import './settings-dedicated.css';
 
-type OptionKey = 'translation' | 'agent_mode' | 'document' | 'storage_transfer';
+type OptionKey = 'translation' | 'agent_mode' | 'storage_transfer';
 type OptionDefinition = { key: OptionKey; labelKey: AppTextKey; descriptionKey: AppTextKey };
 
 const OPTION_DEFS: ReadonlyArray<OptionDefinition> = [
   { key: 'translation', labelKey: 'optionTranslation', descriptionKey: 'optionTranslationDescription' },
   { key: 'agent_mode', labelKey: 'optionAgentMode', descriptionKey: 'optionAgentModeDescription' },
-  { key: 'document', labelKey: 'optionDocument', descriptionKey: 'optionDocumentDescription' },
   { key: 'storage_transfer', labelKey: 'optionStorageTransfer', descriptionKey: 'optionStorageTransferDescription' },
 ];
 
@@ -23,7 +22,7 @@ function Info({ label, body, ariaSuffix }: { label: string; body: string; ariaSu
 export default function OptionSettingsPage({ route }: { route: RouteMatch }) {
   const { text } = useAppText();
   const [resource, reload] = useResource('/api/preferences');
-  const defaults = useMemo<Record<OptionKey, boolean>>(() => ({ translation: true, agent_mode: true, document: true, storage_transfer: true }), []);
+  const defaults = useMemo<Record<OptionKey, boolean>>(() => ({ translation: true, agent_mode: true, storage_transfer: true }), []);
   const [values, setValues] = useState<Record<OptionKey, boolean>>(defaults);
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
 
@@ -35,7 +34,7 @@ export default function OptionSettingsPage({ route }: { route: RouteMatch }) {
     if (resource.status !== 'ready') return;
     const root = asRecord(resource.data);
     const preferences = asRecord(root.preferences ?? root.data ?? root);
-    setValues({ translation: preferences.translation !== false, agent_mode: preferences.agent_mode !== false, document: preferences.document !== false, storage_transfer: preferences.storage_transfer !== false });
+    setValues({ translation: preferences.translation !== false, agent_mode: preferences.agent_mode !== false, storage_transfer: preferences.storage_transfer !== false });
   }, [defaults, resource]);
 
   const save = async (event: FormEvent) => {

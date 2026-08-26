@@ -26,19 +26,30 @@ function estimatePayload() {
   };
 }
 
+type PreferenceState = { translation: boolean; agent_mode: boolean; document: boolean; storage_transfer: boolean };
 type MockOptions = {
   estimateDelay?: number;
   estimateFailure?: boolean;
   incompleteResult?: boolean;
   counters?: { estimates: number; jobs: number };
+  preferences?: Partial<PreferenceState>;
+  preferencePatches?: Array<Record<string, unknown>>;
 };
 
 async function installRuntime(page: Page, options: MockOptions = {}): Promise<void> {
+  let preferences: PreferenceState = { translation: true, agent_mode: true, document: true, storage_transfer: true, ...options.preferences };
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === '/api/account') return json(route, { account: { id: 'composer-user', display_name: 'Composer User', account_status: 'active' } });
-    if (path === '/api/preferences') return json(route, { preferences: { translation: true, agent_mode: true, document: true, storage_transfer: true } });
+    if (path === '/api/preferences') {
+      if (request.method() === 'PATCH') {
+        const patch = request.postDataJSON() as Record<string, unknown>;
+        options.preferencePatches?.push(patch);
+        preferences = { ...preferences, ...patch } as PreferenceState;
+      }
+      return json(route, { preferences });
+    }
     if (path === '/api/history') return json(route, { items: [] });
     if (path === '/api/credit/balance') return json(route, { usable_balance: 1000, reserved_balance: 0, state: 'healthy', policy: { low_threshold: 200 } });
     if (path === '/api/account/catalog') return json(route, { subscription: { plan_id: 'basic' }, plans: [{ plan_id: 'basic', included_credits: 1000 }] });
@@ -151,17 +162,25 @@ test('STORY-COMPOSER-006 empty and whitespace-only input cannot run', async ({ p
   expect(counters.estimates).toBe(0);
 });
 
-test('STORY-COMPOSER-007 Fullscreen Enter remains a line break', async ({ page }) => {
-  const counters = { estimates: 0, jobs: 0 };
-  await installRuntime(page, { counters });
+test('STORY-COMPOSER-007 composer keeps only plus as a persistent option entry and slash opens that same add surface', async ({ page }) => {
+  await installRuntime(page);
   await openComposer(page);
-  await page.getByRole('button', { name: '全画面' }).click();
-  const textarea = page.getByRole('dialog', { name: '全画面入力' }).locator('textarea');
-  await textarea.fill('全画面1行目');
-  await textarea.press('Enter');
-  await textarea.type('全画面2行目');
-  await expect(textarea).toHaveValue('全画面1行目\n全画面2行目');
-  expect(counters.estimates).toBe(0);
+  await expect(page.locator('.native-left-tools > button')).toHaveCount(1);
+  await expect(page.getByLabel('Fileと実行Optionを追加')).toBeVisible();
+  await expect(page.getByLabel('Purposeを選択')).toHaveCount(0);
+  await expect(page.getByLabel('具体対象を選択')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '全画面' })).toHaveCount(0);
+  await expect(page.locator('.native-private-toggle')).toHaveCount(0);
+  await expect(page.locator('.native-selected-chips')).toHaveCount(0);
+
+  await page.getByLabel('Astera入力').press('/');
+  const addDialog = page.getByRole('dialog', { name: '追加・実行Option' });
+  await expect(addDialog).toBeVisible();
+  await expect(addDialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
+  await expect(addDialog.getByText('Agent Mode', { exact: true })).toBeVisible();
+  await expect(addDialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
+  await expect(addDialog.getByText('書類作成', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Astera入力')).toHaveValue('');
 });
 
 test('STORY-COMPOSER-008 successful user posts are collapsed into an accessible accordion', async ({ page }) => {
@@ -175,4 +194,40 @@ test('STORY-COMPOSER-008 successful user posts are collapsed into an accessible 
   await trigger.click();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('.native-user-message > p')).toContainText('長い投稿内容を結果画面で折りたたむ');
+});
+
+test('STORY-COMPOSER-009 plus and at both reflect the same three sidebar preference candidates', async ({ page }) => {
+  await installRuntime(page, { preferences: { translation: true, agent_mode: false, document: true, storage_transfer: true } });
+  await openComposer(page);
+  await page.getByLabel('Fileと実行Optionを追加').click();
+  let dialog = page.getByRole('dialog', { name: '追加・実行Option' });
+  await expect(dialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('書類作成', { exact: true })).toHaveCount(0);
+  await dialog.getByLabel('閉じる').click();
+
+  await page.getByLabel('Astera入力').press('@');
+  dialog = page.getByRole('dialog', { name: 'Option・対象選択' });
+  await expect(dialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('書類作成', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Astera入力')).toHaveValue('');
+});
+
+test('STORY-COMPOSER-010 sidebar option toggle persists and updates composer candidates without reload', async ({ page }) => {
+  const preferencePatches: Array<Record<string, unknown>> = [];
+  await installRuntime(page, { preferencePatches });
+  await openComposer(page);
+  const sidebarAgent = page.locator('.platform-sidebar .platform-sidebar-options input').nth(1);
+  await expect(sidebarAgent).toBeChecked();
+  await sidebarAgent.uncheck();
+  await expect.poll(() => preferencePatches.some((patch) => patch.agent_mode === false)).toBe(true);
+
+  await page.getByLabel('Fileと実行Optionを追加').click();
+  const addDialog = page.getByRole('dialog', { name: '追加・実行Option' });
+  await expect(addDialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
+  await expect(addDialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
+  await expect(addDialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
 });

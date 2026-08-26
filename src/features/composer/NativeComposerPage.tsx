@@ -16,10 +16,11 @@ import './native-composer.css';
 
 type PurposeKey = 'auto' | 'review' | 'compare' | 'verify' | 'improve' | 'research' | 'plan' | 'consider';
 type ExecutionOptionKey = 'translation' | 'agent-mode' | 'document' | 'external-storage-transfer';
+type CurrentExecutionOptionKey = Exclude<ExecutionOptionKey, 'document'>;
 type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pending' | 'credited' | 'resume_available' | 'resume_blocked';
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'confirmation' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
-type PickerKind = 'purpose' | 'add' | 'context' | null;
+type PickerKind = 'add' | 'context' | null;
 
 type UploadedFile = {
   localId: string;
@@ -77,21 +78,15 @@ const RESULT_KEYS = [
   'next_prompt',
 ] as const;
 
-const PURPOSES: ReadonlyArray<{ key: PurposeKey; label: string }> = [
-  { key: 'auto', label: '自動' },
-  { key: 'review', label: 'レビュー' },
-  { key: 'compare', label: '比較' },
-  { key: 'verify', label: '検証' },
-  { key: 'improve', label: '改善' },
-  { key: 'research', label: '調査' },
-  { key: 'plan', label: '計画' },
-  { key: 'consider', label: '検討' },
+const CURRENT_OPTION_KEYS: readonly CurrentExecutionOptionKey[] = [
+  'translation',
+  'agent-mode',
+  'external-storage-transfer',
 ];
 
-const OPTION_LABELS: Record<ExecutionOptionKey, string> = {
+const OPTION_LABELS: Record<CurrentExecutionOptionKey, string> = {
   translation: '高精度翻訳',
   'agent-mode': 'Agent Mode',
-  document: '書類作成',
   'external-storage-transfer': '外部Storage転送',
 };
 
@@ -269,7 +264,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [documentTemplateId, setDocumentTemplateId] = useState('');
   const [documentTemplateSource, setDocumentTemplateSource] = useState<DocumentTemplateSource>('personal');
   const [storageDestinationId, setStorageDestinationId] = useState('');
-  const [privateMode, setPrivateMode] = useState(true);
+  const [privateMode] = useState(true);
   const [projectId, setProjectId] = useState('');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [estimate, setEstimate] = useState<JobEstimate | null>(null);
@@ -279,16 +274,14 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [currentJobId, setCurrentJobId] = useState('');
   const [resultSections, setResultSections] = useState<ResultSection[]>([]);
   const [promptExpanded, setPromptExpanded] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const [picker, setPicker] = useState<PickerKind>(null);
   const [projects, setProjects] = useState<CatalogItem[]>([]);
   const [templates, setTemplates] = useState<CatalogItem[]>([]);
   const [destinations, setDestinations] = useState<CatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [optionVisibility, setOptionVisibility] = useState<Record<ExecutionOptionKey, boolean>>({
+  const [optionVisibility, setOptionVisibility] = useState<Record<CurrentExecutionOptionKey, boolean>>({
     translation: true,
     'agent-mode': true,
-    document: true,
     'external-storage-transfer': true,
   });
   const [revisionBaseline, setRevisionBaseline] = useState<RevisionBaseline | null>(null);
@@ -310,20 +303,33 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    apiRequest('/api/preferences', { signal: controller.signal })
-      .then((payload) => {
-        const root = asRecord(payload);
-        const data = asRecord(root.preferences ?? root.data ?? root);
-        setOptionVisibility({
-          translation: data.translation !== false,
-          'agent-mode': data.agent_mode !== false && data.agentMode !== false,
-          document: data.document !== false,
-          'external-storage-transfer': data.storage_transfer !== false && data.storageTransfer !== false,
-        });
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
+    let controller = new AbortController();
+    const applyPreferences = (payload: unknown) => {
+      const root = asRecord(payload);
+      const data = asRecord(root.preferences ?? root.data ?? root);
+      setOptionVisibility({
+        translation: data.translation !== false,
+        'agent-mode': data.agent_mode !== false && data.agentMode !== false,
+        'external-storage-transfer': data.storage_transfer !== false && data.storageTransfer !== false,
+      });
+    };
+    const load = () => {
+      controller.abort();
+      controller = new AbortController();
+      apiRequest('/api/preferences', { signal: controller.signal }).then(applyPreferences).catch(() => undefined);
+    };
+    const onPreferenceChange = (event: Event) => {
+      if (event instanceof CustomEvent) applyPreferences(event.detail);
+      else load();
+    };
+    window.addEventListener('astera:option-preferences', onPreferenceChange);
+    window.addEventListener('focus', load);
+    load();
+    return () => {
+      controller.abort();
+      window.removeEventListener('astera:option-preferences', onPreferenceChange);
+      window.removeEventListener('focus', load);
+    };
   }, []);
 
   const clearPrivateOutputTimer = useCallback(() => {
@@ -476,10 +482,9 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     });
   };
 
-  const toggleOption = (key: ExecutionOptionKey) => {
+  const toggleOption = (key: CurrentExecutionOptionKey) => {
     setSelectedOptions((current) => {
       if (current.includes(key)) {
-        if (key === 'document') setDocumentTemplateId('');
         if (key === 'external-storage-transfer') setStorageDestinationId('');
         return current.filter((value) => value !== key);
       }
@@ -672,7 +677,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     setDocumentTemplateId('');
     setDocumentTemplateSource('personal');
     setStorageDestinationId('');
-    setPrivateMode(true);
     setProjectId('');
     setFiles([]);
     setEstimate(null);
@@ -687,21 +691,13 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
-    if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if ((event.key === '/' || event.key === '@') && !event.ctrlKey && !event.metaKey && !event.altKey) {
       const start = event.currentTarget.selectionStart ?? 0;
       const end = event.currentTarget.selectionEnd ?? start;
       if (start === end && (start === 0 || /\s/.test(event.currentTarget.value[start - 1] ?? ''))) {
         event.preventDefault();
-        setPicker('purpose');
-        return;
-      }
-    }
-    if (event.key === '@' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      const start = event.currentTarget.selectionStart ?? 0;
-      const end = event.currentTarget.selectionEnd ?? start;
-      if (start === end && (start === 0 || /\s/.test(event.currentTarget.value[start - 1] ?? ''))) {
-        event.preventDefault();
-        openContextPicker();
+        if (event.key === '/') setPicker('add');
+        else openContextPicker();
         return;
       }
     }
@@ -713,19 +709,10 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
 
   const activeWork = ['uploading', 'estimating', 'submitting', 'queued', 'running', 'assembling_result'].includes(phase);
   const preview = prompt.replace(/\s+/g, ' ').trim().slice(0, 96);
-  const selectedPurpose = PURPOSES.find((item) => item.key === purpose)?.label ?? '自動';
-  const selectedTemplate = templates.find((item) => item.id === documentTemplateId);
-  const selectedDestination = destinations.find((item) => item.id === storageDestinationId);
   const selectedProject = projects.find((item) => item.id === projectId);
-
+  const visibleOptionKeys = CURRENT_OPTION_KEYS.filter((key) => optionVisibility[key]);
   const chips = [
-    `/${selectedPurpose}`,
-    ...selectedOptions.map((key) => {
-      if (key === 'translation') return `翻訳:${targetLanguage}`;
-      if (key === 'agent-mode') return `Agent:${agentMode}`;
-      if (key === 'document') return `書類:${selectedTemplate?.title ?? 'Template未選択'}`;
-      return `転送:${selectedDestination?.title ?? 'Destination未選択'}`;
-    }),
+    ...selectedOptions.filter((key): key is CurrentExecutionOptionKey => key !== 'document').map((key) => OPTION_LABELS[key]),
     ...(projectId ? [`Project:${selectedProject?.title ?? projectId}`] : []),
   ];
 
@@ -733,22 +720,17 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) setPicker(null);
     }}>
-      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'purpose' ? 'Purpose選択' : picker === 'add' ? '追加・実行Option' : '対象選択'}>
+      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加・実行Option' : 'Option・対象選択'}>
         <header>
-          <strong>{picker === 'purpose' ? '/ Purpose' : picker === 'add' ? '＋ 追加・実行Option' : '@ 対象を選択'}</strong>
+          <strong>{picker === 'add' ? '＋ 追加・実行Option' : '@ Option・対象を選択'}</strong>
           <button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button>
         </header>
         <div className="native-picker-body">
-          {picker === 'purpose' && PURPOSES.map((item) => (
-            <button key={item.key} type="button" className={purpose === item.key ? 'is-selected' : ''} onClick={() => { setPurpose(item.key); setPicker(null); }}>
-              <span>/{item.label}</span>{purpose === item.key && <b>✓</b>}
-            </button>
-          ))}
           {picker === 'add' && (
             <>
               <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
               <div className="native-picker-group-label">実行Option</div>
-              {(Object.keys(OPTION_LABELS) as ExecutionOptionKey[]).filter((key) => optionVisibility[key]).map((key) => (
+              {visibleOptionKeys.map((key) => (
                 <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
                   <span>{OPTION_LABELS[key]}</span><b>{selectedOptions.includes(key) ? 'ON' : 'OFF'}</b>
                 </button>
@@ -758,20 +740,19 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
           {picker === 'context' && (
             <>
               {catalogLoading && <p className="native-picker-status">登録済み項目を読み込んでいます…</p>}
-              {selectedOptions.includes('translation') && (
+              <div className="native-picker-group-label">実行Option</div>
+              {visibleOptionKeys.map((key) => (
+                <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
+                  <span>{OPTION_LABELS[key]}</span><b>{selectedOptions.includes(key) ? 'ON' : 'OFF'}</b>
+                </button>
+              ))}
+              {selectedOptions.includes('translation') && optionVisibility.translation && (
                 <label className="native-picker-field"><span>翻訳先言語</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} placeholder="例: English / ja-JP" /></label>
               )}
-              {selectedOptions.includes('agent-mode') && (
+              {selectedOptions.includes('agent-mode') && optionVisibility['agent-mode'] && (
                 <label className="native-picker-field"><span>Agent Mode</span><select value={agentMode} onChange={(event) => setAgentMode(event.target.value as 'low' | 'medium' | 'high')}><option value="low">エージェント低</option><option value="medium">エージェント中</option><option value="high">エージェント高</option></select></label>
               )}
-              {selectedOptions.includes('document') && (
-                <>
-                  <label className="native-picker-field"><span>Template区分</span><select value={documentTemplateSource} onChange={(event) => { setDocumentTemplateSource(event.target.value as DocumentTemplateSource); setDocumentTemplateId(''); }}><option value="official">Astera公式テンプレート</option><option value="personal">個別テンプレート</option></select></label>
-                  <label className="native-picker-field"><span>書類Template</span><select value={documentTemplateId} onChange={(event) => setDocumentTemplateId(event.target.value)}><option value="">選択してください</option>{templates.filter((item) => item.source === documentTemplateSource).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-                  <a className="native-picker-link" href="/app/settings/templates">個別Template設定を開く</a>
-                </>
-              )}
-              {selectedOptions.includes('external-storage-transfer') && (
+              {selectedOptions.includes('external-storage-transfer') && optionVisibility['external-storage-transfer'] && (
                 <>
                   <label className="native-picker-field"><span>外部Storage転送先</span><select value={storageDestinationId} onChange={(event) => setStorageDestinationId(event.target.value)}><option value="">選択してください</option>{destinations.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
                   <a className="native-picker-link" href="/app/settings/storage-destinations">外部Storage設定を開く</a>
@@ -807,7 +788,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                     <b aria-hidden="true">{promptExpanded ? '⌃' : '⌄'}</b>
                   </button>
                   {promptExpanded && <p>{prompt}</p>}
-                  <div className="native-message-chips">{chips.map((chip) => <span key={chip}>{chip}</span>)}{privateMode && <span>Private</span>}</div>
+                  {chips.length > 0 && <div className="native-message-chips">{chips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
                 </section>
 
                 {activeWork && (
@@ -846,9 +827,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
 
         <section className="native-composer-dock">
           {notice && <div className="native-notice" role="status">{notice}</div>}
-          <div className="native-selected-chips">
-            {chips.map((chip) => <span key={chip}>{chip}</span>)}
-          </div>
+          {chips.length > 0 && <div className="native-selected-chips">{chips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
           {files.length > 0 && (
             <ul className="native-file-queue" aria-label="File Queue">
               {files.map((file, index) => (
@@ -886,13 +865,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
             <div className="native-composer-actions">
               <div className="native-left-tools">
                 <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => setPicker('add')}>＋</button>
-                <button type="button" className="native-round-button" aria-label="Purposeを選択" onClick={() => setPicker('purpose')}>/</button>
-                <button type="button" className="native-round-button" aria-label="具体対象を選択" onClick={openContextPicker}>@</button>
-                <button type="button" className="native-text-button" onClick={() => setFullscreen(true)}>全画面</button>
-                <label className="native-private-toggle" title="本文・File・ResultをAstera側へ永続保存しない">
-                  <input type="checkbox" checked={privateMode} disabled={activeWork || files.length > 0 || resultSections.length > 0} onChange={(event) => setPrivateMode(event.target.checked)} />
-                  <span>Private</span>
-                </label>
               </div>
               <div className="native-right-tools">
                 {resultSections.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer}>新規</button>}
@@ -932,14 +904,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                 </div>
               )}
             </section>
-          </div>
-        )}
-
-        {fullscreen && (
-          <div className="native-fullscreen" role="dialog" aria-modal="true" aria-label="全画面入力">
-            <header><strong>全画面入力</strong><button type="button" onClick={() => setFullscreen(false)}>閉じる</button></header>
-            <textarea autoFocus value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={handleComposerKeyDown} onPaste={onPaste} maxLength={MAX_INPUT_CHARACTERS} />
-            <footer><span>{[...prompt].length.toLocaleString()} / {MAX_INPUT_CHARACTERS.toLocaleString()}</span><button type="button" onClick={() => { setFullscreen(false); void estimateJob(); }} disabled={!prompt.trim()}>予定Creditを確認</button></footer>
           </div>
         )}
 
