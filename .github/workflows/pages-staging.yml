@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -15,6 +17,11 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.number == 9 &&
+       github.event.comment.body == '/deploy-staging' &&
+       github.event.comment.user.login == github.repository_owner)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -26,6 +33,8 @@ jobs:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node
         id: node
