@@ -20,6 +20,7 @@ type CurrentExecutionOptionKey = Exclude<ExecutionOptionKey, 'document'>;
 type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pending' | 'credited' | 'resume_available' | 'resume_blocked';
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'confirmation' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
+type AgentMode = 'low' | 'medium' | 'high';
 type PickerKind = 'add' | 'purpose' | 'context' | null;
 
 type UploadedFile = {
@@ -88,6 +89,18 @@ const OPTION_LABELS: Record<CurrentExecutionOptionKey, string> = {
   translation: '高精度翻訳',
   'agent-mode': 'Agent Mode',
   'external-storage-transfer': '外部Storage転送',
+};
+
+const AGENT_MODE_CHOICES: ReadonlyArray<{ key: AgentMode; label: string }> = [
+  { key: 'low', label: 'エージェント低' },
+  { key: 'medium', label: 'エージェント中' },
+  { key: 'high', label: 'エージェント高' },
+];
+
+const AGENT_MODE_LABELS: Record<AgentMode, string> = {
+  low: 'エージェント低',
+  medium: 'エージェント中',
+  high: 'エージェント高',
 };
 
 const PURPOSE_CHOICES: ReadonlyArray<{ key: Exclude<PurposeKey, 'auto'>; label: string }> = [
@@ -272,7 +285,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [purpose, setPurpose] = useState<PurposeKey>('auto');
   const [selectedOptions, setSelectedOptions] = useState<ExecutionOptionKey[]>([]);
   const [targetLanguage, setTargetLanguage] = useState(defaultLanguage());
-  const [agentMode, setAgentMode] = useState<'low' | 'medium' | 'high'>('medium');
+  const [agentMode, setAgentMode] = useState<AgentMode>('medium');
   const [documentTemplateId, setDocumentTemplateId] = useState('');
   const [documentTemplateSource, setDocumentTemplateSource] = useState<DocumentTemplateSource>('personal');
   const [storageDestinationId, setStorageDestinationId] = useState('');
@@ -505,6 +518,15 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     });
   };
 
+  const selectAgentMode = (mode: AgentMode) => {
+    const disableCurrent = selectedOptions.includes('agent-mode') && agentMode === mode;
+    setAgentMode(mode);
+    setSelectedOptions((current) => {
+      if (disableCurrent) return current.filter((value) => value !== 'agent-mode');
+      return current.includes('agent-mode') ? current : [...current, 'agent-mode'];
+    });
+  };
+
   const loadCatalogs = useCallback(async () => {
     setCatalogLoading(true);
     try {
@@ -728,6 +750,42 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     ...(projectId ? [`Project:${selectedProject?.title ?? projectId}`] : []),
   ];
 
+  const renderVisibleOptions = () => visibleOptionKeys.map((key) => {
+    if (key === 'agent-mode') {
+      const selected = selectedOptions.includes('agent-mode');
+      return (
+        <details key={key} className="native-option-accordion">
+          <summary className={selected ? 'native-option-accordion-trigger is-selected' : 'native-option-accordion-trigger'}>
+            <span>{OPTION_LABELS[key]}</span>
+            <b>{selected ? AGENT_MODE_LABELS[agentMode] : '›'}</b>
+          </summary>
+          <div className="native-agent-mode-choices">
+            {AGENT_MODE_CHOICES.map((choice) => {
+              const active = selected && agentMode === choice.key;
+              return (
+                <button
+                  key={choice.key}
+                  type="button"
+                  className={active ? 'is-selected' : ''}
+                  aria-pressed={active}
+                  onClick={() => selectAgentMode(choice.key)}
+                >
+                  <span>{choice.label}</span>
+                  {active && <b aria-hidden="true">✓</b>}
+                </button>
+              );
+            })}
+          </div>
+        </details>
+      );
+    }
+    return (
+      <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
+        <span>{OPTION_LABELS[key]}</span>
+      </button>
+    );
+  });
+
   const pickerBody = picker && (
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) setPicker(null);
@@ -742,12 +800,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
             <>
               <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
               <button type="button" onClick={() => setPicker('purpose')}><span>用途・目的</span><b>{purpose === 'auto' ? '›' : PURPOSE_LABELS[purpose]}</b></button>
-              <div className="native-picker-group-label">実行Option</div>
-              {visibleOptionKeys.map((key) => (
-                <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
-                  <span>{OPTION_LABELS[key]}</span>
-                </button>
-              ))}
+              {renderVisibleOptions()}
             </>
           )}
           {picker === 'purpose' && (
@@ -770,17 +823,9 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
           {picker === 'context' && (
             <>
               {catalogLoading && <p className="native-picker-status">登録済み項目を読み込んでいます…</p>}
-              <div className="native-picker-group-label">実行Option</div>
-              {visibleOptionKeys.map((key) => (
-                <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}>
-                  <span>{OPTION_LABELS[key]}</span>
-                </button>
-              ))}
+              {renderVisibleOptions()}
               {selectedOptions.includes('translation') && optionVisibility.translation && (
                 <label className="native-picker-field"><span>翻訳先言語</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} placeholder="例: English / ja-JP" /></label>
-              )}
-              {selectedOptions.includes('agent-mode') && optionVisibility['agent-mode'] && (
-                <label className="native-picker-field"><span>Agent Mode</span><select value={agentMode} onChange={(event) => setAgentMode(event.target.value as 'low' | 'medium' | 'high')}><option value="low">エージェント低</option><option value="medium">エージェント中</option><option value="high">エージェント高</option></select></label>
               )}
               {selectedOptions.includes('external-storage-transfer') && optionVisibility['external-storage-transfer'] && (
                 <>
