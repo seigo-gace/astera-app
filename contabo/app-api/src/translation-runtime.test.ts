@@ -66,6 +66,64 @@ test('translation runtime translates section bodies only and preserves protected
   assert.equal(providerBody.generationConfig?.responseMimeType, 'text/plain');
 });
 
+test('translation runtime retries only the failing body and reports the real Gemini call count', async () => {
+  let providerCalls = 0;
+  const fakeVault = {
+    providerJson: async (input: ProviderInput) => {
+      providerCalls += 1;
+      const body = input.body as { contents: Array<{ parts: Array<{ text: string }> }> };
+      const requestText = body.contents[0]?.parts[0]?.text ?? '';
+      const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
+      const translated = source.replace('Hello', 'こんにちは');
+      return {
+        response: { status: 200, ok: true, body: '{}' },
+        payload: {
+          candidates: [{ content: { parts: [{ text: providerCalls === 1 ? `${translated}\n破壊行` : translated }] } }],
+          usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
+        },
+      };
+    },
+  } as unknown as VaultClient;
+
+  const output = await translateAsteraResult(
+    { result: { sections: [{ key: 'true_purpose', body: '# Hello' }] } },
+    'ja-JP',
+    fakeVault,
+    { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 30_000 },
+  );
+  assert.equal(providerCalls, 2);
+  assert.equal(output.usage.calls, 2);
+  assert.equal(output.usage.totalTokens, 6);
+  const result = output.result as { result: { sections: Array<{ body: string }> } };
+  assert.equal(result.result.sections[0]?.body, '# こんにちは');
+});
+
+test('translation runtime applies its provider timeout without modifying the Vault implementation', async () => {
+  let providerCalls = 0;
+  const fakeVault = {
+    providerJson: async () => {
+      providerCalls += 1;
+      return await new Promise<never>(() => undefined);
+    },
+  } as unknown as VaultClient;
+
+  await assert.rejects(
+    () => translateAsteraResult(
+      { result: { sections: [{ key: 'true_purpose', body: 'Hello' }] } },
+      'ja-JP',
+      fakeVault,
+      { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 5 },
+    ),
+    (error: unknown) => {
+      const source = error as Error & { code?: string; retryable?: boolean };
+      assert.equal(source.code, 'TRANSLATION_PROVIDER_TIMEOUT');
+      assert.equal(source.retryable, true);
+      return true;
+    },
+  );
+  assert.equal(providerCalls, 2);
+});
+
 test('translation runtime fails closed when Gemini provider profile is not configured', async () => {
   const fakeVault = { providerJson: async () => { throw new Error('provider must not be called'); } } as unknown as VaultClient;
   await assert.rejects(

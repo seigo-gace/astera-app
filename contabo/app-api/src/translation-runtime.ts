@@ -25,6 +25,21 @@ function codedError(code: string, message: string, retryable = false): Error {
   return Object.assign(new Error(message), { code, retryable });
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  const safeTimeout = Number.isFinite(timeoutMs) ? Math.max(1, Math.trunc(timeoutMs)) : 90_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(codedError('TRANSLATION_PROVIDER_TIMEOUT', 'Gemini translation provider timed out.', true)), safeTimeout);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 const PROTECTED = /```[\s\S]*?```|`[^`\n]+`|https?:\/\/[^\s<>()]+|\{\{[^{}\n]+\}\}|\$\{[^{}\n]+\}|<%[\s\S]*?%>/g;
 
 function protect(source: string): { text: string; tokens: Array<{ token: string; value: string }> } {
@@ -98,7 +113,7 @@ async function translateText(source: string, targetLanguage: string, vault: Vaul
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { payload } = await vault.providerJson({
+      const { payload } = await withTimeout(vault.providerJson({
         secretId: config.apiKeyRef,
         consumer: 'translation-flash-lite',
         url: endpoint,
@@ -111,7 +126,7 @@ async function translateText(source: string, targetLanguage: string, vault: Vaul
           contents: [{ role: 'user', parts: [{ text: `TARGET_LANGUAGE=${targetLanguage}\nBEGIN_BODY\n${protectedSource.text}\nEND_BODY` }] }],
           generationConfig: { temperature: 0, responseMimeType: 'text/plain' },
         },
-      });
+      }), config.timeoutMs);
       const candidate = extractCandidate(payload);
       let raw = candidate.output;
       const prefix = `TARGET_LANGUAGE=${targetLanguage}\n`;
@@ -119,7 +134,7 @@ async function translateText(source: string, targetLanguage: string, vault: Vaul
       if (raw.startsWith('BEGIN_BODY\n') && raw.endsWith('\nEND_BODY')) raw = raw.slice('BEGIN_BODY\n'.length, -'\nEND_BODY'.length);
       const restored = restore(raw, protectedSource.tokens);
       validateStructure(source, restored);
-      return { text: restored, usage: candidate.usage, calls: 1 };
+      return { text: restored, usage: candidate.usage, calls: attempt + 1 };
     } catch (error) {
       lastError = error;
     }
