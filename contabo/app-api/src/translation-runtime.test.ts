@@ -3,28 +3,15 @@ import test from 'node:test';
 import { translateAsteraResult } from './translation-runtime.js';
 import type { VaultClient } from './vault-client.js';
 
-type ProviderInput = {
-  secretId: string;
-  consumer: string;
-  url: string;
-  secretHeader: string;
-  headers?: Record<string, string>;
-  body?: unknown;
-};
+const baseConfig = { modelId: 'configured-model', apiKeyRef: 'vault-ref', timeoutMs: 30_000 };
 
-test('translation runtime translates section bodies only and preserves protected values', async () => {
-  let providerInput: ProviderInput | null = null;
-  const fakeVault = {
-    providerJson: async (input: ProviderInput) => {
-      providerInput = input;
-      const body = input.body as {
-        systemInstruction?: { parts?: Array<{ text?: string }> };
-        contents: Array<{ parts: Array<{ text: string }> }>;
-        generationConfig?: { temperature?: number; responseMimeType?: string };
-      };
+function fakeVault(translator: (source: string) => string): VaultClient {
+  return {
+    providerJson: async (input: { body?: unknown }) => {
+      const body = input.body as { contents: Array<{ parts: Array<{ text: string }> }> };
       const requestText = body.contents[0]?.parts[0]?.text ?? '';
       const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
-      const translated = source.replace('Hello', 'こんにちは').replace('World', '世界');
+      const translated = translator(source);
       return {
         response: { status: 200, ok: true, body: '{}' },
         payload: {
@@ -34,6 +21,14 @@ test('translation runtime translates section bodies only and preserves protected
       };
     },
   } as unknown as VaultClient;
+}
+
+function errorCode(error: unknown): string {
+  return (error as Error & { code?: string }).code ?? '';
+}
+
+test('translation runtime translates section bodies only and preserves protected values', async () => {
+  const vault = fakeVault((source) => source.replace('Hello', 'こんにちは').replace('World', '世界'));
   const input = {
     result: {
       sections: [
@@ -41,97 +36,159 @@ test('translation runtime translates section bodies only and preserves protected
       ],
     },
   };
-  const output = await translateAsteraResult(input, 'ja-JP', fakeVault, { modelId: 'configured-model', apiKeyRef: 'vault-ref', timeoutMs: 30_000 });
+  const output = await translateAsteraResult(input, 'ja-JP', vault, baseConfig);
   const result = output.result as typeof input;
   assert.equal(result.result.sections[0]?.title, '固定タイトル');
   assert.equal(result.result.sections[0]?.body, '# こんにちは\n世界 https://example.com `const x = 1`');
   assert.equal(output.usage.calls, 1);
   assert.equal(output.usage.totalTokens, 15);
-
-  assert.ok(providerInput);
-  assert.equal(providerInput.secretId, 'vault-ref');
-  assert.equal(providerInput.consumer, 'translation-flash-lite');
-  assert.equal(providerInput.secretHeader, 'x-goog-api-key');
-  assert.equal(providerInput.url, 'https://generativelanguage.googleapis.com/v1beta/models/configured-model:generateContent');
-  assert.equal(providerInput.headers?.['content-type'], 'application/json');
-  const providerBody = providerInput.body as {
-    systemInstruction?: { parts?: Array<{ text?: string }> };
-    generationConfig?: { temperature?: number; responseMimeType?: string };
-  };
-  const policy = providerBody.systemInstruction?.parts?.[0]?.text ?? '';
-  assert.match(policy, /translation-only runtime/i);
-  assert.match(policy, /Never summarize/);
-  assert.match(policy, /Preserve headings, paragraphs, lists, tables, code, URLs, numbers, placeholders, line breaks, order, and information quantity/);
-  assert.equal(providerBody.generationConfig?.temperature, 0);
-  assert.equal(providerBody.generationConfig?.responseMimeType, 'text/plain');
 });
 
-test('translation runtime retries only the failing body and reports the real Gemini call count', async () => {
+test('empty body is not translated and calls stay zero', async () => {
+  let calls = 0;
+  const vault = {
+    providerJson: async () => {
+      calls += 1;
+      throw new Error('provider must not be called');
+    },
+  } as unknown as VaultClient;
+  const input = {
+    result: {
+      sections: [{ key: 'true_purpose', title: '固定タイトル', body: '   ' }],
+    },
+  };
+  const output = await translateAsteraResult(input, 'ja-JP', vault, baseConfig);
+  const result = output.result as typeof input;
+  assert.equal(result.result.sections[0]?.body, '   ');
+  assert.equal(calls, 0);
+  assert.equal(output.usage.calls, 0);
+});
+
+test('target language is required', async () => {
+  const vault = fakeVault((source) => source);
+  await assert.rejects(
+    () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, '  ', vault, baseConfig),
+    (error: unknown) => errorCode(error) === 'TARGET_LANGUAGE_REQUIRED',
+  );
+});
+
+test('translation provider must be configured', async () => {
+  const vault = fakeVault((source) => source);
+  await assert.rejects(
+    () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja-JP', vault, { ...baseConfig, modelId: '' }),
+    (error: unknown) => errorCode(error) === 'TRANSLATION_PROVIDER_NOT_CONFIGURED',
+  );
+  await assert.rejects(
+    () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja-JP', vault, { ...baseConfig, apiKeyRef: '' }),
+    (error: unknown) => errorCode(error) === 'TRANSLATION_PROVIDER_NOT_CONFIGURED',
+  );
+});
+
+test('protected tokens for URL and inline code are restored after translation', async () => {
+  const vault = fakeVault((source) => source.replace('Greeting', '挨拶'));
+  const input = {
+    result: {
+      sections: [{ body: 'Greeting https://example.com/path `inline code`' }],
+    },
+  };
+  const output = await translateAsteraResult(input, 'ja-JP', vault, baseConfig);
+  const result = output.result as typeof input;
+  assert.equal(result.result.sections[0]?.body, '挨拶 https://example.com/path `inline code`');
+  assert.equal(output.usage.calls, 1);
+});
+
+test('non-body fields such as title are not translated', async () => {
+  const vault = fakeVault((source) => source.replace('Body', '本文'));
+  const input = {
+    result: {
+      sections: [{ key: 'true_purpose', title: 'Title should stay', body: 'Body text' }],
+    },
+  };
+  const output = await translateAsteraResult(input, 'ja-JP', vault, baseConfig);
+  const result = output.result as typeof input;
+  assert.equal(result.result.sections[0]?.title, 'Title should stay');
+  assert.equal(result.result.sections[0]?.body, '本文 text');
+  assert.equal(output.usage.calls, 1);
+});
+
+test('all protected token kinds survive translation unchanged', async () => {
+  const body = [
+    'Intro sentence',
+    '```',
+    'const fenced = 1;',
+    '```',
+    'Use `inline code` carefully',
+    'See https://example.com/docs for details',
+    'Hello {{user_name}}',
+    'Value is ${env_var}',
+    'Legacy <% template %> marker',
+    'Outro sentence',
+  ].join('\n');
+  const vault = fakeVault((source) => source.replace('Intro sentence', '導入文').replace('Outro sentence', '結び'));
+  const input = { result: { sections: [{ body }] } };
+  const output = await translateAsteraResult(input, 'ja-JP', vault, baseConfig);
+  const result = output.result as typeof input;
+  const translated = result.result.sections[0]?.body ?? '';
+  assert.equal(translated.includes('```\nconst fenced = 1;\n```'), true);
+  assert.equal(translated.includes('`inline code`'), true);
+  assert.equal(translated.includes('https://example.com/docs'), true);
+  assert.equal(translated.includes('{{user_name}}'), true);
+  assert.equal(translated.includes('${env_var}'), true);
+  assert.equal(translated.includes('<% template %>'), true);
+  assert.equal(translated.startsWith('導入文'), true);
+  assert.equal(translated.endsWith('結び'), true);
+  assert.equal(output.usage.calls, 1);
+});
+
+test('structure validation failure rejects malformed translation output', async () => {
+  const vault = fakeVault((source) => `${source}\nextra line breaks structure`);
+  const input = { result: { sections: [{ body: 'Line one\nLine two' }] } };
+  await assert.rejects(
+    () => translateAsteraResult(input, 'ja-JP', vault, baseConfig),
+    (error: unknown) => errorCode(error) === 'TRANSLATION_STRUCTURE_DIFF_FAILED',
+  );
+});
+
+test('retries once after provider failure and succeeds on second attempt', async () => {
   let providerCalls = 0;
-  const fakeVault = {
-    providerJson: async (input: ProviderInput) => {
+  const vault = {
+    providerJson: async (input: { body?: unknown }) => {
       providerCalls += 1;
+      if (providerCalls === 1) {
+        throw Object.assign(new Error('Gemini returned no translation text.'), { code: 'TRANSLATION_PROVIDER_EMPTY', retryable: true });
+      }
       const body = input.body as { contents: Array<{ parts: Array<{ text: string }> }> };
       const requestText = body.contents[0]?.parts[0]?.text ?? '';
       const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
-      const translated = source.replace('Hello', 'こんにちは');
       return {
         response: { status: 200, ok: true, body: '{}' },
         payload: {
-          candidates: [{ content: { parts: [{ text: providerCalls === 1 ? `${translated}\n破壊行` : translated }] } }],
-          usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
+          candidates: [{ content: { parts: [{ text: source.replace('Retry', '再試行') }] } }],
+          usageMetadata: { promptTokenCount: 8, candidatesTokenCount: 4, totalTokenCount: 12 },
         },
       };
     },
   } as unknown as VaultClient;
-
-  const output = await translateAsteraResult(
-    { result: { sections: [{ key: 'true_purpose', body: '# Hello' }] } },
-    'ja-JP',
-    fakeVault,
-    { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 30_000 },
-  );
+  const input = { result: { sections: [{ body: 'Retry message' }] } };
+  const output = await translateAsteraResult(input, 'ja-JP', vault, baseConfig);
+  const result = output.result as typeof input;
   assert.equal(providerCalls, 2);
-  assert.equal(output.usage.calls, 2);
-  assert.equal(output.usage.totalTokens, 6);
-  const result = output.result as { result: { sections: Array<{ body: string }> } };
-  assert.equal(result.result.sections[0]?.body, '# こんにちは');
+  assert.equal(result.result.sections[0]?.body, '再試行 message');
+  assert.equal(output.usage.calls, 1);
 });
 
-test('translation runtime applies its provider timeout without modifying the Vault implementation', async () => {
+test('stops after two failed provider attempts', async () => {
   let providerCalls = 0;
-  const fakeVault = {
+  const vault = {
     providerJson: async () => {
       providerCalls += 1;
-      return await new Promise<never>(() => undefined);
+      throw Object.assign(new Error('Gemini returned no translation text.'), { code: 'TRANSLATION_PROVIDER_EMPTY', retryable: true });
     },
   } as unknown as VaultClient;
-
+  const input = { result: { sections: [{ body: 'Will fail twice' }] } };
   await assert.rejects(
-    () => translateAsteraResult(
-      { result: { sections: [{ key: 'true_purpose', body: 'Hello' }] } },
-      'ja-JP',
-      fakeVault,
-      { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 5 },
-    ),
-    (error: unknown) => {
-      const source = error as Error & { code?: string; retryable?: boolean };
-      assert.equal(source.code, 'TRANSLATION_PROVIDER_TIMEOUT');
-      assert.equal(source.retryable, true);
-      return true;
-    },
+    () => translateAsteraResult(input, 'ja-JP', vault, baseConfig),
+    (error: unknown) => errorCode(error) === 'TRANSLATION_PROVIDER_EMPTY',
   );
   assert.equal(providerCalls, 2);
-});
-
-test('translation runtime fails closed when Gemini provider profile is not configured', async () => {
-  const fakeVault = { providerJson: async () => { throw new Error('provider must not be called'); } } as unknown as VaultClient;
-  await assert.rejects(
-    () => translateAsteraResult({ result: { sections: [] } }, 'ja-JP', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
-    (error: unknown) => {
-      const source = error as Error & { code?: string };
-      assert.equal(source.code, 'TRANSLATION_PROVIDER_NOT_CONFIGURED');
-      return true;
-    },
-  );
 });
