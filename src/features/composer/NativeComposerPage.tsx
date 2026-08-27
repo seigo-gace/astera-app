@@ -963,12 +963,15 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                     <button type="button" aria-label={`${selectedPurposeLabel}を削除`} onClick={() => setPurpose('auto')}>×</button>
                   </span>
                 )}
-                {selectedExecutionOptions.map((key) => (
-                  <span className="native-form-chip is-option" key={key}>
-                    <span>{OPTION_LABELS[key]}</span>
-                    <button type="button" aria-label={`${OPTION_LABELS[key]}を削除`} onClick={() => toggleOption(key)}>×</button>
-                  </span>
-                ))}
+                {selectedExecutionOptions.map((key) => {
+                  const label = key === 'agent-mode' ? `Agent ${AGENT_MODE_LABELS[agentMode]}` : OPTION_LABELS[key];
+                  return (
+                    <span className="native-form-chip is-option" key={key}>
+                      <span>{label}</span>
+                      <button type="button" aria-label={`${label}を削除`} onClick={() => toggleOption(key)}>×</button>
+                    </span>
+                  );
+                })}
               </div>
               <div className="native-right-tools">
                 {resultSections.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer}>新規</button>}
