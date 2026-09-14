@@ -1,5 +1,6 @@
--- Astera App D1 migration candidate.
--- Source only: this file has not been applied to local, staging, or production D1.
+-- Astera App D1 migration: identity, billing, and credit baseline.
+-- Remote astera-app-staging D1 already has the tables defined in this file (e.g. tenants, user_profiles, billing_*).
+-- d1_migrations has no row for this migration name; wrangler migration history does not record it.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS tenants (
