@@ -228,7 +228,7 @@ test('STORY-LOGIN-001 normal Login returns to the requested protected page', asy
   await page.goto('/login?return_to=%2Fapp%2Fprojects');
   await page.getByLabel('Email').fill('story@example.test');
   await page.getByLabel('Password').fill('story-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page).toHaveURL(/\/app\/projects$/);
 });
 
@@ -242,7 +242,7 @@ test('STORY-LOGIN-002 Email Login respects a required Password setup stage', asy
   await page.goto('/login?return_to=%2Faccount%2Fcredit');
   await page.getByLabel('Email').fill('story@example.test');
   await page.getByLabel('Password').fill('story-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page).toHaveURL(/\/account\/password\/setup\?/);
   expect(new URL(page.url()).searchParams.get('return_to')).toBe('/account/credit');
 });
@@ -257,7 +257,7 @@ test('STORY-LOGIN-003 Email Login respects the current session-based 2FA stage',
   await page.goto('/login?return_to=%2Fapp%2Fhistory');
   await page.getByLabel('Email').fill('story@example.test');
   await page.getByLabel('Password').fill('story-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page).toHaveURL(/\/auth\/2fa\?/);
   const url = new URL(page.url());
   expect(url.searchParams.has('challenge')).toBe(false);
@@ -307,7 +307,7 @@ test('STORY-LOGIN-004 external return targets are discarded', async ({ page }) =
   await page.goto('/login?return_to=https%3A%2F%2Fevil.example%2Fsteal');
   await page.getByLabel('Email').fill('story@example.test');
   await page.getByLabel('Password').fill('story-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page).toHaveURL(/\/app\/new$/);
 });
 
@@ -469,7 +469,7 @@ test('STORY-ERROR-002 a network failure keeps Login input and exposes a retryabl
   await page.goto('/login');
   await page.getByLabel('Email').fill('story@example.test');
   await page.getByLabel('Password').fill('story-password-123');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
   await expect(page.getByRole('alert')).toContainText('NETWORK_ERROR');
   await expect(page.getByLabel('Email')).toHaveValue('story@example.test');
   await expect(page.getByLabel('Password')).toHaveValue('story-password-123');

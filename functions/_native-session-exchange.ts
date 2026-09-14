@@ -1,4 +1,5 @@
 import { makeSignature } from 'better-auth/crypto';
+import { matchCanonicalRoute } from '../src/platform/route-registry';
 import { createAuth, type AuthEnv } from './_auth';
 
 type D1PreparedStatement = {
@@ -41,6 +42,21 @@ function required(value: string | undefined, name: string): string {
 
 function correlationHeaders(correlationId: string): HeadersInit {
   return { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId };
+}
+
+function safeReturnPath(rawValue: string | null | undefined, origin: string, fallback = '/app/new'): string {
+  if (!rawValue) return fallback;
+  try {
+    const candidate = rawValue.startsWith('/') ? rawValue : decodeURIComponent(rawValue);
+    if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\') || /[\u0000-\u001f\u007f]/.test(candidate)) return fallback;
+    const url = new URL(candidate, origin);
+    if (url.origin !== new URL(origin).origin) return fallback;
+    const route = matchCanonicalRoute(url.pathname);
+    if (route.group === 'auth') return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
 }
 
 function jsonError(status: number, code: string, message: string, correlationId: string): Response {
@@ -90,7 +106,13 @@ async function consumeExchangeRecord(db: D1Database, rawToken: string): Promise<
   const row = await db.prepare(
     `SELECT "id", "value", "expiresAt" FROM "verification" WHERE "identifier" = ?1 LIMIT 1`,
   ).bind(identifier).first<{ id: string; value: string; expiresAt: number }>();
-  if (!row?.id || !row.value || Number(row.expiresAt) <= now) return null;
+  if (!row?.id || !row.value) return null;
+  if (Number(row.expiresAt) <= now) {
+    await db.prepare(
+      `DELETE FROM "verification" WHERE "id" = ?1 AND "identifier" = ?2`,
+    ).bind(row.id, identifier).run();
+    return null;
+  }
   const deleted = await db.prepare(
     `DELETE FROM "verification" WHERE "id" = ?1 AND "identifier" = ?2 AND "value" = ?3 AND "expiresAt" = ?4`,
   ).bind(row.id, identifier, row.value, row.expiresAt).run();
@@ -222,7 +244,8 @@ export async function handleNativeAuthRoutes(
     }
     try {
       const rawExchange = await insertExchangeRecord(env.ASTERA_DB, sessionRow.token);
-      const returnTo = new URL(request.url).searchParams.get('return_to')?.trim() || '/app/new';
+      const requestUrl = new URL(request.url);
+      const returnTo = safeReturnPath(requestUrl.searchParams.get('return_to'), requestUrl.origin);
       return new Response(null, {
         status: 302,
         headers: {
