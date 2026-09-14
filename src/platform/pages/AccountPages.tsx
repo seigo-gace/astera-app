@@ -3,25 +3,11 @@ import { ApiError, asArray, asRecord, queryValue, recordText } from '../api-clie
 import { nativeCallback, openExternalUrl } from '../external-navigation';
 import type { RouteMatch } from '../route-registry';
 import { BusyState, EmptyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
+import SecurityPage from '../../features/security/SecurityPage';
 import { FormResult, KeyValueGrid, Panel, RecordList, ResourceShell, SelectField, submitForm, useResource, type SubmitState } from './page-kit';
 
 function AccountPage({ route }: { route: RouteMatch }) {
   return <ResourceShell route={route} endpoint="/api/account" description="Profile、Account状態、Plan、Creditの現在値を表示します。">{(payload) => <><Panel title="Account"><KeyValueGrid value={asRecord(payload).account ?? asRecord(payload).data ?? payload} /></Panel><div className="platform-card-grid"><a className="platform-link-card" href="/account/security"><strong>Security</strong><span>Password、Passkey、2FA、Session</span><b>›</b></a><a className="platform-link-card" href="/account/subscription"><strong>Plan</strong><span>Subscription管理</span><b>›</b></a><a className="platform-link-card" href="/account/credit"><strong>Credit</strong><span>残高とLedger</span><b>›</b></a></div></>}</ResourceShell>;
-}
-
-function SecurityPage({ route }: { route: RouteMatch }) {
-  const [resource, reload] = useResource('/api/account/security');
-  return <ResponsivePageShell route={route} description="Password、Passkey、2FA、Backup Code、Sessionを管理します。">
-    <Panel title="Security状態">{resource.status === 'loading' ? <BusyState /> : resource.status === 'error' ? <ErrorState error={resource.error} onRetry={reload} /> : <KeyValueGrid value={asRecord(resource.data).security ?? asRecord(resource.data).data ?? resource.data} />}</Panel>
-    <Panel title="Security操作">
-      <p className="platform-form-result" role="status">Passkey登録、2FA設定、Backup Code再生成は、Browser Credential／QR／Secretの完全Flowが接続されるまで停止しています。成功したように見せる空POSTは行いません。</p>
-      <div className="platform-action-row">
-        <button className="platform-button" type="button" disabled aria-disabled="true">Passkeyを追加</button>
-        <button className="platform-button" type="button" disabled aria-disabled="true">2FAを有効化</button>
-        <button className="platform-button" type="button" disabled aria-disabled="true">Backup Code再生成</button>
-      </div>
-    </Panel>
-  </ResponsivePageShell>;
 }
 
 function SubscriptionPage({ route }: { route: RouteMatch }) {

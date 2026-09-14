@@ -22,6 +22,7 @@ const nativeShell = read('src/native-shell.ts');
 const externalNavigation = read('src/platform/external-navigation.ts');
 const checkoutPage = read('src/features/checkout/CheckoutPage.tsx');
 const authPages = read('src/platform/pages/AuthPages.tsx');
+const loginPage = read('src/features/auth/LoginPage.tsx');
 const workspacePages = read('src/platform/pages/WorkspacePages.tsx');
 const accountPages = read('src/platform/pages/AccountPages.tsx');
 const compatibilityRuntime = read('src/device-compatibility.ts');
@@ -77,10 +78,12 @@ check('Square checkout uses external bridge', checkoutPage.includes('await openE
 check('Square direct WebView redirect removed', !checkoutPage.includes('window.location.assign(destination)'), 'Square direct redirect is forbidden');
 check('Square Native callback', checkoutPage.includes("nativeCallback('/account/billing/status')"), 'Square Native callback missing');
 
-check('OAuth uses canonical social API', authPages.includes("submitForm('/api/auth/sign-in/social'"), 'OAuth must request the redirect URL through the canonical Better Auth social endpoint');
-check('OAuth uses external bridge', authPages.includes('await openExternalUrl(redirectUrl)'), 'OAuth redirect must use the verified system-browser bridge on Native');
-check('OAuth Native callback', authPages.includes("nativeCallback('/login')"), 'OAuth Native callback must return to registered Login route');
-check('OAuth Native session exchange', authPages.includes('/api/auth/native/session-exchange'), 'Native OAuth one-time exchange is required');
+check('OAuth uses canonical social API', loginPage.includes("submitForm('/api/auth/sign-in/social'"), 'OAuth must request the redirect URL through the canonical Better Auth social endpoint');
+check('OAuth uses external bridge', loginPage.includes('await openExternalUrl(redirectUrl)'), 'OAuth redirect must use the verified system-browser bridge on Native');
+check('OAuth Native deep link login route', loginPage.includes("nativeCallback('/login')"), 'OAuth Native callback must reference registered Login deep link route');
+check('OAuth Native HTTPS oauth-complete callback', loginPage.includes('/api/auth/native/oauth-complete'), 'Native OAuth must complete through HTTPS oauth-complete endpoint');
+check('OAuth Native session exchange', loginPage.includes('/api/auth/native/session-exchange'), 'Native OAuth one-time exchange is required');
+check('AuthPages delegates canonical LoginPage', authPages.includes("from '../../features/auth/LoginPage'"), 'AuthPages must delegate login to features/auth/LoginPage');
 
 check('Storage OAuth uses external bridge', workspacePages.includes('await openExternalUrl(url)'), 'Storage OAuth must use system browser on Native');
 check('Storage Native callback', workspacePages.includes("nativeCallback('/app/settings/storage-destinations')"), 'Storage Native callback missing');

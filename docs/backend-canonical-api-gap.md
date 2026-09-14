@@ -28,7 +28,8 @@ POST /api/auth/login
 POST /api/auth/email/verify
 POST /api/auth/email/resend
 GET  /api/auth/oauth/:provider
-POST /api/auth/native/session-exchange
+POST /api/auth/native/session-exchange  （実装済み: functions/_native-session-exchange.ts）
+GET|POST /api/auth/native/oauth-complete  （実装済み: 同上）
 POST /api/auth/2fa/verify
 POST /api/account/password/setup
 POST /api/account/password/forgot

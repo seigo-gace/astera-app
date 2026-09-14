@@ -1,38 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { apiUrl, asRecord, queryValue, recordText, textValue, type JsonObject } from '../api-client';
-import { nativeCallback, openExternalUrl } from '../external-navigation';
+import { apiUrl, queryValue, textValue } from '../api-client';
+import LoginPage from '../../features/auth/LoginPage';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from './page-kit';
-
-function authenticationState(payload: unknown): JsonObject {
-  const root = asRecord(payload);
-  const data = asRecord(root.data ?? root);
-  return {
-    ...data,
-    ...asRecord(data.user),
-    ...asRecord(data.account),
-    ...asRecord(root.user),
-    ...asRecord(root.account),
-  };
-}
-
-function requiredAuthenticationPath(payload: unknown, returnTo: string): string | null {
-  const state = authenticationState(payload);
-  if (state.requires_password_setup === true || state.account_status === 'pending_password_setup') {
-    return `/account/password/setup?return_to=${encodeURIComponent(returnTo)}`;
-  }
-  if (state.twoFactorRedirect === true || state.requires_2fa === true || state.auth_stage === 'pending_2fa') {
-    return `/auth/2fa?return_to=${encodeURIComponent(returnTo)}`;
-  }
-  if (state.emailVerified === false || state.account_status === 'pending_email_verification') {
-    const params = new URLSearchParams({ return_to: returnTo });
-    const email = recordText(state, ['email']);
-    if (email) params.set('email', email);
-    return `/verify-email?${params.toString()}`;
-  }
-  return null;
-}
 
 function loginPath(returnTo: string): string {
   const params = new URLSearchParams({ return_to: returnTo });
@@ -41,79 +12,6 @@ function loginPath(returnTo: string): string {
 
 function absoluteAppUrl(path: string): string {
   return new URL(path, window.location.origin).toString();
-}
-
-function LoginPage({ route }: { route: RouteMatch }) {
-  const [state, setState] = useState<SubmitState>({ type: 'idle' });
-  const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
-  const nativeExchange = queryValue('exchange');
-
-  useEffect(() => {
-    if (!nativeExchange) return;
-    let active = true;
-    void (async () => {
-      const payload = await submitForm('/api/auth/native/session-exchange', {
-        exchange_token: nativeExchange,
-      }, setState, { success: 'Native Sessionを確立しました。', idempotent: true });
-      if (!active || !payload) return;
-      safeNavigate(requiredAuthenticationPath(payload, returnTo) ?? returnTo);
-    })();
-    return () => { active = false; };
-  }, [nativeExchange, returnTo]);
-
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const payload = await submitForm('/api/auth/sign-in/email', {
-      email: textValue(data.get('email')),
-      password: textValue(data.get('password')),
-      rememberMe: true,
-      callbackURL: absoluteAppUrl(returnTo),
-    }, setState, { success: 'Loginしました。' });
-    if (payload) safeNavigate(requiredAuthenticationPath(payload, returnTo) ?? returnTo);
-  };
-
-  const startOAuth = async (provider: 'google' | 'github') => {
-    const callback = nativeCallback('/login');
-    const callbackURL = callback || absoluteAppUrl(returnTo);
-    const payload = await submitForm('/api/auth/sign-in/social', {
-      provider,
-      callbackURL,
-      errorCallbackURL: absoluteAppUrl(loginPath(returnTo)),
-      newUserCallbackURL: absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
-      disableRedirect: true,
-    }, setState, { success: `${provider}認証を開始します。`, idempotent: true });
-    if (!payload) return;
-    const redirectUrl = recordText(asRecord(asRecord(payload).data ?? payload), ['url', 'redirect']);
-    if (!redirectUrl) {
-      setState({ type: 'error', message: 'OAuth Redirect URLを受信できませんでした。', code: 'OAUTH_REDIRECT_URL_MISSING' });
-      return;
-    }
-    try {
-      await openExternalUrl(redirectUrl);
-      setState({ type: 'idle' });
-    } catch (error) {
-      setState({ type: 'error', message: error instanceof Error ? error.message : 'OAuthを開始できませんでした。', code: 'OAUTH_START_FAILED' });
-    }
-  };
-
-  return (
-    <PublicPageFrame route={route} description="Astera Accountへ安全にLoginします。">
-      <AuthCard footer={<><a href={`/forgot-password?return_to=${encodeURIComponent(returnTo)}`}>Passwordを忘れた場合</a><a href={`/register?return_to=${encodeURIComponent(returnTo)}`}>Accountを作成</a></>}>
-        <form className="platform-form" onSubmit={onSubmit}>
-          <Field label="Email" name="email" type="email" autoComplete="username webauthn" required />
-          <Field label="Password" name="password" type="password" autoComplete="current-password webauthn" required />
-          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>Login</button>
-        </form>
-        <div className="platform-divider"><span>または</span></div>
-        <div className="platform-stack-actions">
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('google')}>Googleで続ける</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('github')}>GitHubで続ける</button>
-        </div>
-        <FormResult state={state} />
-      </AuthCard>
-    </PublicPageFrame>
-  );
 }
 
 function RegisterPage({ route }: { route: RouteMatch }) {

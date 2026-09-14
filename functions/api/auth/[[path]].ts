@@ -1,6 +1,7 @@
 import { createAuth, type AuthEnv } from '../../_auth';
+import { handleNativeAuthRoutes, type NativeExchangeEnv } from '../../_native-session-exchange';
 
-type PagesContext = { request: Request; env: AuthEnv };
+type PagesContext = { request: Request; env: NativeExchangeEnv };
 type SessionSnapshot = { session?: { createdAt?: Date | string } };
 
 const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
@@ -70,6 +71,8 @@ async function enforceFreshSession(
 export async function onRequest(context: PagesContext): Promise<Response> {
   const correlationId = context.request.headers.get('X-Request-ID') || crypto.randomUUID();
   try {
+    const nativeResponse = await handleNativeAuthRoutes(context.request, context.env, correlationId);
+    if (nativeResponse) return nativeResponse;
     const auth = createAuth(context.env);
     const freshnessFailure = await enforceFreshSession(context.request, auth, correlationId);
     if (freshnessFailure) return freshnessFailure;

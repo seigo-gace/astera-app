@@ -1,13 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
 import { authClient, authErrorMessage } from '../../platform/auth-client';
-import { nativeCallback, openExternalUrl } from '../../platform/external-navigation';
+import { isNativeRuntime, nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
 
 function absoluteAppUrl(path: string): string {
   return new URL(path, window.location.origin).toString();
+}
+
+function nativeOAuthCompleteUrl(returnTo: string): string {
+  const endpoint = new URL('/api/auth/native/oauth-complete', window.location.origin);
+  endpoint.searchParams.set('return_to', returnTo);
+  return endpoint.toString();
+}
+
+function nativeLoginDeepLinkPath(): string {
+  return nativeCallback('/login') ?? 'jp.asterav8.app://open/login';
 }
 
 function continuation(payload: unknown, returnTo: string): string {
@@ -73,7 +83,10 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
   };
 
   const startOAuth = async (provider: 'google' | 'github') => {
-    const callbackURL = nativeCallback('/login') || absoluteAppUrl(returnTo);
+    void nativeLoginDeepLinkPath();
+    const callbackURL = isNativeRuntime()
+      ? nativeOAuthCompleteUrl(returnTo)
+      : absoluteAppUrl(returnTo);
     const payload = await submitForm('/api/auth/sign-in/social', {
       provider,
       callbackURL,

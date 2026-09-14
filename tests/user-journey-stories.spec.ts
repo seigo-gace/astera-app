@@ -264,6 +264,39 @@ test('STORY-LOGIN-003 Email Login respects the current session-based 2FA stage',
   expect(url.searchParams.get('return_to')).toBe('/app/history');
 });
 
+test('STORY-LOGIN-NATIVE-001 exchange query triggers session-exchange and continues to return_to', async ({ page }) => {
+  let exchangeCalls = 0;
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/auth/native/session-exchange') {
+      exchangeCalls += 1;
+      const body = route.request().postDataJSON() as { exchange_token?: string };
+      expect(body.exchange_token).toBe('one-time');
+      return json(route, { data: { account: { account_status: 'active' }, emailVerified: true } });
+    }
+    return defaultApi(route);
+  });
+
+  await page.goto('/login?exchange=one-time&return_to=%2Fapp%2Fprojects');
+  await expect(page).toHaveURL(/\/app\/projects$/);
+  expect(exchangeCalls).toBe(1);
+});
+
+test('STORY-LOGIN-NATIVE-002 reused exchange token does not show success navigation', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/auth/native/session-exchange') {
+      return json(route, { error: { code: 'EXCHANGE_TOKEN_REJECTED', message: 'Exchange Tokenは無効、期限切れ、または既に使用済みです。' } }, 403);
+    }
+    return defaultApi(route);
+  });
+
+  await page.goto('/login?exchange=reused-token&return_to=%2Fapp%2Fprojects');
+  await expect(page).toHaveURL(/\/login\?/);
+  await expect(page.getByText(/Exchange Tokenは無効、期限切れ、または既に使用済みです。/)).toBeVisible();
+  await expect(page.locator('code')).toHaveText('EXCHANGE_TOKEN_REJECTED');
+});
+
 test('STORY-LOGIN-004 external return targets are discarded', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;

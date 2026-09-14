@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './i18n';
 import './styles.css';
 import AppRouter from './platform/app-router';
+import { CanonicalAccountSecurityManagement } from './platform/canonical-account-security-management';
 import './platform/navigation-overrides.css';
 import './platform/admin-title-labels.css';
 import './device-compatibility.css';
@@ -24,5 +25,10 @@ if (!runtimeUnsupported) {
   if (!nativeComposerRoute) initializeRevisionCreditBridge();
   initializeDeviceCompatibility();
   void initializeNativeShell();
-  createRoot(root).render(<StrictMode><AppRouter /></StrictMode>);
+  createRoot(root).render(
+    <StrictMode>
+      <AppRouter />
+      <CanonicalAccountSecurityManagement />
+    </StrictMode>,
+  );
 }
