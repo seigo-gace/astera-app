@@ -1,19 +1,10 @@
 import { makeSignature } from 'better-auth/crypto';
 import { createAuth, type AuthEnv } from './_auth';
+import type { D1Database } from './_account-projection';
 import { consumeExchangeRecord, insertExchangeRecord, safeReturnPath } from './_native-exchange-util';
 import { insertSecurityEvent, tenantIdForUser } from './_security-events';
 
 export { consumeExchangeRecord, safeReturnPath } from './_native-exchange-util';
-
-type D1PreparedStatement = {
-  bind: (...values: unknown[]) => D1PreparedStatement;
-  first: <T = Record<string, unknown>>() => Promise<T | null>;
-  run: () => Promise<{ success?: boolean; meta?: { changes?: number } }>;
-};
-
-type D1Database = {
-  prepare: (query: string) => D1PreparedStatement;
-};
 
 export type NativeExchangeEnv = AuthEnv & { ASTERA_DB: D1Database };
 

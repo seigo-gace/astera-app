@@ -1,10 +1,13 @@
-type D1PreparedStatement = {
-  bind: (...values: unknown[]) => D1PreparedStatement;
-  run: () => Promise<{ success?: boolean }>;
-};
+import type { D1Database } from './_account-projection';
 
-type D1Database = {
-  prepare: (query: string) => D1PreparedStatement;
+export type SecurityEventRow = {
+  id: string;
+  event_type: string;
+  actor_ip: string | null;
+  user_agent: string | null;
+  correlation_id: string;
+  metadata_json: string;
+  created_at: string;
 };
 
 export const SECURITY_EVENT_TYPES = [
@@ -133,6 +136,26 @@ export async function countLoginMethods(db: D1Database, userId: string): Promise
 
 export function tenantIdForUser(userId: string): string {
   return `personal:${userId}`;
+}
+
+export function blocksLastLoginMethodRemoval(counts: LoginMethodCounts): boolean {
+  return counts.total <= 1;
+}
+
+export async function fetchSecurityEventsForUser(
+  db: D1Database,
+  tenantId: string,
+  userId: string,
+  limit = 100,
+): Promise<SecurityEventRow[]> {
+  const result = await db.prepare(
+    `SELECT id, event_type, actor_ip, user_agent, correlation_id, metadata_json, created_at
+     FROM account_security_events
+     WHERE tenant_id = ?1 AND user_id = ?2
+     ORDER BY created_at DESC
+     LIMIT ?3`,
+  ).bind(tenantId, userId, limit).all<SecurityEventRow>();
+  return result.results ?? [];
 }
 
 const AUTH_PATH_EVENT_MAP: Record<string, SecurityEventType> = {

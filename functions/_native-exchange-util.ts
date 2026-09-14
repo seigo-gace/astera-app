@@ -1,30 +1,12 @@
-import { matchCanonicalRoute } from '../src/platform/route-registry';
+import { resolveSafeReturnPath } from '../shared/safe-return-path-core';
+import type { D1Database } from './_account-projection';
 
-type D1PreparedStatement = {
-  bind: (...values: unknown[]) => D1PreparedStatement;
-  first: <T = Record<string, unknown>>() => Promise<T | null>;
-  run: () => Promise<{ success?: boolean; meta?: { changes?: number } }>;
-};
-
-export type ExchangeD1Database = {
-  prepare: (query: string) => D1PreparedStatement;
-};
+export type ExchangeD1Database = D1Database;
 
 const EXCHANGE_IDENTIFIER_PREFIX = 'astera-native-exchange:';
 
 export function safeReturnPath(rawValue: string | null | undefined, origin: string, fallback = '/app/new'): string {
-  if (!rawValue) return fallback;
-  try {
-    const candidate = rawValue.startsWith('/') ? rawValue : decodeURIComponent(rawValue);
-    if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\') || /[\u0000-\u001f\u007f]/.test(candidate)) return fallback;
-    const url = new URL(candidate, origin);
-    if (url.origin !== new URL(origin).origin) return fallback;
-    const route = matchCanonicalRoute(url.pathname);
-    if (route.group === 'auth') return fallback;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return fallback;
-  }
+  return resolveSafeReturnPath(rawValue, origin, fallback, { requireAppPrefix: true });
 }
 
 async function sha256Hex(raw: string): Promise<string> {

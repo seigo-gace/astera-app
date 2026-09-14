@@ -5,6 +5,7 @@ import {
   requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
+import { fetchSecurityEventsForUser } from '../../_security-events';
 
 type Context = { request: Request; env: AsteraFunctionEnv };
 
@@ -26,16 +27,6 @@ type SessionRow = {
   userAgent: string | null;
 };
 
-type SecurityEventRow = {
-  id: string;
-  event_type: string;
-  actor_ip: string | null;
-  user_agent: string | null;
-  correlation_id: string;
-  metadata_json: string;
-  created_at: string;
-};
-
 function timeValue(value: number | string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const numeric = typeof value === 'number' ? value : Number(value);
@@ -53,7 +44,7 @@ export async function onRequestGet(context: Context): Promise<Response> {
 
     const tenantId = actor.profile.tenant_id;
 
-    const [credential, passkeysResult, twoFactor, sessionsResult, eventsResult] = await Promise.all([
+    const [credential, passkeysResult, twoFactor, sessionsResult, eventRows] = await Promise.all([
       context.env.ASTERA_DB.prepare(
         'SELECT id, "updatedAt" FROM "account" WHERE "userId"=?1 AND "providerId"=?2 LIMIT 1',
       ).bind(userId, 'credential').first<CredentialRow>(),
@@ -66,13 +57,7 @@ export async function onRequestGet(context: Context): Promise<Response> {
       context.env.ASTERA_DB.prepare(
         'SELECT id,"createdAt","updatedAt","expiresAt","userAgent" FROM session WHERE "userId"=?1 ORDER BY "updatedAt" DESC LIMIT 50',
       ).bind(userId).all<SessionRow>(),
-      context.env.ASTERA_DB.prepare(
-        `SELECT id, event_type, actor_ip, user_agent, correlation_id, metadata_json, created_at
-         FROM account_security_events
-         WHERE tenant_id = ?1 AND user_id = ?2
-         ORDER BY created_at DESC
-         LIMIT 100`,
-      ).bind(tenantId, userId).all<SecurityEventRow>(),
+      fetchSecurityEventsForUser(context.env.ASTERA_DB, tenantId, userId),
     ]);
 
     const passkeys = (passkeysResult.results ?? []).map((row) => ({
@@ -92,7 +77,7 @@ export async function onRequestGet(context: Context): Promise<Response> {
       user_agent: row.userAgent,
     }));
 
-    const events = (eventsResult.results ?? []).map((row) => {
+    const events = eventRows.map((row) => {
       let metadata: Record<string, unknown> = {};
       try {
         const parsed = JSON.parse(row.metadata_json || '{}');

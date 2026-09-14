@@ -1,6 +1,7 @@
 import { createAuth } from '../../_auth';
 import { handleNativeAuthRoutes, type NativeExchangeEnv } from '../../_native-session-exchange';
 import {
+  blocksLastLoginMethodRemoval,
   countLoginMethods,
   insertSecurityEvent,
   parseJsonBodyMetadata,
@@ -112,7 +113,7 @@ async function enforceLastLoginMethodGuard(
     return freshError(401, 'SESSION_REQUIRED', 'この操作にはLoginが必要です。', correlationId);
   }
   const counts = await countLoginMethods(env.ASTERA_DB, userId);
-  if (counts.total <= 1) {
+  if (blocksLastLoginMethodRemoval(counts)) {
     return Response.json({
       error: {
         code: 'LAST_LOGIN_METHOD_REQUIRED',

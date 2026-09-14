@@ -1,3 +1,5 @@
+import { resolveSafeReturnPath } from '../../shared/safe-return-path-core';
+
 export type RouteAccess = 'public' | 'guest' | 'authenticated' | 'provisional';
 export type RouteGroup = 'entry' | 'auth' | 'app' | 'settings' | 'account' | 'developer' | 'share' | 'legal' | 'system';
 
@@ -106,14 +108,15 @@ export function matchCanonicalRoute(pathname: string): RouteMatch {
 }
 
 export function safeReturnPath(rawValue: string | null | undefined, fallback = '/app/new'): string {
-  if (!rawValue) return fallback;
+  if (typeof window === 'undefined') return fallback;
+  const candidate = resolveSafeReturnPath(rawValue, window.location.origin, fallback);
+  if (candidate === fallback) return fallback;
   try {
-    const candidate = rawValue.startsWith('/') ? rawValue : decodeURIComponent(rawValue);
-    if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\') || /[\u0000-\u001f\u007f]/.test(candidate)) return fallback;
     const url = new URL(candidate, window.location.origin);
-    if (url.origin !== window.location.origin) return fallback;
     const route = matchCanonicalRoute(url.pathname);
     if (route.group === 'auth') return fallback;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch { return fallback; }
+    return candidate;
+  } catch {
+    return fallback;
+  }
 }

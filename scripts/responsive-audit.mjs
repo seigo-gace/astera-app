@@ -40,7 +40,18 @@ check('native composer reduced motion', /@media\s*\(prefers-reduced-motion:\s*re
 check('native composer dynamic viewport', nativeCss.includes('100dvh'), 'native composer dynamic viewport unit missing');
 check('native composer overflow guard', nativeCss.includes('overflow-x: hidden'), 'native composer horizontal overflow guard missing');
 check('native composer 16px input', /\.native-composer textarea[\s\S]*?font-size:\s*16px/.test(nativeCss), 'native composer mobile input must avoid iOS zoom');
-check('native composer explicit controls', nativeComposer.includes("setPicker('purpose')") && nativeComposer.includes("setPicker('add')") && nativeComposer.includes('openContextPicker'), '/, + and @ controls are not independently implemented');
+check(
+  'native composer explicit controls',
+  nativeComposer.includes("setPicker('purpose')")
+    && nativeComposer.includes("setPicker('add')")
+    && nativeComposer.includes('openContextPicker')
+    && /event\.key === '\/'/.test(nativeComposer)
+    && /event\.key === '@'/.test(nativeComposer)
+    && nativeComposer.includes('aria-label="用途・目的を選択"')
+    && nativeComposer.includes('aria-label="Fileと実行Optionを追加"')
+    && nativeComposer.includes('aria-label="Option・Project・Storageを選択"'),
+  '/, + and @ controls are not independently implemented',
+);
 check('native composer device compatibility', compatibilityCss.includes('.native-composer textarea') && compatibilityCss.includes('.native-round-button'), 'native composer is missing touch/input compatibility guards');
 check('native composer horizontal stability', horizontalCss.includes('.native-composer-workspace') && horizontalCss.includes('.native-result-section p'), 'native composer is missing horizontal and long-content guards');
 check('native composer orientation stability', orientationCss.includes('.native-composer-dock') && orientationCss.includes('.native-composer textarea'), 'native composer is missing rotation and short-landscape guards');

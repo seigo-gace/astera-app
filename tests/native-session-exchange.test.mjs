@@ -11,6 +11,32 @@ test('safeReturnPath rejects external and auth-group targets', () => {
   assert.equal(safeReturnPath('//evil.example/path', ORIGIN), '/app/new');
 });
 
+test('safeReturnPath rejects encoded external URLs and non-app paths', () => {
+  assert.equal(safeReturnPath(encodeURIComponent('https://evil.example/phish'), ORIGIN), '/app/new');
+  assert.equal(safeReturnPath('/account/security', ORIGIN), '/app/new');
+  assert.equal(safeReturnPath('/app/new?tab=1#focus', ORIGIN), '/app/new?tab=1#focus');
+});
+
+test('safeReturnPath rejects control characters', () => {
+  assert.equal(safeReturnPath('/app/new\u0007', ORIGIN), '/app/new');
+});
+
+test('native session exchange JSON body must not expose session token fields', () => {
+  const payload = {
+    user: { id: 'user-1', email: 'user@example.test', emailVerified: true, name: null, twoFactorEnabled: false },
+    account: { account_status: 'active', email: 'user@example.test', email_verified: true },
+    emailVerified: true,
+    requires_password_setup: false,
+    twoFactorRedirect: false,
+    auth_stage: 'authenticated',
+  };
+  const body = { data: payload, ...payload };
+  const serialized = JSON.stringify(body);
+  assert.equal(serialized.includes('session-token-value'), false);
+  assert.equal(Object.hasOwn(body, 'token'), false);
+  assert.equal(Object.hasOwn(body.data ?? {}, 'token'), false);
+});
+
 test('consumeExchangeRecord is one-time and rejects expired tokens', async () => {
   const store = new Map();
   const db = {
