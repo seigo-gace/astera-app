@@ -26,6 +26,16 @@ type SessionRow = {
   userAgent: string | null;
 };
 
+type SecurityEventRow = {
+  id: string;
+  event_type: string;
+  actor_ip: string | null;
+  user_agent: string | null;
+  correlation_id: string;
+  metadata_json: string;
+  created_at: string;
+};
+
 function timeValue(value: number | string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const numeric = typeof value === 'number' ? value : Number(value);
@@ -41,7 +51,9 @@ export async function onRequestGet(context: Context): Promise<Response> {
     const actor = await requireAsteraActor(context.request, context.env);
     const userId = actor.user.id;
 
-    const [credential, passkeysResult, twoFactor, sessionsResult] = await Promise.all([
+    const tenantId = actor.profile.tenant_id;
+
+    const [credential, passkeysResult, twoFactor, sessionsResult, eventsResult] = await Promise.all([
       context.env.ASTERA_DB.prepare(
         'SELECT id, "updatedAt" FROM "account" WHERE "userId"=?1 AND "providerId"=?2 LIMIT 1',
       ).bind(userId, 'credential').first<CredentialRow>(),
@@ -54,6 +66,13 @@ export async function onRequestGet(context: Context): Promise<Response> {
       context.env.ASTERA_DB.prepare(
         'SELECT id,"createdAt","updatedAt","expiresAt","userAgent" FROM session WHERE "userId"=?1 ORDER BY "updatedAt" DESC LIMIT 50',
       ).bind(userId).all<SessionRow>(),
+      context.env.ASTERA_DB.prepare(
+        `SELECT id, event_type, actor_ip, user_agent, correlation_id, metadata_json, created_at
+         FROM account_security_events
+         WHERE tenant_id = ?1 AND user_id = ?2
+         ORDER BY created_at DESC
+         LIMIT 100`,
+      ).bind(tenantId, userId).all<SecurityEventRow>(),
     ]);
 
     const passkeys = (passkeysResult.results ?? []).map((row) => ({
@@ -73,6 +92,25 @@ export async function onRequestGet(context: Context): Promise<Response> {
       user_agent: row.userAgent,
     }));
 
+    const events = (eventsResult.results ?? []).map((row) => {
+      let metadata: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(row.metadata_json || '{}');
+        if (parsed && typeof parsed === 'object') metadata = parsed as Record<string, unknown>;
+      } catch {
+        metadata = {};
+      }
+      return {
+        id: row.id,
+        event_type: row.event_type,
+        actor_ip: row.actor_ip,
+        user_agent: row.user_agent,
+        correlation_id: row.correlation_id,
+        metadata,
+        created_at: row.created_at,
+      };
+    });
+
     return Response.json({
       security: {
         password_configured: Boolean(credential),
@@ -84,6 +122,7 @@ export async function onRequestGet(context: Context): Promise<Response> {
         two_factor_locked_until: timeValue(twoFactor?.lockedUntil),
         session_count: sessions.length,
         sessions,
+        events,
       },
     }, {
       headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId },

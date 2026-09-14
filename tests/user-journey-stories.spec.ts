@@ -77,7 +77,18 @@ async function defaultApi(route: Route): Promise<void> {
   if (path === '/api/storage/destinations') return json(route, { destinations: [] });
   if (path === '/api/credit/balance') return json(route, { balance: 1000 });
   if (path === '/api/credit/ledger') return json(route, { entries: [] });
-  if (path === '/api/account/security') return json(route, { security: { active_sessions: 1 } });
+  if (path === '/api/account/security') {
+    return json(route, {
+      security: {
+        two_factor_enabled: false,
+        sessions: [{ id: 'session-current', current: true, updated_at: new Date().toISOString(), expires_at: new Date(Date.now() + 3600000).toISOString(), user_agent: 'Story Browser' }],
+        events: [],
+      },
+    });
+  }
+  if (path === '/api/auth/list-sessions') return json(route, [{ id: 'session-current', token: 'session-token', userAgent: 'Story Browser', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString() }]);
+  if (path === '/api/auth/list-accounts') return json(route, [{ providerId: 'credential', accountId: 'cred-1' }]);
+  if (path.startsWith('/api/auth/passkey')) return json(route, []);
   if (path === '/api/developer/catalog') return json(route, { targets: [] });
   if (path === '/api/developer/keys') return json(route, { keys: [] });
   if (path === '/api/shares') return json(route, { items: [] });
@@ -532,6 +543,84 @@ test('STORY-RECOVERY-001 a transient account failure can be retried without relo
   await expect(page.getByRole('heading', { name: 'Project' })).toBeVisible();
   await expect(page.getByText('Story Project')).toBeVisible();
   expect(accountRequests).toBe(2);
+});
+
+test('STORY-SECURITY-001 security page renders Security Event history from API', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') return json(route, activeAccount());
+    if (path === '/api/account/security') {
+      return json(route, {
+        security: {
+          two_factor_enabled: false,
+          sessions: [{ id: 'session-current', current: true, updated_at: '2026-09-14T10:00:00.000Z', expires_at: '2026-09-21T10:00:00.000Z', user_agent: 'Story Browser' }],
+          events: [{
+            id: 'event-1',
+            event_type: 'sign_in_email',
+            actor_ip: '203.0.113.10',
+            user_agent: 'Story Browser',
+            correlation_id: 'corr-event-1',
+            created_at: '2026-09-14T09:00:00.000Z',
+          }],
+        },
+      });
+    }
+    if (path === '/api/auth/list-sessions') return json(route, [{ id: 'session-current', token: 'session-token', userAgent: 'Story Browser', createdAt: '2026-09-14T09:00:00.000Z', updatedAt: '2026-09-14T10:00:00.000Z', expiresAt: '2026-09-21T10:00:00.000Z' }]);
+    if (path === '/api/auth/list-accounts') return json(route, [{ providerId: 'credential', accountId: 'cred-1' }]);
+    if (path.startsWith('/api/auth/passkey')) return json(route, []);
+    return defaultApi(route);
+  });
+
+  await page.goto('/account/security');
+  await expect(page.getByRole('heading', { name: 'Security Event履歴' })).toBeVisible();
+  await expect(page.getByText('Email Login')).toBeVisible();
+  await expect(page.getByText('corr-event-1'.slice(0, 8))).toBeVisible();
+});
+
+test('STORY-SECURITY-002 security page does not show disconnected Security Event button', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') return json(route, activeAccount());
+    if (path === '/api/account/security') {
+      return json(route, { security: { two_factor_enabled: false, sessions: [], events: [] } });
+    }
+    if (path === '/api/auth/list-sessions') return json(route, []);
+    if (path === '/api/auth/list-accounts') return json(route, [{ providerId: 'credential', accountId: 'cred-1' }]);
+    if (path.startsWith('/api/auth/passkey/')) return json(route, []);
+    return defaultApi(route);
+  });
+
+  await page.goto('/account/security');
+  await expect(page.getByRole('button', { name: 'Security Event（未接続）' })).toHaveCount(0);
+  await expect(page.getByText('Security Eventはまだ記録されていません。')).toBeVisible();
+});
+
+test('STORY-SECURITY-003 unlink surfaces LAST_LOGIN_METHOD_REQUIRED from API', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') return json(route, activeAccount());
+    if (path === '/api/account/security') {
+      return json(route, {
+        security: {
+          two_factor_enabled: false,
+          sessions: [{ id: 'session-current', current: true, updated_at: '2026-09-14T10:00:00.000Z', expires_at: '2026-09-21T10:00:00.000Z', user_agent: 'Story Browser' }],
+          events: [],
+        },
+      });
+    }
+    if (path === '/api/auth/list-sessions') return json(route, [{ id: 'session-current', token: 'session-token', userAgent: 'Story Browser', createdAt: '2026-09-14T09:00:00.000Z', updatedAt: '2026-09-14T10:00:00.000Z', expiresAt: '2026-09-21T10:00:00.000Z' }]);
+    if (path === '/api/auth/list-accounts') return json(route, [{ providerId: 'google', accountId: 'google-1' }]);
+    if (path === '/api/auth/unlink-account') {
+      return json(route, { code: 'LAST_LOGIN_METHOD_REQUIRED', message: '最後のLogin手段は削除または解除できません。' }, 409);
+    }
+    if (path.startsWith('/api/auth/passkey/')) return json(route, []);
+    return defaultApi(route);
+  });
+
+  await page.goto('/account/security');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '解除' }).click();
+  await expect(page.getByRole('alert')).toContainText('LAST_LOGIN_METHOD_REQUIRED');
 });
 
 test('STORY-ROUTE-001 malformed encoded route parameters fail closed to Not Found', async ({ page }) => {

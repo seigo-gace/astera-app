@@ -1,6 +1,9 @@
 import { makeSignature } from 'better-auth/crypto';
-import { matchCanonicalRoute } from '../src/platform/route-registry';
 import { createAuth, type AuthEnv } from './_auth';
+import { consumeExchangeRecord, insertExchangeRecord, safeReturnPath } from './_native-exchange-util';
+import { insertSecurityEvent, tenantIdForUser } from './_security-events';
+
+export { consumeExchangeRecord, safeReturnPath } from './_native-exchange-util';
 
 type D1PreparedStatement = {
   bind: (...values: unknown[]) => D1PreparedStatement;
@@ -14,8 +17,6 @@ type D1Database = {
 
 export type NativeExchangeEnv = AuthEnv & { ASTERA_DB: D1Database };
 
-const EXCHANGE_TTL_MS = 90_000;
-const EXCHANGE_IDENTIFIER_PREFIX = 'astera-native-exchange:';
 const NATIVE_LOGIN_SCHEME = 'jp.asterav8.app://open/login';
 const SESSION_COOKIE_BASE = 'astera.session_token';
 const SECURE_COOKIE_PREFIX = '__Secure-';
@@ -44,30 +45,10 @@ function correlationHeaders(correlationId: string): HeadersInit {
   return { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId };
 }
 
-function safeReturnPath(rawValue: string | null | undefined, origin: string, fallback = '/app/new'): string {
-  if (!rawValue) return fallback;
-  try {
-    const candidate = rawValue.startsWith('/') ? rawValue : decodeURIComponent(rawValue);
-    if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\') || /[\u0000-\u001f\u007f]/.test(candidate)) return fallback;
-    const url = new URL(candidate, origin);
-    if (url.origin !== new URL(origin).origin) return fallback;
-    const route = matchCanonicalRoute(url.pathname);
-    if (route.group === 'auth') return fallback;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return fallback;
-  }
-}
-
 function jsonError(status: number, code: string, message: string, correlationId: string): Response {
   return Response.json({
     error: { code, message, correlation_id: correlationId, retryable: false },
   }, { status, headers: correlationHeaders(correlationId) });
-}
-
-async function sha256Hex(raw: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function sessionCookieName(): string {
@@ -81,43 +62,6 @@ async function signSessionCookieValue(sessionToken: string, secret: string): Pro
 async function buildSessionSetCookie(sessionToken: string, secret: string): Promise<string> {
   const signed = await signSessionCookieValue(sessionToken, secret);
   return `${sessionCookieName()}=${signed}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}`;
-}
-
-function exchangeIdentifier(rawToken: string): Promise<string> {
-  return sha256Hex(rawToken.trim()).then((hash) => `${EXCHANGE_IDENTIFIER_PREFIX}${hash}`);
-}
-
-async function insertExchangeRecord(db: D1Database, sessionToken: string): Promise<string> {
-  const raw = `${crypto.randomUUID().replace(/-/g, '')}${crypto.randomUUID().replace(/-/g, '')}`;
-  const identifier = await exchangeIdentifier(raw);
-  const now = Date.now();
-  await db.prepare(
-    `INSERT INTO "verification" ("id", "identifier", "value", "expiresAt", "createdAt", "updatedAt")
-     VALUES (?1, ?2, ?3, ?4, ?5, ?5)`,
-  ).bind(crypto.randomUUID(), identifier, sessionToken, now + EXCHANGE_TTL_MS, now).run();
-  return raw;
-}
-
-async function consumeExchangeRecord(db: D1Database, rawToken: string): Promise<string | null> {
-  const trimmed = rawToken.trim();
-  if (!trimmed) return null;
-  const identifier = await exchangeIdentifier(trimmed);
-  const now = Date.now();
-  const row = await db.prepare(
-    `SELECT "id", "value", "expiresAt" FROM "verification" WHERE "identifier" = ?1 LIMIT 1`,
-  ).bind(identifier).first<{ id: string; value: string; expiresAt: number }>();
-  if (!row?.id || !row.value) return null;
-  if (Number(row.expiresAt) <= now) {
-    await db.prepare(
-      `DELETE FROM "verification" WHERE "id" = ?1 AND "identifier" = ?2`,
-    ).bind(row.id, identifier).run();
-    return null;
-  }
-  const deleted = await db.prepare(
-    `DELETE FROM "verification" WHERE "id" = ?1 AND "identifier" = ?2 AND "value" = ?3 AND "expiresAt" = ?4`,
-  ).bind(row.id, identifier, row.value, row.expiresAt).run();
-  if (!deleted.success || (deleted.meta?.changes ?? 0) < 1) return null;
-  return row.value;
 }
 
 async function credentialAccountExists(db: D1Database, userId: string): Promise<boolean> {
@@ -141,6 +85,21 @@ async function sessionRowById(db: D1Database, sessionId: string): Promise<{ toke
   return row;
 }
 
+function hasTwoFactorCookie(headers: Headers): boolean {
+  const cookie = headers.get('cookie') ?? '';
+  return /(?:^|;\s*)(?:__Secure-)?astera\.two_factor=/.test(cookie);
+}
+
+async function hasPendingTwoFactorChallenge(db: D1Database, userId: string): Promise<boolean> {
+  const now = Date.now();
+  const row = await db.prepare(
+    `SELECT "id" FROM "verification"
+     WHERE "value" = ?1 AND "identifier" LIKE '2fa-%' AND "identifier" NOT LIKE '2fa-attempts-%' AND "expiresAt" > ?2
+     LIMIT 1`,
+  ).bind(userId, now).first<{ id: string }>();
+  return Boolean(row?.id);
+}
+
 async function buildContinuationPayload(
   env: NativeExchangeEnv,
   requestHeaders: Headers,
@@ -160,13 +119,16 @@ async function buildContinuationPayload(
   const status = accountStatus(user, hasCredential);
   const emailVerified = user.emailVerified !== false;
   const requiresPasswordSetup = status === 'pending_password_setup';
+  const twoFactorEnabled = user.twoFactorEnabled === true;
+  const pendingTwoFactor = twoFactorEnabled && (hasTwoFactorCookie(requestHeaders) || await hasPendingTwoFactorChallenge(env.ASTERA_DB, user.id));
+  const authStage = pendingTwoFactor ? 'pending_2fa' : (status === 'active' ? 'authenticated' : status);
   return {
     user: {
       id: user.id,
       email: user.email,
       emailVerified,
       name: user.name ?? null,
-      twoFactorEnabled: user.twoFactorEnabled === true,
+      twoFactorEnabled,
     },
     account: {
       account_status: status,
@@ -175,8 +137,8 @@ async function buildContinuationPayload(
     },
     emailVerified,
     requires_password_setup: requiresPasswordSetup,
-    twoFactorRedirect: false,
-    auth_stage: status === 'active' ? 'authenticated' : status,
+    twoFactorRedirect: pendingTwoFactor,
+    auth_stage: authStage,
   };
 }
 
@@ -209,11 +171,31 @@ export async function handleNativeAuthRoutes(
       : '';
     const sessionToken = await consumeExchangeRecord(env.ASTERA_DB, exchangeToken);
     if (!sessionToken) {
+      await insertSecurityEvent({
+        db: env.ASTERA_DB,
+        userId: 'anonymous',
+        tenantId: 'anonymous',
+        eventType: 'exchange_rejected',
+        correlationId,
+        headers: request.headers,
+        metadata: { reason: 'exchange_token_invalid_or_consumed' },
+      });
       return jsonError(403, 'EXCHANGE_TOKEN_REJECTED', 'Exchange Tokenは無効、期限切れ、または既に使用済みです。', correlationId);
     }
     try {
       const secret = required(env.BETTER_AUTH_SECRET, 'BETTER_AUTH_SECRET');
       const payload = await buildContinuationPayload(env, request.headers, sessionToken);
+      const userId = recordTextUserId(payload);
+      if (userId) {
+        await insertSecurityEvent({
+          db: env.ASTERA_DB,
+          userId,
+          tenantId: tenantIdForUser(userId),
+          eventType: 'sign_in_native_exchange',
+          correlationId,
+          headers: request.headers,
+        });
+      }
       const setCookie = await buildSessionSetCookie(sessionToken, secret);
       return Response.json({ data: payload, ...payload }, {
         headers: {
@@ -259,4 +241,11 @@ export async function handleNativeAuthRoutes(
   }
 
   return null;
+}
+
+function recordTextUserId(payload: Record<string, unknown>): string | null {
+  const user = payload.user;
+  if (!user || typeof user !== 'object') return null;
+  const id = (user as Record<string, unknown>).id;
+  return typeof id === 'string' && id.trim() ? id.trim() : null;
 }

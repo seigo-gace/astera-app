@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
 import { authClient, authErrorMessage } from '../../platform/auth-client';
-import { isNativeRuntime, nativeCallback, openExternalUrl } from '../../platform/external-navigation';
+import { isNativeRuntime, openExternalUrl } from '../../platform/external-navigation';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
@@ -14,10 +14,6 @@ function nativeOAuthCompleteUrl(returnTo: string): string {
   const endpoint = new URL('/api/auth/native/oauth-complete', window.location.origin);
   endpoint.searchParams.set('return_to', returnTo);
   return endpoint.toString();
-}
-
-function nativeLoginDeepLinkPath(): string {
-  return nativeCallback('/login') ?? 'jp.asterav8.app://open/login';
 }
 
 function continuation(payload: unknown, returnTo: string): string {
@@ -83,15 +79,13 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
   };
 
   const startOAuth = async (provider: 'google' | 'github') => {
-    void nativeLoginDeepLinkPath();
-    const callbackURL = isNativeRuntime()
-      ? nativeOAuthCompleteUrl(returnTo)
-      : absoluteAppUrl(returnTo);
+    const nativeComplete = nativeOAuthCompleteUrl(returnTo);
+    const callbackURL = isNativeRuntime() ? nativeComplete : absoluteAppUrl(returnTo);
     const payload = await submitForm('/api/auth/sign-in/social', {
       provider,
       callbackURL,
       errorCallbackURL: absoluteAppUrl(`/login?return_to=${encodeURIComponent(returnTo)}`),
-      newUserCallbackURL: absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
+      newUserCallbackURL: isNativeRuntime() ? nativeComplete : absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
       disableRedirect: true,
     }, setState, { success: `${provider}認証を開始します。`, idempotent: true });
     if (!payload) return;

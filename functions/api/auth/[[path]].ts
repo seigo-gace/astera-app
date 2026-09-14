@@ -1,8 +1,18 @@
-import { createAuth, type AuthEnv } from '../../_auth';
+import { createAuth } from '../../_auth';
 import { handleNativeAuthRoutes, type NativeExchangeEnv } from '../../_native-session-exchange';
+import {
+  countLoginMethods,
+  insertSecurityEvent,
+  parseJsonBodyMetadata,
+  securityEventTypeForAuthPath,
+  tenantIdForUser,
+} from '../../_security-events';
 
 type PagesContext = { request: Request; env: NativeExchangeEnv };
-type SessionSnapshot = { session?: { createdAt?: Date | string } };
+type SessionSnapshot = {
+  user?: { id: string };
+  session?: { createdAt?: Date | string; id?: string };
+};
 
 const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const FRESH_MANAGEMENT_PATHS = new Set([
@@ -22,6 +32,11 @@ const FRESH_MANAGEMENT_PATHS = new Set([
   '/api/auth/link-social',
   '/api/auth/unlink-account',
   '/api/auth/delete-user',
+]);
+
+const LAST_LOGIN_GUARD_PATHS = new Set([
+  '/api/auth/unlink-account',
+  '/api/auth/passkey/delete-passkey',
 ]);
 
 function normalizedPath(request: Request): string {
@@ -68,15 +83,101 @@ async function enforceFreshSession(
   return null;
 }
 
+function mergeSetCookieHeaders(requestHeaders: Headers, response: Response): Headers {
+  const merged = new Headers(requestHeaders);
+  const existing = merged.get('cookie') ?? '';
+  const setCookies = response.headers.getSetCookie?.() ?? [];
+  if (setCookies.length === 0) {
+    const single = response.headers.get('set-cookie');
+    if (single) setCookies.push(single);
+  }
+  const pairs = setCookies.map((entry) => entry.split(';')[0]).filter(Boolean);
+  if (pairs.length > 0) {
+    merged.set('cookie', [existing, ...pairs].filter(Boolean).join('; '));
+  }
+  return merged;
+}
+
+async function enforceLastLoginMethodGuard(
+  request: Request,
+  env: NativeExchangeEnv,
+  auth: ReturnType<typeof createAuth>,
+  correlationId: string,
+): Promise<Response | null> {
+  const pathname = normalizedPath(request);
+  if (!LAST_LOGIN_GUARD_PATHS.has(pathname) || request.method !== 'POST') return null;
+  const session = await auth.api.getSession({ headers: request.headers }) as SessionSnapshot | null;
+  const userId = session?.user?.id;
+  if (!userId) {
+    return freshError(401, 'SESSION_REQUIRED', 'この操作にはLoginが必要です。', correlationId);
+  }
+  const counts = await countLoginMethods(env.ASTERA_DB, userId);
+  if (counts.total <= 1) {
+    return Response.json({
+      error: {
+        code: 'LAST_LOGIN_METHOD_REQUIRED',
+        message: '最後のLogin手段は削除または解除できません。',
+        correlation_id: correlationId,
+        retryable: false,
+      },
+    }, { status: 409, headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId } });
+  }
+  return null;
+}
+
+async function recordAuthSecurityEvent(
+  request: Request,
+  env: NativeExchangeEnv,
+  response: Response,
+  pathname: string,
+  correlationId: string,
+  sessionBefore: SessionSnapshot | null,
+): Promise<void> {
+  if (response.status < 200 || response.status >= 300) return;
+  const eventType = securityEventTypeForAuthPath(pathname, request.method);
+  if (!eventType) return;
+
+  const auth = createAuth(env);
+  let session = sessionBefore;
+  if (eventType !== 'sign_out') {
+    const headers = mergeSetCookieHeaders(request.headers, response);
+    session = await auth.api.getSession({ headers }) as SessionSnapshot | null;
+  }
+  const userId = session?.user?.id ?? sessionBefore?.user?.id;
+  if (!userId) return;
+
+  const metadata = await parseJsonBodyMetadata(request);
+  if (session?.session?.id) metadata.session_id = session.session.id;
+
+  await insertSecurityEvent({
+    db: env.ASTERA_DB,
+    userId,
+    tenantId: tenantIdForUser(userId),
+    eventType,
+    correlationId,
+    headers: request.headers,
+    metadata,
+  });
+}
+
 export async function onRequest(context: PagesContext): Promise<Response> {
   const correlationId = context.request.headers.get('X-Request-ID') || crypto.randomUUID();
   try {
     const nativeResponse = await handleNativeAuthRoutes(context.request, context.env, correlationId);
     if (nativeResponse) return nativeResponse;
     const auth = createAuth(context.env);
+    const pathname = normalizedPath(context.request);
+    const sessionBefore = await auth.api.getSession({ headers: context.request.headers }) as SessionSnapshot | null;
+
+    const lastLoginGuard = await enforceLastLoginMethodGuard(context.request, context.env, auth, correlationId);
+    if (lastLoginGuard) return lastLoginGuard;
+
     const freshnessFailure = await enforceFreshSession(context.request, auth, correlationId);
     if (freshnessFailure) return freshnessFailure;
-    return await auth.handler(context.request);
+
+    const response = await auth.handler(context.request);
+    await recordAuthSecurityEvent(context.request, context.env, response, pathname, correlationId, sessionBefore);
+    return response;
   } catch (error) {
     return Response.json({
       error: {
