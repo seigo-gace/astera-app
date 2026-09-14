@@ -377,12 +377,7 @@ test('STORY-VERIFY-001 Email verification preserves the original destination thr
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/auth/verify-email') {
       verifyRequests += 1;
-      await route.fulfill({
-        status: 302,
-        headers: { location: '/login?return_to=%2Faccount%2Fcredit' },
-        body: '',
-      });
-      return;
+      return json(route, { redirect: '/login?return_to=%2Faccount%2Fcredit' });
     }
     return defaultApi(route);
   });

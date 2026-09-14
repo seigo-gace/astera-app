@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { apiUrl, queryValue, textValue } from '../api-client';
+import { apiUrl, asRecord, queryValue, recordText, textValue } from '../api-client';
 import LoginPage from '../../features/auth/LoginPage';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
@@ -12,6 +12,19 @@ function loginPath(returnTo: string): string {
 
 function absoluteAppUrl(path: string): string {
   return new URL(path, window.location.origin).toString();
+}
+
+function navigateFromApiRedirect(location: string): void {
+  try {
+    const url = new URL(location, window.location.origin);
+    if (url.origin !== window.location.origin) {
+      safeNavigate(safeReturnPath(location, '/app/new'));
+      return;
+    }
+    safeNavigate(`${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    safeNavigate(safeReturnPath(location, '/app/new'));
+  }
 }
 
 function RegisterPage({ route }: { route: RouteMatch }) {
@@ -63,10 +76,40 @@ function VerifyEmailPage({ route }: { route: RouteMatch }) {
 
   useEffect(() => {
     if (!token) return;
-    const endpoint = new URL(apiUrl('/api/auth/verify-email'));
-    endpoint.searchParams.set('token', token);
-    endpoint.searchParams.set('callbackURL', absoluteAppUrl(loginPath(returnTo)));
-    window.location.replace(endpoint.toString());
+    let active = true;
+    void (async () => {
+      const endpoint = new URL(apiUrl('/api/auth/verify-email'));
+      endpoint.searchParams.set('token', token);
+      endpoint.searchParams.set('callbackURL', absoluteAppUrl(loginPath(returnTo)));
+      try {
+        const response = await fetch(endpoint.toString(), { method: 'GET', credentials: 'include', redirect: 'manual' });
+        const location = response.headers.get('Location') ?? response.headers.get('location');
+        if (response.status >= 300 && response.status < 400 && location) {
+          if (active) navigateFromApiRedirect(location);
+          return;
+        }
+        if (response.ok) {
+          const payload = await response.json().catch(() => null);
+          const redirect = recordText(asRecord(payload), ['redirect', 'location', 'url']);
+          if (redirect) {
+            if (active) navigateFromApiRedirect(redirect);
+            return;
+          }
+        }
+        if (active) {
+          setState({ type: 'error', message: 'Email確認に失敗しました。', code: 'EMAIL_VERIFICATION_FAILED' });
+        }
+      } catch (error) {
+        if (active) {
+          setState({
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Email確認に失敗しました。',
+            code: 'EMAIL_VERIFICATION_FAILED',
+          });
+        }
+      }
+    })();
+    return () => { active = false; };
   }, [returnTo, token]);
 
   const resend = async (event: FormEvent) => {

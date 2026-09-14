@@ -105,7 +105,7 @@ export default function ProjectPage({ route }: { route: RouteMatch }) {
 
   return (
     <ResponsivePageShell route={route} description="単階層Projectを作成・検索・Rename・Archiveし、ResultをProjectまたはUnassignedへ整理します。">
-      <Panel title="新規Project">
+      <Panel title="新規作成">
         <form className="project-create-form" onSubmit={create}>
           <Field label="Project名" name="name" required maxLength={120} />
           <Field label="説明（任意）" name="description" maxLength={2000} />
@@ -114,7 +114,7 @@ export default function ProjectPage({ route }: { route: RouteMatch }) {
         <FormResult state={createState} />
       </Panel>
 
-      <Panel title="Projectを探す">
+      <Panel title="一覧検索">
         <div className="project-toolbar">
           <Field label="検索" name="project-search" value={search} onChange={setSearch} placeholder="Project名・説明" />
           <div className="project-view-tabs" role="group" aria-label="Project状態">
@@ -128,7 +128,7 @@ export default function ProjectPage({ route }: { route: RouteMatch }) {
       {resource.status === 'error' && <ErrorState error={resource.error} onRetry={reload} />}
       {resource.status === 'ready' && (
         <div className="project-workspace-grid">
-          <Panel title={view === 'active' ? 'Active Project' : 'Archived Project'}>
+          <Panel title={view === 'active' ? 'Active 一覧' : 'Archived 一覧'}>
             {visible.length === 0 ? <EmptyState>{search ? '条件に一致するProjectはありません。' : 'Projectはありません。'}</EmptyState> : (
               <div className="project-list">
                 {visible.map((project) => {
@@ -154,7 +154,7 @@ export default function ProjectPage({ route }: { route: RouteMatch }) {
           {detailOpen && <button className="project-detail-backdrop" type="button" aria-label="Project詳細を閉じる" onClick={() => setDetailOpen(false)} />}
           <div className="project-detail-shell" data-open={detailOpen ? 'true' : 'false'}>
             <Panel
-              title="Project詳細"
+              title="詳細"
               actions={<button className="platform-button project-mobile-close" type="button" onClick={() => setDetailOpen(false)}>閉じる</button>}
             >
               {!selectedId && <EmptyState>Projectを選択してください。</EmptyState>}

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiRequest, asRecord, recordText, textValue, type JsonObject } from '../api-client';
-import { safeReturnPath, type RouteMatch } from '../route-registry';
+import type { RouteMatch } from '../route-registry';
 import { BusyState, EmptyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
 
 type ResourceState<T> =
@@ -28,7 +28,21 @@ export function useResource<T = unknown>(path: string | null): [ResourceState<T>
 }
 
 export function safeNavigate(path: string): void {
-  window.location.assign(safeReturnPath(path, '/app/new'));
+  try {
+    const candidate = path.startsWith('/') ? path : `/${path}`;
+    const url = new URL(candidate, window.location.origin);
+    if (url.origin !== window.location.origin) {
+      window.location.assign('/app/new');
+      return;
+    }
+    if (!url.pathname.startsWith('/') || url.pathname.startsWith('//') || url.pathname.includes('\\') || /[\u0000-\u001f\u007f]/.test(url.pathname)) {
+      window.location.assign('/app/new');
+      return;
+    }
+    window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    window.location.assign('/app/new');
+  }
 }
 
 export function Field({ label, name, type = 'text', autoComplete, required = false, minLength, maxLength, placeholder, inputMode, value, onChange }: {
