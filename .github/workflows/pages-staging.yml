@@ -62,9 +62,71 @@ jobs:
         id: functions_build
         run: npm run cloudflare:functions:build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to authoritative staging Pages project
         id: pages_deploy
         run: npx wrangler pages deploy pages-dist --project-name=astera-app-staging --branch="${GITHUB_REF_NAME}"
+
+      - name: Remove duplicate GitHub Pages project
+        id: dedupe_pages
+        if: steps.pages_deploy.outcome == 'success' && github.ref_name == 'feat/astera-translation'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const canonicalProject = 'astera-app-staging';
+          const duplicateProject = 'astera-app-github';
+          const base = `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`;
+          const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+
+          async function readProject(name) {
+            const response = await fetch(`${base}/${name}`, { headers });
+            if (response.status === 404) return null;
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || body.success === false) {
+              throw new Error(`Cloudflare project read failed for ${name}: HTTP ${response.status}`);
+            }
+            return body.result ?? null;
+          }
+
+          const canonical = await readProject(canonicalProject);
+          if (!canonical) throw new Error(`Canonical Pages project ${canonicalProject} is missing`);
+
+          const duplicate = await readProject(duplicateProject);
+          if (!duplicate) {
+            console.log(`${duplicateProject} is already absent; Pages topology is already single-project.`);
+            process.exit(0);
+          }
+
+          const domains = Array.isArray(duplicate.domains) ? duplicate.domains.filter((value) => typeof value === 'string') : [];
+          const customDomains = domains.filter((domain) => !domain.endsWith('.pages.dev'));
+          if (customDomains.length > 0) {
+            throw new Error(`Refusing to delete ${duplicateProject}; custom domains are attached: ${customDomains.join(', ')}`);
+          }
+
+          let deleted = false;
+          let lastStatus = 0;
+          for (let attempt = 1; attempt <= 5; attempt += 1) {
+            const response = await fetch(`${base}/${duplicateProject}`, { method: 'DELETE', headers });
+            lastStatus = response.status;
+            if (response.status === 404) {
+              deleted = true;
+              break;
+            }
+            const body = await response.json().catch(() => ({}));
+            if (response.ok && body.success !== false) {
+              deleted = true;
+              break;
+            }
+            if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
+          if (!deleted) throw new Error(`Failed to delete duplicate Pages project ${duplicateProject}; last HTTP status ${lastStatus}`);
+
+          const after = await readProject(duplicateProject);
+          if (after) throw new Error(`Duplicate Pages project ${duplicateProject} still exists after delete`);
+          console.log(`Deleted duplicate Pages project ${duplicateProject}. Canonical project remains ${canonicalProject}.`);
+          NODE
 
       - name: Report deployment evidence
         if: always()
@@ -77,6 +139,7 @@ jobs:
           FRONTEND_BUILD_OUTCOME: ${{ steps.frontend_build.outcome }}
           FUNCTIONS_BUILD_OUTCOME: ${{ steps.functions_build.outcome }}
           PAGES_DEPLOY_OUTCOME: ${{ steps.pages_deploy.outcome }}
+          DEDUPE_OUTCOME: ${{ steps.dedupe_pages.outcome }}
         shell: bash
         run: |
           set -euo pipefail
@@ -84,6 +147,7 @@ jobs:
           const token = process.env.CLOUDFLARE_API_TOKEN || '';
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
           const project = 'astera-app-staging';
+          const duplicateProject = 'astera-app-github';
           const report = {
             github_sha: process.env.GITHUB_SHA,
             steps: {
@@ -94,8 +158,10 @@ jobs:
               frontend_build: process.env.FRONTEND_BUILD_OUTCOME,
               functions_build: process.env.FUNCTIONS_BUILD_OUTCOME,
               pages_deploy: process.env.PAGES_DEPLOY_OUTCOME,
+              dedupe_pages: process.env.DEDUPE_OUTCOME,
             },
             cloudflare: null,
+            duplicate_project_exists: null,
           };
           if (token) {
             const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${project}/deployments?env=production`, {
@@ -120,6 +186,11 @@ jobs:
             } else {
               report.cloudflare = { query_failed: true, status: response.status, errors: (body.errors || []).map((e) => e.code || e.message || 'unknown') };
             }
+
+            const duplicateResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${duplicateProject}`, {
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+            });
+            report.duplicate_project_exists = duplicateResponse.status !== 404;
           } else {
             report.cloudflare = { query_failed: true, reason: 'token-missing' };
           }
