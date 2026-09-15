@@ -2,7 +2,7 @@ name: Pages Staging Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/astera-translation]
   workflow_dispatch:
   issue_comment:
     types: [created]
@@ -34,7 +34,7 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
 
       - name: Setup Node
         id: node
@@ -64,7 +64,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         id: pages_deploy
-        run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
+        run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch="${GITHUB_REF_NAME}"
 
       - name: Report deployment evidence
         if: always()
