@@ -67,7 +67,7 @@ services:
         done
         npx wrangler d1 execute ASTERA_DB --local --command "INSERT INTO credit_policies (version, status, base_credits, characters_per_credit, file_bytes_per_credit, option_costs, low_threshold, critical_threshold, max_estimate, estimate_ttl_seconds, reservation_ttl_seconds, published_at, created_at) SELECT 'e2e-live-process-v1', 'active', 1, 1000, 1048576, '{\"translation\":0,\"agent-mode\":0,\"document\":0,\"external-storage-transfer\":0}', 100, 10, 100000, 600, 1800, datetime('now'), datetime('now') WHERE NOT EXISTS (SELECT 1 FROM credit_policies WHERE status='active' LIMIT 1);"
         echo 'd1 local schema tables present'
-        exec npx wrangler pages dev pages-dist --port "$${E2E_PAGES_DEV_PORT:-8780}" --ip 0.0.0.0 --local --live-reload=false --show-interactive-dev-session=false -b E2E_LIVE_PROCESS_PREVIEW_ACTOR=1
+        exec npx --yes wrangler@4.131.2 pages dev pages-dist --port "$${E2E_PAGES_DEV_PORT:-8780}" --ip 0.0.0.0 --local --live-reload=false --show-interactive-dev-session=false -b E2E_LIVE_PROCESS_PREVIEW_ACTOR=1
     healthcheck:
       test:
         [

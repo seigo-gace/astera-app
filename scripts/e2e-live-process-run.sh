@@ -166,6 +166,8 @@ mkdir -p "${E2E_LIVE_PROCESS_OUTPUT_DIR}" "${E2E_LIVE_PROCESS_REPORT_DIR}"
 set +e
 docker run --rm --network host \
   -v "$PWD:/work" \
+  -v /tmp/playwright-e2e-live-process-test-results:/tmp/playwright-e2e-live-process-test-results \
+  -v /tmp/playwright-report-e2e-live-process:/tmp/playwright-report-e2e-live-process \
   -w /work \
   -e E2E_LIVE_PROCESS_BASE_URL=http://127.0.0.1:8083 \
   -e E2E_LIVE_PROCESS_OUTPUT_DIR="${E2E_LIVE_PROCESS_OUTPUT_DIR}" \
