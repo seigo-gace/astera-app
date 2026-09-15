@@ -102,7 +102,9 @@ jobs:
           }
 
           async function listDeployments(name) {
-            const { response, body } = await api(`${projectBase}/${name}/deployments?per_page=100&page=1`);
+            // Cloudflare official example lists deployments without page/per_page.
+            // Re-reading the first default page after each delete avoids depending on an undocumented maximum page size.
+            const { response, body } = await api(`${projectBase}/${name}/deployments`);
             if (!response.ok || body.success === false || !Array.isArray(body.result)) {
               throw new Error(`Cloudflare deployment list failed for ${name}: HTTP ${response.status} ${JSON.stringify(body.errors ?? [])}`);
             }
@@ -137,42 +139,46 @@ jobs:
           let projectDelete = await deleteProject(duplicateProject);
           if (!projectDelete.deleted) {
             console.log(`Initial project delete rejected: HTTP ${projectDelete.status} ${JSON.stringify(projectDelete.body.errors ?? [])}`);
-            console.log('Cleaning old duplicate-project deployments before retrying project deletion.');
+            console.log('Cleaning duplicate-project deployment history before retrying project deletion.');
 
             let totalDeleted = 0;
-            let pass = 0;
-            while (pass < 30) {
-              pass += 1;
+            for (let pass = 1; pass <= 500; pass += 1) {
+              duplicate = await readProject(duplicateProject);
+              if (!duplicate) {
+                projectDelete = { deleted: true, status: 404, body: {} };
+                break;
+              }
+
               const deployments = await listDeployments(duplicateProject);
-              if (deployments.length === 0) break;
+              if (deployments.length === 0) {
+                projectDelete = await deleteProject(duplicateProject);
+                break;
+              }
 
               const activeProductionId = duplicate?.canonical_deployment?.id ?? null;
               const candidates = deployments
                 .map((deployment) => deployment?.id)
                 .filter((id) => typeof id === 'string' && id && id !== activeProductionId);
 
-              if (candidates.length === 0) break;
-
               let deletedThisPass = 0;
-              for (let index = 0; index < candidates.length; index += 5) {
-                const batch = candidates.slice(index, index + 5);
-                const results = await Promise.all(batch.map(async (id) => ({ id, ...(await deleteDeployment(duplicateProject, id)) })));
-                for (const result of results) {
-                  if (result.deleted) {
-                    deletedThisPass += 1;
-                    totalDeleted += 1;
-                  }
+              for (const id of candidates) {
+                const result = await deleteDeployment(duplicateProject, id);
+                if (result.deleted) {
+                  deletedThisPass += 1;
+                  totalDeleted += 1;
                 }
-                await new Promise((resolve) => setTimeout(resolve, 150));
               }
 
-              console.log(`Cleanup pass ${pass}: deleted ${deletedThisPass}, total ${totalDeleted}, listed ${deployments.length}`);
-              if (deletedThisPass === 0) break;
-              duplicate = await readProject(duplicateProject);
-              if (!duplicate) break;
-            }
+              projectDelete = await deleteProject(duplicateProject);
+              console.log(`Cleanup pass ${pass}: deleted ${deletedThisPass}, total ${totalDeleted}, listed ${deployments.length}, projectDeleteHTTP ${projectDelete.status}`);
+              if (projectDelete.deleted) break;
 
-            projectDelete = await deleteProject(duplicateProject);
+              if (deletedThisPass === 0) {
+                throw new Error(`Duplicate cleanup made no progress. Project delete still fails: HTTP ${projectDelete.status} ${JSON.stringify(projectDelete.body.errors ?? [])}`);
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, 250));
+            }
           }
 
           if (!projectDelete.deleted) {
