@@ -71,7 +71,13 @@ function normalizePathname(pathname: string): string {
 }
 
 function decodePathSegment(value: string): string | null {
-  try { return decodeURIComponent(value); } catch { return null; }
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded.includes('\uFFFD')) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
 }
 
 function matchPattern(pattern: string, pathname: string): Record<string, string> | null {

@@ -4,7 +4,7 @@ import { previewWithoutAuth } from '../../platform/account-session';
 import { apiRequest, asArray, asRecord, recordText } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
-import { FormResult, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
+import { Field, FormResult, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
 import { SettingsSurface } from './SettingsSurface';
 
 export function SettingsIndexPage({ route }: { route: RouteMatch }) {
@@ -13,24 +13,51 @@ export function SettingsIndexPage({ route }: { route: RouteMatch }) {
 }
 
 export function LanguageSettingsPage({ route }: { route: RouteMatch }) {
-  const { language, setLanguage, text } = useAppText();
-  const [value, setValue] = useState<'ja' | 'en'>(language);
-  const [saved, setSaved] = useState(false);
-  useEffect(() => setValue(language), [language]);
-  const apply = async (event: FormEvent) => {
+  const { setLanguage, text } = useAppText();
+  const [resource, reload] = useResource('/api/preferences');
+  const [uiLanguage, setUiLanguage] = useState('ja-JP');
+  const [state, setState] = useState<SubmitState>({ type: 'idle' });
+
+  useEffect(() => {
+    if (resource.status !== 'ready') return;
+    const root = asRecord(resource.data);
+    const preferences = asRecord(root.preferences ?? root.data ?? root);
+    const value = recordText(preferences, ['ui_language'], 'ja-JP');
+    setUiLanguage(value);
+  }, [resource]);
+
+  const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!previewWithoutAuth()) {
-      await apiRequest('/api/preferences/display', {
-        method: 'PUT',
-        body: { ui_language: value === 'en' ? 'en-US' : 'ja-JP' },
-        idempotent: true,
-      });
+    if (resource.status !== 'ready') return;
+    const response = await submitForm('/api/preferences', { ui_language: uiLanguage }, setState, {
+      method: 'PATCH',
+      success: text('saved'),
+      idempotent: true,
+    });
+    if (response) {
+      const normalized = uiLanguage.toLowerCase().startsWith('en') ? 'en' : 'ja';
+      if (!previewWithoutAuth()) await setLanguage(normalized);
+      reload();
     }
-    await setLanguage(value);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1600);
   };
-  return <ResponsivePageShell route={route} description={text('languageDescription')}><Panel title={text('languageTitle')}><form className="platform-form" onSubmit={(event) => void apply(event)}><label className="platform-field"><span>{text('languageSelect')}</span><select value={value} onChange={(event) => setValue(event.target.value as 'ja' | 'en')}><option value="ja">{text('japanese')}</option><option value="en">{text('english')}</option></select></label><button className="platform-button is-primary" type="submit">{text('save')}</button>{saved && <p className="platform-form-result is-success" role="status">{text('saved')}</p>}</form></Panel></ResponsivePageShell>;
+
+  const loadFailed = resource.status === 'error';
+
+  return <ResponsivePageShell route={route} description={text('languageDescription')}>
+    <Panel title={text('languageTitle')}>
+      {resource.status === 'loading' && <BusyState />}
+      {loadFailed && <ErrorState error={resource.error} onRetry={reload} />}
+      {(resource.status === 'ready' || loadFailed) && (
+        <form className="platform-form" onSubmit={(event) => void save(event)}>
+          <Field label="システム言語" name="ui_language" value={uiLanguage} onChange={setUiLanguage} />
+          <button className="platform-button is-primary" type="submit" disabled={loadFailed || state.type === 'working'}>
+            保存
+          </button>
+          <FormResult state={state} />
+        </form>
+      )}
+    </Panel>
+  </ResponsivePageShell>;
 }
 
 type CreditEvent = 'credit.low' | 'credit.critical' | 'credit.insufficient' | 'credit.purchase_pending' | 'credit.credited' | 'credit.resume_available' | 'credit.resume_blocked';

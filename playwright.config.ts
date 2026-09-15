@@ -48,6 +48,7 @@ export default defineConfig({
     timeout: 180_000,
     env: {
       VITE_ASTERA_API_BASE: baseURL,
+      VITE_PREVIEW_WITHOUT_AUTH: 'false',
     },
   },
   projects: [

@@ -458,7 +458,7 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
             {showConnection && (
               <div
                 className={`checkout-connection is-${connection.status}`}
-                role={connection.status === "error" ? "alert" : "status"}
+                role={connection.status === "error" || submit.status === "error" ? "alert" : "status"}
               >
                 {connection.status === "checking" && (
                   <span>{text.connectionChecking}</span>

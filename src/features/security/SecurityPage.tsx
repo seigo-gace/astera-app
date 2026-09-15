@@ -142,10 +142,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
         authClient.passkey.listUserPasskeys(),
       ]);
       const security = asRecord(asRecord(projection).security);
-      setSecurityProjectionReady(
-        security.password_configured !== undefined
-        && (security.passkey_enabled !== undefined || security.passkey_count !== undefined),
-      );
+      setSecurityProjectionReady(true);
       setTwoFactorEnabled(security.two_factor_enabled === true || security.twoFactorEnabled === true);
       setEvents(normalizeEvents(projection));
       setSessions(normalizeSessions(betterAuthResult(sessionResult, 'Session一覧を取得できませんでした。'), projection));
