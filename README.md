@@ -58,6 +58,8 @@ seigo-gace/astera-app main push
 
 GitHub repository secret `CLOUDFLAREACCOUNTAPI` が必要です（workflow 内で wrangler 用 `CLOUDFLARE_API_TOKEN` へ渡されます）。
 
+手動ログイン確認用（staging D1 に投入）: Email `staging.test@asterav8.jp` / Password `StagingTest12!`
+
 デプロイ（Cloudflare 認証が必要。`source ~/.cloudflare/token`、必要なら `source ~/.cloudflare/account`）：
 
 **自動:** 上記正規経路（`main` push で `pages-staging.yml` が `astera-app-staging` へ deploy）。
@@ -392,21 +394,7 @@ docker compose up --build
 # API:      http://localhost:8788
 ```
 
-**E2E live process（Pages Functions + 実 Process API）** では `docker-compose.e2e-live-process.yml` 起動時に D1 migration 直後へ `scripts/seed-test-account.mjs` が走り、ローカル専用 test アカウントが idempotent に作成されます。
-
-| 項目 | 値 |
-|---|---|
-| User ID | `test-account` |
-| Email | `test@astera.local` |
-| Password | `TestAccount-2026!` |
-
-手動で同じ seed を D1 local に適用する場合（`wrangler d1 migrations apply ASTERA_DB --local` 済みが前提）:
-
-```bash
-npm run seed:test-account
-```
-
-Pages dev（例: `http://127.0.0.1:8780/login`）で上記 Email / Password により Better Auth email ログインできます。`requireEmailVerification` は有効のまま、seed 側で `emailVerified=1` の verified user を作ります。
+**E2E live process（Pages Functions + 実 Process API）** では `docker-compose.e2e-live-process.yml` 起動時に D1 migration を適用したうえで Pages dev が起動します。
 
 TypeScript／Lint／Build Gate（ホストで一時実行可。常駐しない）：
 

@@ -58,7 +58,6 @@ services:
         cp -f .wrangler/functions-build/index.js pages-dist/_worker.js
         export CI=1 WRANGLER_SEND_METRICS=false
         npx wrangler d1 migrations apply ASTERA_DB --local
-        node scripts/seed-test-account.mjs
         for tbl in tenants user_profiles credit_accounts account credit_policies; do
           out=$$(npx wrangler d1 execute ASTERA_DB --local --command "SELECT name FROM sqlite_master WHERE type='table' AND name='$$tbl' LIMIT 1;" 2>/dev/null || true)
           if ! echo "$$out" | grep -q "$$tbl"; then
