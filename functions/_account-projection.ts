@@ -140,7 +140,25 @@ async function previewActorProjection(env: AsteraFunctionEnv): Promise<AsteraAct
     emailVerified: true,
     name: 'E2E Live Process Preview',
   };
-  const { profile, credit } = await ensureProjection(env.ASTERA_DB, user);
+  const tenantId = `personal:${user.id}`;
+  const now = new Date().toISOString();
+  let { profile, credit } = await ensureProjection(env.ASTERA_DB, user);
+  await env.ASTERA_DB.batch([
+    env.ASTERA_DB.prepare(
+      `UPDATE user_profiles SET account_status = 'active', updated_at = ?1 WHERE user_id = ?2`,
+    ).bind(now, user.id),
+    env.ASTERA_DB.prepare(
+      `UPDATE credit_accounts SET available_balance = ?1, updated_at = ?2 WHERE tenant_id = ?3`,
+    ).bind(100_000, now, tenantId),
+  ]);
+  profile = await env.ASTERA_DB.prepare(
+    `SELECT user_id, tenant_id, nickname, account_status, ui_language, created_at, updated_at
+     FROM user_profiles WHERE user_id = ?1 LIMIT 1`,
+  ).bind(user.id).first<UserProfileRow>() as UserProfileRow;
+  credit = await env.ASTERA_DB.prepare(
+    `SELECT id, tenant_id, available_balance, reserved_balance, version, updated_at
+     FROM credit_accounts WHERE tenant_id = ?1 LIMIT 1`,
+  ).bind(tenantId).first<CreditRow>() as CreditRow;
   return {
     user,
     session: { id: 'e2e-live-process-preview-session', createdAt: new Date(), updatedAt: new Date() },

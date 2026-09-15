@@ -57,8 +57,15 @@ function normalizedOrigin(value: string | undefined): URL {
   } catch {
     throw new FunctionHttpError(503, 'ASTERA_RUNTIME_ORIGIN_INVALID', 'Astera Runtime接続先URLが不正です。');
   }
-  const httpAllowedHosts = new Set(['localhost', '127.0.0.1', 'host.docker.internal']);
-  if (url.protocol !== 'https:' && !httpAllowedHosts.has(url.hostname)) {
+  const hostname = url.hostname;
+  const httpAllowed =
+    hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === 'host.docker.internal'
+    || /^10\./.test(hostname)
+    || /^192\.168\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+  if (url.protocol !== 'https:' && !httpAllowed) {
     throw new FunctionHttpError(503, 'ASTERA_RUNTIME_HTTPS_REQUIRED', 'Astera Runtime接続先はHTTPSである必要があります。');
   }
   url.pathname = url.pathname.replace(/\/+$/, '');
@@ -81,7 +88,9 @@ function timeoutMs(value: string | undefined): number {
 
 function runtimeUrl(env: RuntimeEnv, path: string): string {
   const origin = normalizedOrigin(env.ASTERA_RUNTIME_ORIGIN);
-  return new URL(`${origin.pathname}${path}`, origin.origin).toString();
+  const suffix = path.startsWith('/') ? path : `/${path}`;
+  const basePath = origin.pathname && origin.pathname !== '/' ? origin.pathname.replace(/\/+$/, '') : '';
+  return `${origin.origin}${basePath}${suffix}`;
 }
 
 function isRuntimeState(value: string): value is RuntimeJobState {

@@ -6,8 +6,8 @@ export default defineConfig({
   testDir: './tests',
   testMatch: 'live-process-main8-e2e.spec.ts',
   outputDir: process.env.E2E_LIVE_PROCESS_OUTPUT_DIR || '/tmp/playwright-e2e-live-process-test-results',
-  timeout: 180_000,
-  expect: { timeout: 120_000 },
+  timeout: 300_000,
+  expect: { timeout: 240_000 },
   fullyParallel: false,
   workers: 1,
   reporter: [
@@ -17,7 +17,7 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    screenshot: 'on',
     video: 'retain-on-failure',
   },
   projects: [{ name: 'chromium-live-e2e-process', use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } } }],

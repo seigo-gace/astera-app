@@ -81,13 +81,45 @@ cleanup() {
 }
 trap cleanup EXIT
 
+dump_diagnostics() {
+  echo "=== astera-app-pages-e2e-live logs (tail 200) ===" >&2
+  "${COMPOSE[@]}" logs --no-color --tail=200 astera-app-pages-e2e-live >&2 || true
+  echo "=== astera-app-ui-e2e-live logs (tail 100) ===" >&2
+  "${COMPOSE[@]}" logs --no-color --tail=100 astera-app-ui-e2e-live >&2 || true
+  echo "=== app-api GET /ready ===" >&2
+  curl -sS -m 8 http://127.0.0.1:8793/ready >&2 || echo "(app-api /ready unreachable)" >&2
+  echo "" >&2
+  echo "=== astera-v8 GET /healthz ===" >&2
+  curl -sS -m 8 http://127.0.0.1:7375/healthz >&2 || echo "(7375 /healthz unreachable)" >&2
+  echo "" >&2
+}
+
 fail() {
   echo "e2e-live-process failed: $1" >&2
+  dump_diagnostics
   "${COMPOSE[@]}" ps >&2 || true
   exit 1
 }
 
-_expected_origin="${ASTERA_PROCESS_ORIGIN%/}"
+wait_http_code() {
+  local url="$1"
+  local want="$2"
+  local label="$3"
+  local i code body
+  for i in $(seq 1 90); do
+    body="$(curl -s -m 4 "$url" 2>/dev/null || true)"
+    code="$(curl -s -o /dev/null -m 4 -w '%{http_code}' "$url" 2>/dev/null || echo 000)"
+    if [[ "$code" == "$want" ]]; then
+      return 0
+    fi
+    if [[ "$code" == "503" ]] && echo "$body" | grep -qE 'SCHEMA_NOT_READY|ASTERA_ACCOUNT_SCHEMA_NOT_READY'; then
+      dump_diagnostics
+      fail "${label}: HTTP 503 schema not ready (${url})"
+    fi
+    sleep 2
+  done
+  return 1
+}
 
 "${COMPOSE[@]}" build astera-app-api-e2e-live astera-app-ui-e2e-live astera-app-pages-e2e-live
 "${COMPOSE[@]}" up -d astera-app-api-e2e-live
@@ -99,23 +131,26 @@ for _ in $(seq 1 60); do
 done
 "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);console.log('ready process_origin='+j.process_origin);}).catch(()=>process.exit(1));" || fail "app-api /ready process_origin mismatch"
 
-"${COMPOSE[@]}" up -d astera-app-pages-e2e-live
-for _ in $(seq 1 90); do
-  if curl -sf -m 2 http://127.0.0.1:8780/ >/dev/null 2>&1; then break; fi
+"${COMPOSE[@]}" up -d --force-recreate astera-app-pages-e2e-live
+for _ in $(seq 1 150); do
+  if curl -sf -m 3 http://127.0.0.1:8780/ >/dev/null 2>&1; then break; fi
   sleep 2
 done
-curl -sf -m 2 http://127.0.0.1:8780/ >/dev/null || fail "pages dev not ready on 8780"
+wait_http_code "http://127.0.0.1:8780/" "200" "pages root" || fail "pages dev not ready on 8780"
+wait_http_code "http://127.0.0.1:8780/api/account" "200" "pages /api/account" || fail "pages /api/account not 200 on 8780"
 
 "${COMPOSE[@]}" up -d astera-app-ui-e2e-live
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   if curl -sf -m 2 http://127.0.0.1:8083/ >/dev/null 2>&1; then break; fi
   sleep 2
 done
-curl -sf -m 2 http://127.0.0.1:8083/ >/dev/null || fail "ui not ready on 8083"
+curl -sf -m 2 http://127.0.0.1:8083/ >/dev/null || fail "ui not listening on 8083"
+wait_http_code "http://127.0.0.1:8083/api/account" "200" "ui proxied /api/account" || fail "ui /api/account not 200 on 8083"
 
 export E2E_LIVE_PROCESS_OUTPUT_DIR="${E2E_LIVE_PROCESS_OUTPUT_DIR:-/tmp/playwright-e2e-live-process-test-results}"
 export E2E_LIVE_PROCESS_REPORT_DIR="${E2E_LIVE_PROCESS_REPORT_DIR:-/tmp/playwright-report-e2e-live-process}"
 mkdir -p "${E2E_LIVE_PROCESS_OUTPUT_DIR}" "${E2E_LIVE_PROCESS_REPORT_DIR}"
+set +e
 docker run --rm --network host \
   -v "$PWD:/work" \
   -w /work \
@@ -124,4 +159,10 @@ docker run --rm --network host \
   -e E2E_LIVE_PROCESS_REPORT_DIR="${E2E_LIVE_PROCESS_REPORT_DIR}" \
   mcr.microsoft.com/playwright:v1.62.0-noble \
   /work/node_modules/.bin/playwright test --config /work/playwright.e2e-live-process.config.ts
+_pw_status=$?
+set -e
+if [[ "$_pw_status" -ne 0 ]]; then
+  dump_diagnostics
+  fail "playwright exit ${_pw_status}"
+fi
 echo "e2e-live-process playwright finished"

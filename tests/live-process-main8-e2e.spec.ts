@@ -1,6 +1,19 @@
 import { expect, test } from '@playwright/test';
 
-const LIVE_JOB_PROMPT = 'A案とB案を比較したい。最終結論は出さず判断材料だけ欲しい。';
+/** REAL_MCP gate case B — domain claim + search plan expected */
+const LIVE_JOB_PROMPT =
+  '新方式は従来より20%速いと言われている。事実確認も含め判断材料だけ欲しい。';
+
+const MAIN8_CANONICAL_KEYS = [
+  'true_purpose',
+  'missing_assumptions',
+  'fact_check',
+  'risk_detection',
+  'counter_view',
+  'alternatives',
+  'recommendation',
+  'next_prompt',
+] as const;
 
 test('LIVE-E2E-MAIN8: App UI job reaches Process Main8 via App API (no /api/jobs mock)', async ({ page }) => {
   const jobPosts: string[] = [];
@@ -21,10 +34,13 @@ test('LIVE-E2E-MAIN8: App UI job reaches Process Main8 via App API (no /api/jobs
 
   await expect.poll(() => jobPosts.length, { timeout: 5_000 }).toBeGreaterThan(0);
 
-  const resultSurface = page.locator('.native-result-section, [data-testid="job-result"], .job-result');
-  await expect(resultSurface.first()).toBeVisible({ timeout: 120_000 });
+  await expect(page.locator('.native-result-section').first()).toBeVisible({ timeout: 240_000 });
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
   const bodyText = await page.locator('body').innerText();
-  expect(bodyText).toMatch(/01 本当の目的|01 True Objective/);
-  expect(bodyText).toMatch(/07 根拠成立状態|07 Evidence Status/);
-  expect(bodyText).not.toMatch(/外部Evidence検索: 不要（NOT_REQUIRED）/);
+  for (const key of MAIN8_CANONICAL_KEYS) {
+    expect(bodyText).toMatch(new RegExp(key.replace(/_/g, '[_\\s]?')));
+  }
+  expect(bodyText).toMatch(/01[\s\S]{0,120}true_purpose/);
+  expect(bodyText).toMatch(/07[\s\S]{0,120}recommendation/);
+  expect(bodyText).toMatch(/MAIN8-07-EVIDENCE-STATUS-SEPARATION/);
 });

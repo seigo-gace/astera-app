@@ -29,14 +29,14 @@ services:
     image: node:22-bookworm
     container_name: astera-app-pages-e2e-live
     working_dir: /work
+    network_mode: host
     volumes:
       - ./:/work
     env_file:
       - contabo/app-api/.env
     environment:
-      ASTERA_RUNTIME_ORIGIN: http://host.docker.internal:8793
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      ASTERA_RUNTIME_ORIGIN: http://127.0.0.1:8793
+      E2E_PAGES_DEV_PORT: "8780"
     command:
       - bash
       - -lc
@@ -44,21 +44,42 @@ services:
         set -euo pipefail
         export ASTERA_RUNTIME_SERVICE_TOKEN="$$(printenv INTERNAL_SERVICE_TOKEN)"
         if [ -z "$$ASTERA_RUNTIME_SERVICE_TOKEN" ]; then echo 'missing INTERNAL_SERVICE_TOKEN' >&2; exit 1; fi
+        DEV_VARS="/tmp/e2e-live-process.dev.vars"
         {
           echo "BETTER_AUTH_SECRET=$$ASTERA_RUNTIME_SERVICE_TOKEN"
-          echo "BETTER_AUTH_URL=http://127.0.0.1:8788"
-          echo "ASTERA_RUNTIME_ORIGIN=http://host.docker.internal:8793"
+          echo "BETTER_AUTH_URL=http://127.0.0.1:$${E2E_PAGES_DEV_PORT:-8780}"
+          echo "ASTERA_RUNTIME_ORIGIN=$${ASTERA_RUNTIME_ORIGIN}"
           echo "ASTERA_RUNTIME_SERVICE_TOKEN=$$ASTERA_RUNTIME_SERVICE_TOKEN"
           echo "E2E_LIVE_PROCESS_PREVIEW_ACTOR=1"
-        } > .dev.vars
-        npm run build
+        } > "$$DEV_VARS"
+        ln -sf "$$DEV_VARS" /work/.dev.vars
+        if [ ! -f pages-dist/index.html ]; then npx vite build; fi
         npm run cloudflare:functions:build
-        npx wrangler d1 migrations apply ASTERA_DB --local --persist-to /tmp/astera-d1-e2e-live-process
-        npx wrangler pages dev pages-dist --port 8788 --ip 0.0.0.0 --local --persist-to /tmp/astera-d1-e2e-live-process
-    ports:
-      - "8780:8788"
-    networks:
-      - astera-app-e2e-live
+        export CI=1 WRANGLER_SEND_METRICS=false
+        rm -rf .wrangler/state/v3/d1
+        npx wrangler d1 migrations apply ASTERA_DB --local
+        for tbl in tenants user_profiles credit_accounts account credit_policies; do
+          out=$$(npx wrangler d1 execute ASTERA_DB --local --command "SELECT name FROM sqlite_master WHERE type='table' AND name='$$tbl' LIMIT 1;" 2>/dev/null || true)
+          if ! echo "$$out" | grep -q "$$tbl"; then
+            echo "d1 migrate missing table: $$tbl" >&2
+            exit 1
+          fi
+        done
+        npx wrangler d1 execute ASTERA_DB --local --command "INSERT INTO credit_policies (version, status, base_credits, characters_per_credit, file_bytes_per_credit, option_costs, low_threshold, critical_threshold, max_estimate, estimate_ttl_seconds, reservation_ttl_seconds, published_at, created_at) VALUES ('e2e-live-process-v1', 'active', 1, 1000, 1048576, '{\"translation\":0,\"agent-mode\":0,\"document\":0,\"external-storage-transfer\":0}', 100, 10, 100000, 600, 1800, datetime('now'), datetime('now'));"
+        echo 'd1 local schema tables present'
+        npx wrangler pages dev pages-dist --port "$${E2E_PAGES_DEV_PORT:-8780}" --ip 0.0.0.0 --local --live-reload=false --show-interactive-dev-session=false -b E2E_LIVE_PROCESS_PREVIEW_ACTOR=1
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8780/api/account').then(async r=>{if(r.status!==200)process.exit(1);}).catch(()=>process.exit(1));",
+        ]
+      interval: 5s
+      timeout: 10s
+      start_period: 180s
+      retries: 36
     depends_on:
       astera-app-api-e2e-live:
         condition: service_healthy
@@ -76,17 +97,14 @@ services:
         VITE_SUPPORT_PARTNERSHIP_URL: https://asterav8.jp/support/partnership
         VITE_PREVIEW_WITHOUT_AUTH: "true"
     container_name: astera-app-ui-e2e-live
-    ports:
-      - "8083:80"
+    network_mode: host
     volumes:
       - ./nginx.e2e-live-process.conf:/etc/nginx/conf.d/default.conf:ro
-    networks:
-      - astera-app-e2e-live
     depends_on:
       astera-app-api-e2e-live:
         condition: service_healthy
       astera-app-pages-e2e-live:
-        condition: service_started
+        condition: service_healthy
     restart: "no"
 
 networks:
