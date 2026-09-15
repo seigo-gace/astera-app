@@ -1,6 +1,4 @@
-import { expect, test, type Route, type TestInfo } from '@playwright/test';
-
-const STORY_PROJECTS = new Set(['chromium-desktop', 'webkit-iphone-large']);
+import { expect, test, type Route } from '@playwright/test';
 
 function json(route: Route, body: unknown, status = 200): Promise<void> {
   return route.fulfill({
@@ -10,8 +8,7 @@ function json(route: Route, body: unknown, status = 200): Promise<void> {
   });
 }
 
-test.beforeEach(async ({ page }, testInfo: TestInfo) => {
-  test.skip(!STORY_PROJECTS.has(testInfo.project.name), 'UI honesty stories use Chromium and WebKit touch representatives.');
+test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/account') {

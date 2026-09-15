@@ -386,11 +386,14 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
         </div>
         <button type="button" aria-label={appText('closeMenu')} onClick={closeSettings}>×</button>
       </header>
-      <div className="settings-surface-host">
-        <SettingsSurface
-          variant="overlay"
-          onNavigate={() => { closeSettings(); setMenuOpen(false); }}
-        />
+      <div className="dialog-content settings-surface-host">
+        <div className="settings-section">
+          <SettingsSurface
+            variant="overlay"
+            onNavigate={() => { closeSettings(); setMenuOpen(false); }}
+          />
+        </div>
+        <p className="dialog-notice" />
       </div>
     </section>
   </> : null;

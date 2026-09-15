@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import CheckoutPage from '../features/checkout/CheckoutPage';
+import CanonicalComposerPage from '../features/composer/CanonicalComposerPage';
 import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
@@ -122,7 +123,8 @@ export default function AppRouter() {
   }
 
   if (route.id === 'app' || route.id === 'new-run') {
-    return <AccountSessionGate><NativeComposerPage route={route} /></AccountSessionGate>;
+    const ComposerPage = import.meta.env.VITE_E2E_CANONICAL_COMPOSER === 'true' ? CanonicalComposerPage : NativeComposerPage;
+    return <AccountSessionGate><ComposerPage route={route} /></AccountSessionGate>;
   }
 
   const page = <CanonicalPage route={route} />;
