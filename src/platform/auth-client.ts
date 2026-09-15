@@ -38,9 +38,36 @@ export const authClient = createAuthClient({
   ],
 });
 
+function asAuthRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function authText(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 export function authErrorMessage(error: unknown, fallback: string): string {
   if (!error || typeof error !== 'object') return fallback;
   const source = error as Record<string, unknown>;
-  const message = source.message;
-  return typeof message === 'string' && message.trim() ? message.trim() : fallback;
+  const nested = asAuthRecord(source.error);
+  return authText(source, ['message'])
+    || authText(nested, ['message'])
+    || authText(asAuthRecord(source.body), ['message'])
+    || authText(asAuthRecord(asAuthRecord(source.body).error), ['message'])
+    || fallback;
+}
+
+export function authErrorCode(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback;
+  const source = error as Record<string, unknown>;
+  const nested = asAuthRecord(source.error);
+  return authText(source, ['code', 'status', 'error_code'])
+    || authText(nested, ['code', 'status', 'error_code'])
+    || authText(asAuthRecord(source.body), ['code', 'status', 'error_code'])
+    || authText(asAuthRecord(asAuthRecord(source.body).error), ['code', 'status', 'error_code'])
+    || fallback;
 }

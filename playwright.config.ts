@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-const baseURL = 'http://127.0.0.1:4173';
+const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT ?? '4173';
+const baseURL = `http://127.0.0.1:${previewPort}`;
 
 function project(
   name: string,
@@ -42,11 +43,12 @@ export default defineConfig({
     navigationTimeout: 15_000,
   },
   webServer: {
-    command: 'VITE_PREVIEW_WITHOUT_AUTH=false npm run build && npm run preview -- --host 127.0.0.1 --port 4173',
+    command: `VITE_PREVIEW_WITHOUT_AUTH=false npm run build && npm run preview -- --host 127.0.0.1 --port ${previewPort}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 180_000,
     env: {
+      CI: '1',
       VITE_ASTERA_API_BASE: baseURL,
       VITE_PREVIEW_WITHOUT_AUTH: 'false',
     },

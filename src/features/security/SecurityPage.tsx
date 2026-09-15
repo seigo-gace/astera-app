@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useAppText } from '../../app-text';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from '../../platform/api-client';
 import { previewWithoutAuth } from '../../platform/account-session';
-import { authClient, authErrorMessage } from '../../platform/auth-client';
+import { authClient, authErrorCode, authErrorMessage } from '../../platform/auth-client';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import type { RouteMatch } from '../../platform/route-registry';
 import '../../platform/canonical-account-security-management.css';
@@ -16,7 +16,7 @@ type Enrollment = { totpURI: string; backupCodes: string[] };
 type Feedback = { type: 'idle' | 'working' | 'success' | 'error'; message?: string; code?: string };
 
 function betterAuthResult<T>(value: { data?: T | null; error?: unknown }, fallback: string): T {
-  if (value.error) throw new ApiError(authErrorMessage(value.error, fallback), 400, recordText(asRecord(value.error), ['code'], 'AUTH_OPERATION_FAILED'), value.error);
+  if (value.error) throw new ApiError(authErrorMessage(value.error, fallback), 400, authErrorCode(value.error, 'AUTH_OPERATION_FAILED'), value.error);
   if (value.data == null) throw new ApiError(fallback, 502, 'AUTH_RESPONSE_EMPTY');
   return value.data;
 }

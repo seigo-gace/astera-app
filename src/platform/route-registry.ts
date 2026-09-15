@@ -70,14 +70,53 @@ function normalizePathname(pathname: string): string {
   return withoutTrailingSlash.startsWith('/') ? withoutTrailingSlash : `/${withoutTrailingSlash}`;
 }
 
+function isValidPercentEncoding(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === '%') {
+      const hex = value.slice(index + 1, index + 3);
+      if (!/^[0-9A-Fa-f]{2}$/.test(hex)) return false;
+      index += 2;
+      continue;
+    }
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  return true;
+}
+
+function isWellFormedUnicode(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return false;
+      index += 1;
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) return false;
+  }
+  return true;
+}
+
 function decodePathSegment(value: string): string | null {
+  if (!value || !isValidPercentEncoding(value)) return null;
   try {
     const decoded = decodeURIComponent(value);
     if (decoded.includes('\uFFFD')) return null;
+    if (!isWellFormedUnicode(decoded)) return null;
     return decoded;
   } catch {
     return null;
   }
+}
+
+const PATH_PARAM_SAFE = /^[A-Za-z0-9._~-]+$/;
+
+function acceptsRouteParams(route: CanonicalRoute, params: Record<string, string>): boolean {
+  if (route.id === 'public-share') return PATH_PARAM_SAFE.test(params.token ?? '');
+  if (route.id === 'private-share' || route.id === 'result-detail') return PATH_PARAM_SAFE.test(params.id ?? '');
+  return true;
 }
 
 function matchPattern(pattern: string, pathname: string): Record<string, string> | null {
@@ -106,7 +145,7 @@ export function matchCanonicalRoute(pathname: string): RouteMatch {
   for (const route of canonicalRoutes) {
     if (route.pattern === '*') continue;
     const params = matchPattern(route.pattern, normalized);
-    if (params) return { ...route, params };
+    if (params && acceptsRouteParams(route, params)) return { ...route, params };
   }
   const fallback = canonicalRoutes.find((route) => route.pattern === '*');
   if (!fallback) throw new Error('ASTERA_NOT_FOUND_ROUTE_MISSING');
