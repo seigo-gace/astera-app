@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiUrl, asRecord, queryValue, recordText, textValue } from '../api-client';
+import { authDisplayError } from '../auth-display-error';
+import { usePlatformText } from '../platform-text';
 import { safeReturnPath, type RouteMatch } from '../route-registry';
 import { PublicPageFrame } from '../ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from './page-kit';
@@ -27,6 +29,7 @@ function navigateFromApiRedirect(location: string): void {
 }
 
 function VerifyEmailPage({ route }: { route: RouteMatch }) {
+  const { text } = usePlatformText();
   const token = queryValue('token');
   const initialEmail = queryValue('email');
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
@@ -56,33 +59,33 @@ function VerifyEmailPage({ route }: { route: RouteMatch }) {
           }
         }
         if (active) {
-          setState({ type: 'error', message: 'Email確認に失敗しました。', code: 'EMAIL_VERIFICATION_FAILED' });
+          setState({ type: 'error', message: text('authVerifyEmailFailed'), code: 'EMAIL_VERIFICATION_FAILED' });
         }
-      } catch (error) {
+      } catch {
         if (active) {
-          setState({
-            type: 'error',
-            message: error instanceof Error ? error.message : 'Email確認に失敗しました。',
-            code: 'EMAIL_VERIFICATION_FAILED',
-          });
+          setState({ type: 'error', message: text('authVerifyEmailFailed'), code: 'EMAIL_VERIFICATION_FAILED' });
         }
       }
     })();
     return () => { active = false; };
-  }, [returnTo, token]);
+  }, [returnTo, text, token]);
 
   const resend = async (event: FormEvent) => {
     event.preventDefault();
-    await submitForm('/api/auth/send-verification-email', { email, callbackURL: absoluteAppUrl(returnTo) }, setState, { success: '確認Emailを再送しました。', idempotent: true });
+    await submitForm('/api/auth/send-verification-email', { email, callbackURL: absoluteAppUrl(returnTo) }, setState, {
+      success: text('authVerificationEmailResent'),
+      errorMessage: (error) => authDisplayError(error, text, 'authVerifyEmailResendFailed'),
+      idempotent: true,
+    });
   };
 
   return (
-    <PublicPageFrame route={route} description="確認Tokenを検証し、Accountを有効化します。">
+    <PublicPageFrame route={route} description={text('authVerifyEmailDescription')}>
       <AuthCard>
         {token ? <FormResult state={state} /> : (
           <form className="platform-form" onSubmit={resend}>
-            <Field label="Email" name="email" type="email" value={email} onChange={setEmail} required />
-            <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>確認Emailを再送</button>
+            <Field label={text('authEmail')} name="email" type="email" value={email} onChange={setEmail} required />
+            <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authVerificationEmailResend')}</button>
             <FormResult state={state} />
           </form>
         )}
@@ -92,6 +95,7 @@ function VerifyEmailPage({ route }: { route: RouteMatch }) {
 }
 
 function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boolean }) {
+  const { text } = usePlatformText();
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const token = queryValue('token');
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
@@ -100,38 +104,45 @@ function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boole
     const data = new FormData(event.currentTarget);
     if (reset) {
       if (!token) {
-        setState({ type: 'error', message: 'Password再設定Tokenがありません。', code: 'RESET_TOKEN_REQUIRED' });
+        setState({ type: 'error', message: text('authResetTokenMissing'), code: 'RESET_TOKEN_REQUIRED' });
         return;
       }
       const password = textValue(data.get('password'));
       const confirm = textValue(data.get('password_confirm'));
       if (password !== confirm) {
-        setState({ type: 'error', message: 'Passwordが一致しません。', code: 'PASSWORD_MISMATCH' });
+        setState({ type: 'error', message: text('authPasswordMismatch'), code: 'PASSWORD_MISMATCH' });
         return;
       }
       await submitForm('/api/auth/reset-password', { token, newPassword: password }, setState, {
-        success: 'Passwordを更新しました。', navigateTo: loginPath(returnTo), idempotent: true,
+        success: text('authPasswordUpdated'),
+        errorMessage: (error) => authDisplayError(error, text, 'authPasswordResetFailed'),
+        navigateTo: loginPath(returnTo),
+        idempotent: true,
       });
       return;
     }
     await submitForm('/api/auth/request-password-reset', {
       email: textValue(data.get('email')),
       redirectTo: absoluteAppUrl(`/reset-password?return_to=${encodeURIComponent(returnTo)}`),
-    }, setState, { success: '該当Accountがある場合、再設定Emailを送信しました。', idempotent: true });
+    }, setState, {
+      success: text('authResetEmailSent'),
+      errorMessage: (error) => authDisplayError(error, text, 'authPasswordResetRequestFailed'),
+      idempotent: true,
+    });
   };
   return (
-    <PublicPageFrame route={route} description={reset ? '有効なTokenで新しいPasswordを設定します。' : 'Accountの存在を第三者へ露出せず再設定を開始します。'}>
+    <PublicPageFrame route={route} description={reset ? text('authResetPasswordDescription') : text('authForgotPasswordDescription')}>
       <AuthCard>
         <form className="platform-form" onSubmit={onSubmit}>
           {reset ? <>
-            <Field label="新しいPassword" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-            <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-          </> : <Field label="Email" name="email" type="email" autoComplete="email" required />}
-          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{reset ? 'Passwordを更新' : '再設定Emailを送信'}</button>
+            <Field label={text('authNewPassword')} name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+            <Field label={text('authPasswordConfirm')} name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          </> : <Field label={text('authEmail')} name="email" type="email" autoComplete="email" required />}
+          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{reset ? text('authPasswordUpdate') : text('authResetEmailSend')}</button>
         </form>
         <FormResult state={state} />
-        <div className="platform-auth-route-actions" aria-label="Login操作">
-          <a className="platform-button" href={loginPath(returnTo)}>Login</a>
+        <div className="platform-auth-route-actions" aria-label={text('authLoginActionsAria')}>
+          <a className="platform-button" href={loginPath(returnTo)}>{text('authLogin')}</a>
         </div>
       </AuthCard>
     </PublicPageFrame>
@@ -139,6 +150,7 @@ function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boole
 }
 
 function PasswordSetupPage({ route }: { route: RouteMatch }) {
+  const { text } = usePlatformText();
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -147,25 +159,29 @@ function PasswordSetupPage({ route }: { route: RouteMatch }) {
     const password = textValue(data.get('password'));
     const confirm = textValue(data.get('password_confirm'));
     if (password !== confirm) {
-      setState({ type: 'error', message: 'Passwordが一致しません。', code: 'PASSWORD_MISMATCH' });
+      setState({ type: 'error', message: text('authPasswordMismatch'), code: 'PASSWORD_MISMATCH' });
       return;
     }
     await submitForm('/api/auth/set-password', { newPassword: password }, setState, {
-      success: 'Astera用Passwordを設定しました。', navigateTo: returnTo, idempotent: true,
+      success: text('authAsteraPasswordSet'),
+      errorMessage: (error) => authDisplayError(error, text, 'authPasswordSetupFailed'),
+      navigateTo: returnTo,
+      idempotent: true,
     });
   };
   return (
-    <PublicPageFrame route={route} description="Google／GitHubのPasswordは取得せず、Astera専用Passwordを設定します。">
+    <PublicPageFrame route={route} description={text('authPasswordSetupDescription')}>
       <AuthCard><form className="platform-form" onSubmit={onSubmit}>
-        <Field label="Astera用Password" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-        <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-        <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>設定して続ける</button>
+        <Field label={text('authAsteraPassword')} name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+        <Field label={text('authPasswordConfirm')} name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+        <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authPasswordSetupContinue')}</button>
       </form><FormResult state={state} /></AuthCard>
     </PublicPageFrame>
   );
 }
 
 function TwoFactorPage({ route }: { route: RouteMatch }) {
+  const { text } = usePlatformText();
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -174,15 +190,19 @@ function TwoFactorPage({ route }: { route: RouteMatch }) {
     const method = textValue(data.get('method')) || 'totp';
     const code = textValue(data.get('code')).replace(/\s/g, '');
     const endpoint = method === 'backup' ? '/api/auth/two-factor/verify-backup-code' : '/api/auth/two-factor/verify-totp';
-    const payload = await submitForm(endpoint, { code, trustDevice: true }, setState, { success: '認証しました。', idempotent: true });
+    const payload = await submitForm(endpoint, { code, trustDevice: true }, setState, {
+      success: text('authTwoFactorSuccess'),
+      errorMessage: (error) => authDisplayError(error, text, 'authTwoFactorFailed'),
+      idempotent: true,
+    });
     if (payload) safeNavigate(returnTo);
   };
   return (
-    <PublicPageFrame route={route} description="Authenticator CodeまたはBackup Codeを検証します。">
+    <PublicPageFrame route={route} description={text('authTwoFactorDescription')}>
       <AuthCard><form className="platform-form" onSubmit={onSubmit}>
-        <label className="platform-field"><span>認証方式</span><select name="method" defaultValue="totp"><option value="totp">Authenticator Code</option><option value="backup">Backup Code</option></select></label>
-        <Field label="認証Code" name="code" inputMode="numeric" autoComplete="one-time-code" required maxLength={64} />
-        <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>認証</button>
+        <label className="platform-field"><span>{text('authTwoFactorMethod')}</span><select name="method" defaultValue="totp"><option value="totp">{text('authTwoFactorTotp')}</option><option value="backup">{text('authTwoFactorBackup')}</option></select></label>
+        <Field label={text('authTwoFactorCode')} name="code" inputMode="numeric" autoComplete="one-time-code" required maxLength={64} />
+        <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authTwoFactorSubmit')}</button>
       </form><FormResult state={state} /></AuthCard>
     </PublicPageFrame>
   );
