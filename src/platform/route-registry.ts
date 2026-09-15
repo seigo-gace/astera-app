@@ -1,4 +1,4 @@
-import { resolveSafeReturnPath } from '../../shared/safe-return-path-core';
+import { resolveSafeReturnPath } from '#shared/safe-return-path-core';
 
 export type RouteAccess = 'public' | 'guest' | 'authenticated' | 'provisional';
 export type RouteGroup = 'entry' | 'auth' | 'app' | 'settings' | 'account' | 'developer' | 'share' | 'legal' | 'system';

@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.3.0",
   "type": "module",
+  "imports": {
+    "#shared/safe-return-path-core": "./shared/safe-return-path-core.ts"
+  },
   "workspaces": [
     "contabo/app-api"
   ],

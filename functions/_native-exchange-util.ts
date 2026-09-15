@@ -1,4 +1,4 @@
-import { resolveSafeReturnPath } from '../shared/safe-return-path-core';
+import { resolveSafeReturnPath } from '#shared/safe-return-path-core';
 import type { D1Database } from './_account-projection';
 
 export type ExchangeD1Database = D1Database;
