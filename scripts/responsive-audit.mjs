@@ -30,7 +30,11 @@ check('desktop sidebar', shell.includes('platform-sidebar'), 'desktop/tablet sid
 check('authenticated app gate', router.includes('AccountSessionGate'), 'main execution route must be guarded by current AccountSessionGate');
 check('root canonical redirect', router.includes("window.location.replace('/app/new')"), 'root must resolve to canonical app route');
 
-check('native composer route', router.includes('<NativeComposerPage route={route} />'), 'main app route must render NativeComposerPage');
+check(
+  'native composer route',
+  router.includes('NativeComposerPage') && router.includes("route.id === 'app' || route.id === 'new-run'"),
+  'main app route must default to NativeComposerPage',
+);
 check('native composer safe area', nativeCss.includes('env(safe-area-inset-bottom'), 'native composer safe area missing');
 check('native composer tablet', /@media\s*\(max-width:\s*1100px\)/.test(nativeCss), 'native composer tablet breakpoint missing');
 check('native composer mobile', /@media\s*\(max-width:\s*600px\)/.test(nativeCss), 'native composer smartphone breakpoint missing');
