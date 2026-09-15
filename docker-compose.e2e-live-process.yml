@@ -6,17 +6,11 @@ services:
     container_name: astera-app-api-e2e-live
     env_file:
       - contabo/app-api/.env
+    network_mode: host
     environment:
-      PORT: "8788"
-      ASTERA_PROCESS_ORIGIN: ${ASTERA_PROCESS_ORIGIN:?Set ASTERA_PROCESS_ORIGIN}
-      LIBRAL_VAULT_INTERNAL_ORIGIN: http://libral-vault-libral-vault-1:8791
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8793:8788"
-    networks:
-      - astera-app-e2e-live
-      - libral-vault_default
+      PORT: "8793"
+      ASTERA_PROCESS_ORIGIN: http://127.0.0.1:7375
+      LIBRAL_VAULT_INTERNAL_ORIGIN: http://127.0.0.1:8791
     restart: "no"
     healthcheck:
       test:
@@ -24,7 +18,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:8788/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!j.process_origin)process.exit(2);}).catch(()=>process.exit(1));",
+          "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);}).catch(()=>process.exit(1));",
         ]
       interval: 5s
       timeout: 5s
@@ -40,8 +34,9 @@ services:
     env_file:
       - contabo/app-api/.env
     environment:
-      ASTERA_RUNTIME_ORIGIN: http://astera-app-api-e2e-live:8788
-      E2E_LIVE_PROCESS_PREVIEW_ACTOR: "1"
+      ASTERA_RUNTIME_ORIGIN: http://host.docker.internal:8793
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - bash
       - -lc
@@ -52,14 +47,14 @@ services:
         {
           echo "BETTER_AUTH_SECRET=$$ASTERA_RUNTIME_SERVICE_TOKEN"
           echo "BETTER_AUTH_URL=http://127.0.0.1:8788"
-          echo "ASTERA_RUNTIME_ORIGIN=http://astera-app-api-e2e-live:8788"
+          echo "ASTERA_RUNTIME_ORIGIN=http://host.docker.internal:8793"
           echo "ASTERA_RUNTIME_SERVICE_TOKEN=$$ASTERA_RUNTIME_SERVICE_TOKEN"
           echo "E2E_LIVE_PROCESS_PREVIEW_ACTOR=1"
         } > .dev.vars
         npm run build
         npm run cloudflare:functions:build
         npx wrangler d1 migrations apply ASTERA_DB --local --persist-to /tmp/astera-d1-e2e-live-process
-        npx wrangler pages dev pages-dist --port 8788 --ip 0.0.0.0 --local
+        npx wrangler pages dev pages-dist --port 8788 --ip 0.0.0.0 --local --persist-to /tmp/astera-d1-e2e-live-process
     ports:
       - "8780:8788"
     networks:

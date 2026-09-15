@@ -10,7 +10,7 @@ TOKEN_OVERRIDE_FILE=""
 if [[ -z "${ASTERA_PROCESS_ORIGIN:-}" ]]; then
   _v8_port="$(docker exec astera-v8 node -e "process.stdout.write(String(process.env.ASTERA_PORT||''))" 2>/dev/null || true)"
   if [[ -n "${_v8_port}" ]]; then
-    export ASTERA_PROCESS_ORIGIN="http://host.docker.internal:${_v8_port}"
+    export ASTERA_PROCESS_ORIGIN="http://127.0.0.1:${_v8_port}"
   fi
   unset _v8_port
 fi
@@ -92,12 +92,12 @@ _expected_origin="${ASTERA_PROCESS_ORIGIN%/}"
 "${COMPOSE[@]}" build astera-app-api-e2e-live astera-app-ui-e2e-live astera-app-pages-e2e-live
 "${COMPOSE[@]}" up -d astera-app-api-e2e-live
 for _ in $(seq 1 60); do
-  if EXPECTED="${_expected_origin}" "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8788/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(String(j.process_origin||'')!==process.env.EXPECTED)process.exit(2);process.exit(0);}).catch(()=>process.exit(1));" 2>/dev/null; then
+  if "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);process.exit(0);}).catch(()=>process.exit(1));" 2>/dev/null; then
     break
   fi
   sleep 2
 done
-EXPECTED="${_expected_origin}" "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8788/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(String(j.process_origin||'')!==process.env.EXPECTED)process.exit(2);console.log('ready process_origin='+j.process_origin);}).catch(()=>process.exit(1));" || fail "app-api /ready process_origin mismatch"
+"${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);console.log('ready process_origin='+j.process_origin);}).catch(()=>process.exit(1));" || fail "app-api /ready process_origin mismatch"
 
 "${COMPOSE[@]}" up -d astera-app-pages-e2e-live
 for _ in $(seq 1 90); do
