@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
 import { authClient, authErrorMessage } from '../../platform/auth-client';
-import { isNativeRuntime, openExternalUrl } from '../../platform/external-navigation';
+import { isNativeRuntime, nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
@@ -86,6 +86,7 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
       callbackURL,
       errorCallbackURL: absoluteAppUrl(`/login?return_to=${encodeURIComponent(returnTo)}`),
       newUserCallbackURL: isNativeRuntime() ? nativeComplete : absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
+      native_callback: nativeCallback('/login'),
       disableRedirect: true,
     }, setState, { success: `${provider}認証を開始します。`, idempotent: true });
     if (!payload) return;

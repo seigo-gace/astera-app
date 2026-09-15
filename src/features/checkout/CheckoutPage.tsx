@@ -279,7 +279,7 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
           plan_id: planId,
           billing_cycle: cycle,
           return_to: returnTo,
-          native_callback: nativeCallback("/account/billing/status"),
+          native_callback: nativeCallback('/account/billing/status'),
         }),
         signal: controller.signal,
       });

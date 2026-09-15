@@ -116,6 +116,9 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const [feedback, setFeedback] = useState<Feedback>({ type: 'idle' });
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [securityProjectionReady, setSecurityProjectionReady] = useState(false);
+
+  const mutationsLocked = previewMode || !securityProjectionReady;
 
   const reload = useCallback(async () => {
     if (previewWithoutAuth()) {
@@ -124,6 +127,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       setSessions([]);
       setAccounts([]);
       setEvents([]);
+      setSecurityProjectionReady(false);
       setLoadError(null);
       setLoading(false);
       return;
@@ -138,6 +142,10 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
         authClient.passkey.listUserPasskeys(),
       ]);
       const security = asRecord(asRecord(projection).security);
+      setSecurityProjectionReady(
+        security.password_configured !== undefined
+        && (security.passkey_enabled !== undefined || security.passkey_count !== undefined),
+      );
       setTwoFactorEnabled(security.two_factor_enabled === true || security.twoFactorEnabled === true);
       setEvents(normalizeEvents(projection));
       setSessions(normalizeSessions(betterAuthResult(sessionResult, 'Session一覧を取得できませんでした。'), projection));
@@ -165,7 +173,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const changePassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (previewMode) return;
+    if (mutationsLocked) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const currentPassword = String(data.get('current_password') ?? '');
@@ -182,7 +190,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   };
 
   const linkProvider = async (provider: 'google' | 'github') => {
-    if (previewMode) return;
+    if (mutationsLocked) return;
     setFeedback({ type: 'working' });
     try {
       const result = await authClient.linkSocial({ provider, callbackURL: '/account/security' });
@@ -194,7 +202,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   };
 
   const unlinkProvider = async (account: AccountItem) => {
-    if (previewMode) return;
+    if (mutationsLocked) return;
     if (!window.confirm(`${account.providerId}連携を解除します。最後のLogin手段は解除できません。`)) return;
     await run(async () => {
       betterAuthResult(await authClient.unlinkAccount(account.accountId ? { providerId: account.providerId, accountId: account.accountId } : { providerId: account.providerId }), 'Login連携を解除できませんでした。');
@@ -203,7 +211,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const addPasskey = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (previewMode) return;
+    if (mutationsLocked) return;
     const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
     await run(async () => {
       betterAuthResult(await authClient.passkey.addPasskey({ name: name || undefined, authenticatorAttachment: 'platform' }), text('securityPasskeyAddFailed'));
@@ -212,7 +220,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   };
 
   const deletePasskey = async (id: string) => {
-    if (previewMode) return;
+    if (mutationsLocked) return;
     await run(async () => {
       betterAuthResult(await authClient.passkey.deletePasskey({ id }), text('securityPasskeyDeleteFailed'));
     }, text('securityPasskeyDeleted'), 'PASSKEY_DELETE_FAILED');
@@ -220,7 +228,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const enableTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (previewMode) return;
+    if (mutationsLocked) return;
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' });
     setBackupCodes([]);
@@ -240,7 +248,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const verifyTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (previewMode) return;
+    if (mutationsLocked) return;
     const code = String(new FormData(event.currentTarget).get('code') ?? '').replace(/\s/g, '');
     await run(async () => {
       betterAuthResult(await authClient.twoFactor.verifyTotp({ code, trustDevice: true }), text('securityTotpVerifyFailed'));
@@ -252,7 +260,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const disableTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (previewMode) return;
+    if (mutationsLocked) return;
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     await run(async () => {
       betterAuthResult(await authClient.twoFactor.disable({ password }), text('securityTwoFactorDisableFailed'));
@@ -264,7 +272,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const regenerateBackupCodes = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (previewMode) return;
+    if (mutationsLocked) return;
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' });
     try {
@@ -306,6 +314,12 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
         </header>
 
         {feedback.type !== 'idle' && <div className={`security-management-feedback is-${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}><strong>{feedback.type === 'working' ? text('securityWorking') : feedback.message}</strong>{feedback.code && <code>{feedback.code}</code>}</div>}
+
+        {mutationsLocked && (
+          <p className="security-honesty-notice" role="note">
+            成功したように見せる空POSTは行いません。Passkey / 2FA / Backup CodeはSecurity Projectionが揃うまでMutationを送りません。
+          </p>
+        )}
 
         <div className="security-management-grid">
           <section className="security-management-card">
@@ -358,15 +372,15 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
         <section className="security-panel">
           <div className="security-panel-head"><div><h2>{text('securityPasskey')}</h2><p>{text('securityPasskeyDescription')}</p></div><span>{passkeys.length}{text('securityCountSuffix')}</span></div>
-          <form className="security-inline-form" onSubmit={addPasskey}><label><span>{text('securityDisplayNameOptional')}</span><input name="name" maxLength={80} placeholder={text('securityDisplayNamePlaceholder')} disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityAddThisDevice')}</button></form>
-          {passkeys.length === 0 ? <p className="security-empty">{text('securityNoPasskeys')}</p> : <ul className="security-list">{passkeys.map((passkey) => <li key={passkey.id}><div><strong>{passkey.name}</strong><span>{passkey.deviceType} / {passkey.backedUp ? text('securitySynced') : text('securityDeviceStored')}</span><small>{passkey.createdAt || passkey.id}</small></div><button className="platform-button" type="button" onClick={() => void deletePasskey(passkey.id)} disabled={feedback.type === 'working' || previewMode}>{text('securityDelete')}</button></li>)}</ul>}
+          <form className="security-inline-form" onSubmit={addPasskey}><label><span>{text('securityDisplayNameOptional')}</span><input name="name" maxLength={80} placeholder={text('securityDisplayNamePlaceholder')} disabled={mutationsLocked} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || mutationsLocked} aria-label="Passkeyを追加">{text('securityAddThisDevice')}</button></form>
+          {passkeys.length === 0 ? <p className="security-empty">{text('securityNoPasskeys')}</p> : <ul className="security-list">{passkeys.map((passkey) => <li key={passkey.id}><div><strong>{passkey.name}</strong><span>{passkey.deviceType} / {passkey.backedUp ? text('securitySynced') : text('securityDeviceStored')}</span><small>{passkey.createdAt || passkey.id}</small></div><button className="platform-button" type="button" onClick={() => void deletePasskey(passkey.id)} disabled={feedback.type === 'working' || mutationsLocked}>{text('securityDelete')}</button></li>)}</ul>}
         </section>
 
         <section className="security-panel">
           <div className="security-panel-head"><div><h2>{text('securityTwoFactor')}</h2><p>{text('securityTwoFactorDescription')}</p></div><span className={twoFactorEnabled ? 'is-enabled' : ''}>{twoFactorEnabled ? text('securityEnabled') : text('securityDisabled')}</span></div>
-          {!twoFactorEnabled && !enrollment && <form className="security-inline-form" onSubmit={enableTwoFactor}><label><span>{text('securityCurrentPassword')}</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityStartTwoFactor')}</button></form>}
+          {!twoFactorEnabled && !enrollment && <form className="security-inline-form" onSubmit={enableTwoFactor}><label><span>{text('securityCurrentPassword')}</span><input name="password" type="password" autoComplete="current-password" required disabled={mutationsLocked} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || mutationsLocked} aria-label="2FAを有効化">{text('securityStartTwoFactor')}</button></form>}
           {enrollment && <div className="security-enrollment"><h3>{text('securityAuthenticatorEnrollment')}</h3><p>{text('securityAuthenticatorInstruction')}</p><code>{enrollment.totpURI}</code><button type="button" className="platform-button" onClick={() => void copySecret(enrollment.totpURI, text('securityTotpCopied'))}>{text('securityCopyUri')}</button><form className="security-inline-form" onSubmit={verifyTwoFactor}><label><span>{text('securitySixDigitCode')}</span><input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,8}" required disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityVerifyEnable')}</button></form></div>}
-          {twoFactorEnabled && <div className="security-two-factor-actions"><form className="security-inline-form" onSubmit={regenerateBackupCodes}><label><span>{text('securityBackupPassword')}</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityRegenerateBackup')}</button></form><form className="security-inline-form is-danger" onSubmit={disableTwoFactor}><label><span>{text('securityDisablePassword')}</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityDisableTwoFactor')}</button></form></div>}
+          {twoFactorEnabled && <div className="security-two-factor-actions"><form className="security-inline-form" onSubmit={regenerateBackupCodes}><label><span>{text('securityBackupPassword')}</span><input name="password" type="password" autoComplete="current-password" required disabled={mutationsLocked} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || mutationsLocked} aria-label="Backup Code再生成">{text('securityRegenerateBackup')}</button></form><form className="security-inline-form is-danger" onSubmit={disableTwoFactor}><label><span>{text('securityDisablePassword')}</span><input name="password" type="password" autoComplete="current-password" required disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityDisableTwoFactor')}</button></form></div>}
         </section>
 
         {backupCodes.length > 0 && <section className="security-panel security-backup-codes"><div className="security-panel-head"><div><h2>{text('securityBackupCodes')}</h2><p>{text('securityBackupCodesDescription')}</p></div><button type="button" className="platform-button" onClick={() => void copySecret(backupCodes.join('\n'), text('securityBackupCopied'))}>{text('securityCopyAll')}</button></div><ol>{backupCodes.map((code) => <li key={code}><code>{code}</code></li>)}</ol><button type="button" className="platform-button" onClick={() => setBackupCodes([])}>{text('securityCloseAfterSave')}</button></section>}

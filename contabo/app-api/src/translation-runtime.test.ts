@@ -174,7 +174,7 @@ test('retries once after provider failure and succeeds on second attempt', async
   const result = output.result as typeof input;
   assert.equal(providerCalls, 2);
   assert.equal(result.result.sections[0]?.body, '再試行 message');
-  assert.equal(output.usage.calls, 1);
+  assert.equal(output.usage.calls, 2);
 });
 
 test('stops after two failed provider attempts', async () => {

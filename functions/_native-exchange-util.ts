@@ -47,6 +47,7 @@ export async function consumeExchangeRecord(db: ExchangeD1Database, rawToken: st
   const deleted = await db.prepare(
     `DELETE FROM "verification" WHERE "id" = ?1 AND "identifier" = ?2 AND "value" = ?3 AND "expiresAt" = ?4`,
   ).bind(row.id, identifier, row.value, row.expiresAt).run();
-  if (!deleted.success || (deleted.meta?.changes ?? 0) < 1) return null;
+  const deletedChanges = Number(deleted.meta?.changes ?? 0);
+  if (!deleted.success || deletedChanges < 1) return null;
   return row.value;
 }

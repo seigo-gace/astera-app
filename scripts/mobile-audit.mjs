@@ -24,6 +24,7 @@ const checkoutPage = read('src/features/checkout/CheckoutPage.tsx');
 const authPages = read('src/platform/pages/AuthPages.tsx');
 const loginPage = read('src/features/auth/LoginPage.tsx');
 const workspacePages = read('src/platform/pages/WorkspacePages.tsx');
+const resultPage = read('src/features/results/ResultPage.tsx');
 const accountPages = read('src/platform/pages/AccountPages.tsx');
 const compatibilityRuntime = read('src/device-compatibility.ts');
 const compatibilityCss = read('src/device-compatibility.css');
@@ -89,8 +90,8 @@ check('Storage OAuth uses external bridge', workspacePages.includes('await openE
 check('Storage Native callback', workspacePages.includes("nativeCallback('/app/settings/storage-destinations')"), 'Storage Native callback missing');
 check('Credit checkout uses external bridge', accountPages.includes('await openExternalUrl(url)'), 'Credit checkout must use system browser on Native');
 check('Credit Native callback', accountPages.includes("nativeCallback('/account/billing/status')"), 'Credit Native callback missing');
-check('Result download creates Blob URL', workspacePages.includes('URL.createObjectURL(blob)'), 'Result download must use authenticated Blob bridge');
-check('Result download names file', workspacePages.includes('anchor.download ='), 'Result download file name missing');
+check('Result download creates Blob URL', resultPage.includes('URL.createObjectURL(blob)'), 'Result download must use authenticated Blob bridge');
+check('Result download names file', resultPage.includes('anchor.download ='), 'Result download file name missing');
 
 if (requireNative) {
   const nativePlatforms = requestedNativePlatforms.length > 0
