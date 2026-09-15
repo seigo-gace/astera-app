@@ -1,4 +1,5 @@
 import LoginPage from '../features/auth/LoginPage';
+import RegisterPage from '../features/auth/RegisterPage';
 import DeveloperPage from '../features/developer/DeveloperPage';
 import HistoryPage from '../features/history/HistoryPage';
 import { PlanCreditPage } from '../features/navigation/UtilityPages';
@@ -17,12 +18,13 @@ import { AuthPage } from './pages/AuthPages';
 import { PublicPlatformPage } from './pages/PublicPages';
 import { WorkspacePage } from './pages/WorkspacePages';
 
-const authRoutes = new Set(['register', 'verify-email', 'forgot-password', 'reset-password', 'password-setup', 'two-factor']);
+const authRoutes = new Set(['verify-email', 'forgot-password', 'reset-password', 'password-setup', 'two-factor']);
 const workspaceRoutes = new Set(['settings-storage-destinations', 'settings-astera-storage']);
 const accountRoutes = new Set(['account-subscription', 'account-credit', 'billing-status']);
 
 export function CanonicalPage({ route }: { route: RouteMatch }) {
   if (route.id === 'login') return <LoginPage route={route} />;
+  if (route.id === 'register') return <RegisterPage route={route} />;
   if (authRoutes.has(route.id)) return <AuthPage route={route} />;
   if (route.id === 'plan-credit') return <PlanCreditPage route={route} />;
   if (route.id === 'projects') return <ProjectPage route={route} />;
