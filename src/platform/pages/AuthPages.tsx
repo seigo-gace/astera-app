@@ -119,6 +119,7 @@ function LoginPage({ route }: { route: RouteMatch }) {
 function RegisterPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -131,7 +132,7 @@ function RegisterPage({ route }: { route: RouteMatch }) {
     }
     const payload = await submitForm('/api/auth/sign-up/email', {
       email,
-      name: textValue(data.get('nickname')),
+      name: email,
       password,
       callbackURL: absoluteAppUrl(returnTo),
     }, setState, { success: '確認Emailを送信しました。', idempotent: true });
@@ -140,16 +141,46 @@ function RegisterPage({ route }: { route: RouteMatch }) {
       window.setTimeout(() => safeNavigate(`/verify-email?${params.toString()}`), 300);
     }
   };
+
+  const startOAuth = async (provider: 'google' | 'github') => {
+    const callback = nativeCallback('/login');
+    const callbackURL = callback || absoluteAppUrl(returnTo);
+    const registerPath = `/register?return_to=${encodeURIComponent(returnTo)}`;
+    const payload = await submitForm('/api/auth/sign-in/social', {
+      provider,
+      callbackURL,
+      errorCallbackURL: absoluteAppUrl(registerPath),
+      newUserCallbackURL: absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
+      disableRedirect: true,
+    }, setState, { success: `${provider}登録を開始します。`, idempotent: true });
+    if (!payload) return;
+    const redirectUrl = recordText(asRecord(asRecord(payload).data ?? payload), ['url', 'redirect']);
+    if (!redirectUrl) {
+      setState({ type: 'error', message: 'OAuth Redirect URLを受信できませんでした。', code: 'OAUTH_REDIRECT_URL_MISSING' });
+      return;
+    }
+    try {
+      await openExternalUrl(redirectUrl);
+      setState({ type: 'idle' });
+    } catch (error) {
+      setState({ type: 'error', message: error instanceof Error ? error.message : 'OAuth登録を開始できませんでした。', code: 'OAUTH_START_FAILED' });
+    }
+  };
+
   return (
     <PublicPageFrame route={route} description="Email確認が完了するまで決済や実行は開始しません。">
       <AuthCard footer={<a href={loginPath(returnTo)}>既にAccountがある場合</a>}>
         <form className="platform-form" onSubmit={onSubmit}>
           <Field label="Email" name="email" type="email" autoComplete="email" required />
-          <Field label="Nickname" name="nickname" autoComplete="nickname" required />
           <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
           <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
           <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>Account登録</button>
         </form>
+        <div className="platform-divider"><span>または</span></div>
+        <div className="platform-stack-actions">
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('google')}>Googleで登録</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('github')}>GitHubで登録</button>
+        </div>
         <FormResult state={state} />
       </AuthCard>
     </PublicPageFrame>
