@@ -39,7 +39,7 @@
     "ios:open": "npm run mobile:sync && cap open ios",
     "ios:run": "npm run mobile:sync && cap run ios",
     "cloudflare:functions:build": "wrangler pages functions build functions --outdir=.wrangler/functions-build",
-    "cloudflare:dev": "npm run build && wrangler pages dev dist"
+    "cloudflare:dev": "npm run build && wrangler pages dev pages-dist"
   },
   "dependencies": {
     "@capacitor/android": "8.4.2",

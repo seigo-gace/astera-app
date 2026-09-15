@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'jp.asterav8.app',
   appName: 'Astera',
-  webDir: 'dist',
+  webDir: 'pages-dist',
   server: {
     hostname: 'localhost',
     androidScheme: 'https',

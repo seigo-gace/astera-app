@@ -46,7 +46,7 @@ services:
         if [ -z "$$ASTERA_RUNTIME_SERVICE_TOKEN" ]; then echo 'missing INTERNAL_SERVICE_TOKEN' >&2; exit 1; fi
         npm run build
         npm run cloudflare:functions:build
-        npx wrangler pages dev dist --port 8788 --ip 0.0.0.0 --local
+        npx wrangler pages dev pages-dist --port 8788 --ip 0.0.0.0 --local
     ports:
       - "8780:8788"
     networks:
