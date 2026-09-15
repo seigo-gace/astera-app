@@ -18,3 +18,19 @@ BETTER_AUTH_URL = "https://staging.asterav8.jp"
 SQUARE_ENVIRONMENT = "sandbox"
 SQUARE_VERSION = "2026-08-19"
 APP_PUBLIC_ORIGIN = "https://staging.asterav8.jp"
+
+[env.production.vars]
+BETTER_AUTH_URL = "https://staging.asterav8.jp"
+SQUARE_ENVIRONMENT = "sandbox"
+SQUARE_VERSION = "2026-08-19"
+APP_PUBLIC_ORIGIN = "https://staging.asterav8.jp"
+
+[[env.production.d1_databases]]
+binding = "ASTERA_DB"
+database_name = "astera-app-staging-isolated"
+database_id = "193ccf30-785b-4317-bdf4-3b06fcb1d3c4"
+migrations_dir = "migrations/d1"
+
+[[env.production.r2_buckets]]
+binding = "ASTERA_UPLOADS"
+bucket_name = "astera-app-uploads-staging"
