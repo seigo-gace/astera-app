@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
+import { authErrorCode } from '../../platform/auth-client';
+import { authDisplayError } from '../../platform/auth-display-error';
 import { isNativeRuntime, nativeCallback, openExternalUrl } from '../../platform/external-navigation';
+import { usePlatformText } from '../../platform/platform-text';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
@@ -21,6 +24,7 @@ function nativeOAuthCompleteUrl(returnTo: string): string {
 }
 
 export default function RegisterPage({ route }: { route: RouteMatch }) {
+  const { text } = usePlatformText();
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
 
@@ -32,7 +36,7 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
     const confirm = textValue(data.get('password_confirm'));
 
     if (password !== confirm) {
-      setState({ type: 'error', message: 'Passwordが一致しません。', code: 'PASSWORD_MISMATCH' });
+      setState({ type: 'error', message: text('authPasswordMismatch'), code: 'PASSWORD_MISMATCH' });
       return;
     }
 
@@ -42,7 +46,11 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
       name: email,
       password,
       callbackURL: absoluteAppUrl(returnTo),
-    }, setState, { success: '確認Emailを送信しました。', idempotent: true });
+    }, setState, {
+      success: text('authVerificationEmailSent'),
+      errorMessage: (error) => authDisplayError(error, text, 'authRegisterFailed'),
+      idempotent: true,
+    });
 
     if (payload) {
       const params = new URLSearchParams({ email, return_to: returnTo });
@@ -63,12 +71,16 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
       // Native OAuth の既存・検証済み Login deep-link 経路を再利用する。
       native_callback: nativeCallback('/login'),
       disableRedirect: true,
-    }, setState, { success: `${provider}登録を開始します。`, idempotent: true });
+    }, setState, {
+      success: provider === 'google' ? text('authGoogleRegisterStarting') : text('authGithubRegisterStarting'),
+      errorMessage: (error) => authDisplayError(error, text, 'authOAuthRegisterStartFailed'),
+      idempotent: true,
+    });
 
     if (!payload) return;
     const redirectUrl = recordText(asRecord(asRecord(payload).data ?? payload), ['url', 'redirect']);
     if (!redirectUrl) {
-      setState({ type: 'error', message: 'OAuth Redirect URLを受信できませんでした。', code: 'OAUTH_REDIRECT_URL_MISSING' });
+      setState({ type: 'error', message: text('authOAuthRedirectMissing'), code: 'OAUTH_REDIRECT_URL_MISSING' });
       return;
     }
 
@@ -78,31 +90,31 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
     } catch (error) {
       setState({
         type: 'error',
-        message: error instanceof Error ? error.message : 'OAuth登録を開始できませんでした。',
-        code: 'OAUTH_START_FAILED',
+        message: authDisplayError(error, text, 'authOAuthRegisterStartFailed'),
+        code: authErrorCode(error, 'OAUTH_START_FAILED'),
       });
     }
   };
 
   return (
-    <PublicPageFrame route={route} description="Email、Google、GitHubからAstera Accountを作成します。">
+    <PublicPageFrame route={route} description={text('authRegisterDescription')}>
       <AuthCard>
         <form className="platform-form" onSubmit={signUpEmail}>
-          <Field label="Email" name="email" type="email" autoComplete="email" required />
-          <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-          <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>EmailでAccount登録</button>
+          <Field label={text('authEmail')} name="email" type="email" autoComplete="email" required />
+          <Field label={text('authPasswordRange')} name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          <Field label={text('authPasswordConfirm')} name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authEmailRegister')}</button>
         </form>
 
-        <div className="platform-divider"><span>または</span></div>
+        <div className="platform-divider"><span>{text('authOr')}</span></div>
         <div className="platform-stack-actions">
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuthRegistration('google')}>Googleアカウントで登録</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuthRegistration('github')}>GitHubで登録</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuthRegistration('google')}>{text('authGoogleRegister')}</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuthRegistration('github')}>{text('authGithubRegister')}</button>
         </div>
 
         <FormResult state={state} />
-        <div className="platform-auth-route-actions" aria-label="Login操作">
-          <a className="platform-button" href={loginPath(returnTo)}>Login</a>
+        <div className="platform-auth-route-actions" aria-label={text('authLoginActionsAria')}>
+          <a className="platform-button" href={loginPath(returnTo)}>{text('authLogin')}</a>
         </div>
       </AuthCard>
     </PublicPageFrame>
