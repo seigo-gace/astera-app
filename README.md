@@ -392,6 +392,22 @@ docker compose up --build
 # API:      http://localhost:8788
 ```
 
+**E2E live process（Pages Functions + 実 Process API）** では `docker-compose.e2e-live-process.yml` 起動時に D1 migration 直後へ `scripts/seed-test-account.mjs` が走り、ローカル専用 test アカウントが idempotent に作成されます。
+
+| 項目 | 値 |
+|---|---|
+| User ID | `test-account` |
+| Email | `test@astera.local` |
+| Password | `TestAccount-2026!` |
+
+手動で同じ seed を D1 local に適用する場合（`wrangler d1 migrations apply ASTERA_DB --local` 済みが前提）:
+
+```bash
+npm run seed:test-account
+```
+
+Pages dev（例: `http://127.0.0.1:8780/login`）で上記 Email / Password により Better Auth email ログインできます。`requireEmailVerification` は有効のまま、seed 側で `emailVerified=1` の verified user を作ります。
+
 TypeScript／Lint／Build Gate（ホストで一時実行可。常駐しない）：
 
 ```bash
