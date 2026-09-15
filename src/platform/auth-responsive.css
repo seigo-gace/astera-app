@@ -1,0 +1,252 @@
+/* Login / Register responsive authority.
+   This file is loaded after generic horizontal/orientation stability rules so
+   authentication pages do not inherit the generic 100% content expansion. */
+
+html[data-route-path="/login"] .platform-public-page,
+html[data-route-path="/register"] .platform-public-page {
+  min-height: 100dvh;
+  padding: calc(12px + var(--safe-top)) max(20px, var(--safe-right)) calc(28px + var(--safe-bottom)) max(20px, var(--safe-left));
+}
+
+/* The public nav duplicates the current authentication action on these pages. */
+html[data-route-path="/login"] .platform-public-header nav,
+html[data-route-path="/register"] .platform-public-header nav {
+  display: none !important;
+}
+
+html[data-route-path="/login"] .platform-public-header,
+html[data-route-path="/register"] .platform-public-header {
+  width: 100%;
+  max-width: 960px;
+  min-height: 50px;
+}
+
+/* PC */
+html[data-route-path="/login"] .platform-public-hero,
+html[data-route-path="/register"] .platform-public-hero {
+  width: min(600px, 100%);
+  max-width: 600px;
+  margin: clamp(18px, 3.2vh, 34px) auto 18px;
+}
+
+html[data-route-path="/login"] .platform-public-hero h1,
+html[data-route-path="/register"] .platform-public-hero h1 {
+  margin: 7px 0 6px;
+  font-size: clamp(38px, 4.2vw, 50px);
+  line-height: 1.04;
+}
+
+html[data-route-path="/login"] .platform-public-hero p,
+html[data-route-path="/register"] .platform-public-hero p {
+  max-width: 560px;
+  margin-inline: auto;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+html[data-route-path="/login"] .platform-public-content,
+html[data-route-path="/register"] .platform-public-content {
+  width: min(540px, 100%) !important;
+  max-width: 540px !important;
+  margin-inline: auto;
+  gap: 14px;
+}
+
+html[data-route-path="/login"] .platform-auth-card,
+html[data-route-path="/register"] .platform-auth-card {
+  width: 100%;
+  max-width: 100%;
+  padding: 26px 28px;
+}
+
+html[data-route-path="/login"] .platform-form,
+html[data-route-path="/register"] .platform-form {
+  gap: 12px;
+}
+
+html[data-route-path="/login"] .platform-field,
+html[data-route-path="/register"] .platform-field {
+  gap: 6px;
+}
+
+html[data-route-path="/login"] .platform-field input,
+html[data-route-path="/register"] .platform-field input {
+  min-height: 44px;
+  padding-block: 9px;
+}
+
+html[data-route-path="/login"] .platform-button,
+html[data-route-path="/register"] .platform-button {
+  min-height: 44px;
+}
+
+html[data-route-path="/login"] .platform-divider,
+html[data-route-path="/register"] .platform-divider {
+  margin: 14px 0;
+}
+
+html[data-route-path="/login"] .platform-auth-card footer,
+html[data-route-path="/register"] .platform-auth-card footer {
+  margin-top: 13px;
+}
+
+/* Tablet: 761px - 1100px */
+@media (min-width: 761px) and (max-width: 1100px) {
+  html[data-route-path="/login"] .platform-public-page,
+  html[data-route-path="/register"] .platform-public-page {
+    padding: calc(10px + var(--safe-top)) max(22px, var(--safe-right)) calc(24px + var(--safe-bottom)) max(22px, var(--safe-left));
+  }
+
+  html[data-route-path="/login"] .platform-public-header,
+  html[data-route-path="/register"] .platform-public-header {
+    max-width: 760px;
+    min-height: 48px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero,
+  html[data-route-path="/register"] .platform-public-hero {
+    margin: 18px auto 16px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero h1,
+  html[data-route-path="/register"] .platform-public-hero h1 {
+    font-size: clamp(36px, 5.5vw, 44px);
+  }
+
+  html[data-route-path="/login"] .platform-public-content,
+  html[data-route-path="/register"] .platform-public-content {
+    width: min(520px, 100%) !important;
+    max-width: 520px !important;
+  }
+
+  html[data-route-path="/login"] .platform-auth-card,
+  html[data-route-path="/register"] .platform-auth-card {
+    padding: 23px 24px;
+  }
+}
+
+/* Smartphone: <= 760px */
+@media (max-width: 760px) {
+  html[data-route-path="/login"] .platform-public-page,
+  html[data-route-path="/register"] .platform-public-page {
+    padding: calc(7px + var(--safe-top)) max(12px, var(--safe-right)) calc(18px + var(--safe-bottom)) max(12px, var(--safe-left));
+  }
+
+  html[data-route-path="/login"] .platform-public-header,
+  html[data-route-path="/register"] .platform-public-header {
+    min-height: 46px;
+  }
+
+  html[data-route-path="/login"] .platform-public-header .platform-brand,
+  html[data-route-path="/register"] .platform-public-header .platform-brand {
+    min-height: 42px;
+  }
+
+  html[data-route-path="/login"] .platform-public-header .platform-brand img,
+  html[data-route-path="/register"] .platform-public-header .platform-brand img {
+    width: 32px;
+    height: 32px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero,
+  html[data-route-path="/register"] .platform-public-hero {
+    width: 100%;
+    max-width: 520px;
+    margin: 8px auto 14px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero h1,
+  html[data-route-path="/register"] .platform-public-hero h1 {
+    margin: 5px 0;
+    font-size: clamp(32px, 10.5vw, 42px);
+  }
+
+  html[data-route-path="/login"] .platform-public-hero p,
+  html[data-route-path="/register"] .platform-public-hero p {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  html[data-route-path="/login"] .platform-public-content,
+  html[data-route-path="/register"] .platform-public-content {
+    width: 100% !important;
+    max-width: 520px !important;
+    gap: 12px;
+  }
+
+  html[data-route-path="/login"] .platform-auth-card,
+  html[data-route-path="/register"] .platform-auth-card {
+    padding: 17px 15px;
+    border-radius: 14px;
+  }
+
+  html[data-route-path="/login"] .platform-field input,
+  html[data-route-path="/register"] .platform-field input,
+  html[data-route-path="/login"] .platform-button,
+  html[data-route-path="/register"] .platform-button {
+    min-height: 48px;
+  }
+
+  html[data-route-path="/login"] .platform-divider,
+  html[data-route-path="/register"] .platform-divider {
+    margin: 12px 0;
+  }
+
+  html[data-route-path="/login"] .platform-auth-card footer,
+  html[data-route-path="/register"] .platform-auth-card footer {
+    margin-top: 11px;
+    gap: 8px 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  html[data-route-path="/login"] .platform-public-page,
+  html[data-route-path="/register"] .platform-public-page {
+    padding-inline: max(10px, var(--safe-left));
+  }
+
+  html[data-route-path="/login"] .platform-public-hero,
+  html[data-route-path="/register"] .platform-public-hero {
+    margin-top: 5px;
+    margin-bottom: 11px;
+  }
+
+  html[data-route-path="/login"] .platform-auth-card,
+  html[data-route-path="/register"] .platform-auth-card {
+    padding: 14px 12px;
+  }
+
+  html[data-route-path="/login"] .platform-auth-card footer,
+  html[data-route-path="/register"] .platform-auth-card footer {
+    display: grid;
+    justify-content: stretch;
+  }
+}
+
+/* Short landscape phones/tablets: preserve function while removing dead vertical space. */
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 1100px) {
+  html[data-route-path="/login"] .platform-public-page,
+  html[data-route-path="/register"] .platform-public-page {
+    padding-top: calc(5px + var(--safe-top));
+  }
+
+  html[data-route-path="/login"] .platform-public-header,
+  html[data-route-path="/register"] .platform-public-header {
+    min-height: 42px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero,
+  html[data-route-path="/register"] .platform-public-hero {
+    margin: 3px auto 10px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero h1,
+  html[data-route-path="/register"] .platform-public-hero h1 {
+    font-size: 32px;
+  }
+
+  html[data-route-path="/login"] .platform-public-hero p,
+  html[data-route-path="/register"] .platform-public-hero p {
+    line-height: 1.3;
+  }
+}
