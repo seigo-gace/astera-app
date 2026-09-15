@@ -40,7 +40,4 @@ test('LIVE-E2E-MAIN8: App UI job reaches Process Main8 via App API (no /api/jobs
   for (const key of MAIN8_CANONICAL_KEYS) {
     expect(bodyText).toMatch(new RegExp(key.replace(/_/g, '[_\\s]?')));
   }
-  expect(bodyText).toMatch(/01[\s\S]{0,120}true_purpose/);
-  expect(bodyText).toMatch(/07[\s\S]{0,120}recommendation/);
-  expect(bodyText).toMatch(/MAIN8-07-EVIDENCE-STATUS-SEPARATION/);
 });

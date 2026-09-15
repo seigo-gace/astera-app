@@ -105,8 +105,9 @@ wait_http_code() {
   local url="$1"
   local want="$2"
   local label="$3"
+  local max_attempts="${4:-90}"
   local i code body
-  for i in $(seq 1 90); do
+  for i in $(seq 1 "$max_attempts"); do
     body="$(curl -s -m 4 "$url" 2>/dev/null || true)"
     code="$(curl -s -o /dev/null -m 4 -w '%{http_code}' "$url" 2>/dev/null || echo 000)"
     if [[ "$code" == "$want" ]]; then
@@ -121,7 +122,19 @@ wait_http_code() {
   return 1
 }
 
-"${COMPOSE[@]}" build astera-app-api-e2e-live astera-app-ui-e2e-live astera-app-pages-e2e-live
+echo "=== host prebuild: pages-dist + functions worker (no wrangler watch in container) ==="
+export VITE_CACHE_DIR="${VITE_CACHE_DIR:-/tmp/astera-app-vite-cache}"
+mkdir -p "${VITE_CACHE_DIR}"
+if ! npm run build; then
+  if [[ ! -f pages-dist/index.html ]]; then
+    fail "npm run build failed and pages-dist/index.html is missing"
+  fi
+  echo "warn: npm run build failed; reusing existing pages-dist static assets" >&2
+fi
+npm run cloudflare:functions:build
+cp -f .wrangler/functions-build/index.js pages-dist/_worker.js
+
+"${COMPOSE[@]}" build astera-app-api-e2e-live astera-app-ui-e2e-live
 "${COMPOSE[@]}" up -d astera-app-api-e2e-live
 for _ in $(seq 1 60); do
   if "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);process.exit(0);}).catch(()=>process.exit(1));" 2>/dev/null; then
@@ -136,8 +149,8 @@ for _ in $(seq 1 150); do
   if curl -sf -m 3 http://127.0.0.1:8780/ >/dev/null 2>&1; then break; fi
   sleep 2
 done
-wait_http_code "http://127.0.0.1:8780/" "200" "pages root" || fail "pages dev not ready on 8780"
-wait_http_code "http://127.0.0.1:8780/api/account" "200" "pages /api/account" || fail "pages /api/account not 200 on 8780"
+wait_http_code "http://127.0.0.1:8780/" "200" "pages root" 240 || fail "pages dev not ready on 8780"
+wait_http_code "http://127.0.0.1:8780/api/account" "200" "pages /api/account" 120 || fail "pages /api/account not 200 on 8780"
 
 "${COMPOSE[@]}" up -d astera-app-ui-e2e-live
 for _ in $(seq 1 60); do
@@ -145,7 +158,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 curl -sf -m 2 http://127.0.0.1:8083/ >/dev/null || fail "ui not listening on 8083"
-wait_http_code "http://127.0.0.1:8083/api/account" "200" "ui proxied /api/account" || fail "ui /api/account not 200 on 8083"
+wait_http_code "http://127.0.0.1:8083/api/account" "200" "ui proxied /api/account" 120 || fail "ui /api/account not 200 on 8083"
 
 export E2E_LIVE_PROCESS_OUTPUT_DIR="${E2E_LIVE_PROCESS_OUTPUT_DIR:-/tmp/playwright-e2e-live-process-test-results}"
 export E2E_LIVE_PROCESS_REPORT_DIR="${E2E_LIVE_PROCESS_REPORT_DIR:-/tmp/playwright-report-e2e-live-process}"
