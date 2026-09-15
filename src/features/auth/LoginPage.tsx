@@ -103,9 +103,12 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
     }
   };
 
+  const registerPath = `/register?return_to=${encodeURIComponent(returnTo)}`;
+  const forgotPasswordPath = `/forgot-password?return_to=${encodeURIComponent(returnTo)}`;
+
   return (
     <PublicPageFrame route={route} description="Email、Passkey、Google、GitHubからAstera Accountへ安全にLoginします。">
-      <AuthCard footer={<><a href={`/forgot-password?return_to=${encodeURIComponent(returnTo)}`}>Passwordを忘れた場合</a><a href={`/register?return_to=${encodeURIComponent(returnTo)}`}>Accountを作成</a></>}>
+      <AuthCard>
         <form className="platform-form" onSubmit={signInEmail}>
           <Field label="Email" name="email" type="email" autoComplete="username webauthn" required />
           <Field label="Password" name="password" type="password" autoComplete="current-password webauthn" required />
@@ -118,6 +121,10 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
           <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('github')}>GitHubで続ける</button>
         </div>
         <FormResult state={state} />
+        <div className="platform-auth-route-actions" aria-label="Account操作">
+          <a className="platform-button" href={forgotPasswordPath}>Passwordを忘れた場合</a>
+          <a className="platform-button" href={registerPath}>Accountを作成</a>
+        </div>
       </AuthCard>
     </PublicPageFrame>
   );
