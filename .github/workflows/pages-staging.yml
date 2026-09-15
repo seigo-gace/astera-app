@@ -64,7 +64,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         id: pages_deploy
-        run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch="${GITHUB_REF_NAME}"
+        run: npx wrangler pages deploy pages-dist --project-name=astera-app-staging --branch="${GITHUB_REF_NAME}"
 
       - name: Report deployment evidence
         if: always()
