@@ -86,7 +86,7 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
 
   return (
     <PublicPageFrame route={route} description="Email、Google、GitHubからAstera Accountを作成します。">
-      <AuthCard footer={<a href={loginPath(returnTo)}>既にAccountがある場合</a>}>
+      <AuthCard>
         <form className="platform-form" onSubmit={signUpEmail}>
           <Field label="Email" name="email" type="email" autoComplete="email" required />
           <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
@@ -101,6 +101,9 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
         </div>
 
         <FormResult state={state} />
+        <div className="platform-auth-route-actions" aria-label="Login操作">
+          <a className="platform-button" href={loginPath(returnTo)}>Login</a>
+        </div>
       </AuthCard>
     </PublicPageFrame>
   );
