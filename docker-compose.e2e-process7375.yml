@@ -1,0 +1,91 @@
+services:
+  astera-app-api-e2e7375:
+    build:
+      context: .
+      dockerfile: contabo/app-api/Dockerfile
+    container_name: astera-app-api-e2e7375
+    env_file:
+      - contabo/app-api/.env
+    network_mode: host
+    environment:
+      PORT: "8792"
+      ASTERA_PROCESS_ORIGIN: http://127.0.0.1:7375
+      LIBRAL_VAULT_INTERNAL_ORIGIN: http://127.0.0.1:8791
+    restart: "no"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8792/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);}).catch(()=>process.exit(1));",
+        ]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 12
+
+  astera-app-pages-e2e7375:
+    image: node:22-bookworm
+    container_name: astera-app-pages-e2e7375
+    working_dir: /work
+    volumes:
+      - ./:/work
+    env_file:
+      - contabo/app-api/.env
+    environment:
+      ASTERA_RUNTIME_ORIGIN: http://host.docker.internal:8792
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        export ASTERA_RUNTIME_SERVICE_TOKEN="$$(printenv INTERNAL_SERVICE_TOKEN)"
+        if [ -z "$$ASTERA_RUNTIME_SERVICE_TOKEN" ]; then echo 'missing INTERNAL_SERVICE_TOKEN' >&2; exit 1; fi
+        npm run build
+        npm run cloudflare:functions:build
+        npx wrangler pages dev dist --port 8788 --ip 0.0.0.0 --local
+    ports:
+      - "8780:8788"
+    networks:
+      - astera-app-e2e7375
+    depends_on:
+      astera-app-api-e2e7375:
+        condition: service_healthy
+    restart: "no"
+
+  astera-app-ui-e2e7375:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_ASTERA_API_BASE: ""
+        VITE_ASTERA_HP_URL: https://asterav8.jp/
+        VITE_SUPPORT_DEVELOPMENT_URL: https://asterav8.jp/support/development
+        VITE_SUPPORT_CROWDFUNDING_URL: https://asterav8.jp/support/crowdfunding
+        VITE_SUPPORT_PARTNERSHIP_URL: https://asterav8.jp/support/partnership
+        VITE_PREVIEW_WITHOUT_AUTH: "true"
+    container_name: astera-app-ui-e2e7375
+    ports:
+      - "8083:80"
+    volumes:
+      - ./nginx.e2e-process7375.conf:/etc/nginx/conf.d/default.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - astera-app-e2e7375
+    depends_on:
+      astera-app-api-e2e7375:
+        condition: service_healthy
+      astera-app-pages-e2e7375:
+        condition: service_started
+    restart: "no"
+
+networks:
+  astera-app-e2e7375:
+    name: astera-app-e2e7375
+  libral-vault_default:
+    external: true
+    name: libral-vault_default
