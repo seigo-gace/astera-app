@@ -12,7 +12,7 @@ export type D1Database = {
   batch: (statements: D1PreparedStatement[]) => Promise<Array<D1Result<Record<string, unknown>>>>;
 };
 
-export type AsteraFunctionEnv = AuthEnv & { ASTERA_DB: D1Database };
+export type AsteraFunctionEnv = AuthEnv & { ASTERA_DB: D1Database; E2E_LIVE_PROCESS_PREVIEW_ACTOR?: string };
 
 export type SessionUser = {
   id: string;
@@ -133,7 +133,35 @@ async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ pr
   return { profile, credit };
 }
 
+async function previewActorProjection(env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
+  const user: SessionUser = {
+    id: 'e2e-live-process-preview-user',
+    email: 'e2e-live-process-preview@local.test',
+    emailVerified: true,
+    name: 'E2E Live Process Preview',
+  };
+  const { profile, credit } = await ensureProjection(env.ASTERA_DB, user);
+  return {
+    user,
+    session: { id: 'e2e-live-process-preview-session', createdAt: new Date(), updatedAt: new Date() },
+    profile,
+    credit,
+  };
+}
+
 export async function requireAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
+  if (env.E2E_LIVE_PROCESS_PREVIEW_ACTOR === '1') {
+    try {
+      return await previewActorProjection(env);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/no such table|D1_ERROR/i.test(message)) {
+        throw new FunctionHttpError(503, 'ASTERA_ACCOUNT_SCHEMA_NOT_READY', '認証・Account・Credit用D1 Migrationが適用されていません。', message);
+      }
+      throw error;
+    }
+  }
+
   let session: SessionPayload | null;
   try {
     session = await createAuth(env).api.getSession({ headers: request.headers }) as SessionPayload | null;

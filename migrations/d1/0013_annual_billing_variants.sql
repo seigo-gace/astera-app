@@ -1,6 +1,5 @@
 -- Annual billing variants. Plan identity stays stable; billing cadence becomes a variant.
 PRAGMA foreign_keys = ON;
-BEGIN TRANSACTION;
 
 CREATE TABLE IF NOT EXISTS plan_billing_variants (
   catalog_version TEXT NOT NULL,
@@ -49,5 +48,3 @@ CREATE INDEX IF NOT EXISTS plan_billing_variants_active
   ON plan_billing_variants(catalog_version, active, plan_id, billing_cycle);
 CREATE INDEX IF NOT EXISTS tenant_subscriptions_plan_cycle
   ON tenant_subscriptions(plan_id, billing_cycle, status);
-
-COMMIT;

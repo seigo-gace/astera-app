@@ -57,7 +57,8 @@ function normalizedOrigin(value: string | undefined): URL {
   } catch {
     throw new FunctionHttpError(503, 'ASTERA_RUNTIME_ORIGIN_INVALID', 'Astera Runtime接続先URLが不正です。');
   }
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+  const httpAllowedHosts = new Set(['localhost', '127.0.0.1', 'host.docker.internal']);
+  if (url.protocol !== 'https:' && !httpAllowedHosts.has(url.hostname)) {
     throw new FunctionHttpError(503, 'ASTERA_RUNTIME_HTTPS_REQUIRED', 'Astera Runtime接続先はHTTPSである必要があります。');
   }
   url.pathname = url.pathname.replace(/\/+$/, '');

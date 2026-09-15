@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { RuntimeDatabase, type RuntimeJobRow } from './database.js';
 import { translateAsteraResult } from './translation-runtime.js';
+import { asteraResultFromV8PlainText } from './process-v8-plaintext.js';
 import { VaultClient } from './vault-client.js';
 
 const PURPOSES = ['auto', 'review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
@@ -243,34 +244,32 @@ export class AsteraRuntimeService {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.config.processToken}`,
-          Accept: 'application/json',
+          'X-API-Key': this.config.processToken,
+          Accept: 'application/json, text/plain',
           'Content-Type': 'application/json',
           'Idempotency-Key': input.job_id,
           'X-Request-ID': input.request_id,
           'X-Correlation-ID': input.correlation_id,
         },
         body: JSON.stringify({
-          actor: {
-            user_id: input.user_id,
-            tenant_id: input.tenant_id,
-            account_status: 'active',
-            auth_stage: 'authenticated',
-          },
-          job: {
-            job_id: input.job_id,
-            request_id: input.request_id,
-            prompt: input.prompt,
-            purpose: input.purpose,
-            options: input.options,
-            files: input.files,
-            private_mode: input.private_mode,
-            project_id: input.project_id,
-            policy_version: input.policy_version,
-          },
+          question: input.prompt,
+          context: input.purpose ? `purpose:${input.purpose}` : undefined,
         }),
         signal: controller.signal,
       });
-      const payload = await response.json().catch(() => null) as ProcessResponse | null;
+      const contentType = response.headers.get('content-type') || '';
+      let payload = null as ProcessResponse | null;
+      if (contentType.includes('application/json')) {
+        payload = await response.json().catch(() => null) as ProcessResponse | null;
+      } else if (response.ok) {
+        const text = await response.text();
+        payload = {
+          result: asteraResultFromV8PlainText(text),
+          resourceUsage: { inputUnits: 1, outputUnits: text.length, durationMs: 0 },
+        };
+      } else {
+        payload = await response.json().catch(() => null) as ProcessResponse | null;
+      }
       if (!response.ok) {
         const runtimeError = payload?.error;
         throw Object.assign(new Error(runtimeError?.message || `Astera Process APIに失敗しました (${response.status})`), {

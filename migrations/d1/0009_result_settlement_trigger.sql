@@ -1,27 +1,80 @@
 -- Persist every non-private terminal Job into the Account/Tenant-owned D1 Result store.
 -- This trigger runs inside the same D1 transaction as the app_jobs settlement update.
-CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_after_update
+CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_json_invalid
 AFTER UPDATE OF state, result_payload ON app_jobs
 WHEN NEW.private_mode = 0
  AND NEW.state IN ('completed','partially_completed')
  AND NEW.result_payload IS NOT NULL
  AND (OLD.state NOT IN ('completed','partially_completed') OR OLD.result_payload IS NULL)
+ AND json_valid(NEW.result_payload) = 0
 BEGIN
-  SELECT CASE WHEN json_valid(NEW.result_payload) = 0
-    THEN RAISE(ABORT, 'ASTERA_RESULT_JSON_INVALID') END;
-  SELECT CASE WHEN json_type(NEW.result_payload, '$.sections') <> 'array'
-    THEN RAISE(ABORT, 'ASTERA_RESULT_SECTIONS_INVALID') END;
-  SELECT CASE WHEN json_type(NEW.result_payload, '$.sources') <> 'array'
-    THEN RAISE(ABORT, 'ASTERA_RESULT_SOURCES_INVALID') END;
-  SELECT CASE WHEN EXISTS (
+  SELECT RAISE(ABORT, 'ASTERA_RESULT_JSON_INVALID');
+END;
+
+CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_sections_invalid
+AFTER UPDATE OF state, result_payload ON app_jobs
+WHEN NEW.private_mode = 0
+ AND NEW.state IN ('completed','partially_completed')
+ AND NEW.result_payload IS NOT NULL
+ AND (OLD.state NOT IN ('completed','partially_completed') OR OLD.result_payload IS NULL)
+ AND json_valid(NEW.result_payload) = 1
+ AND json_type(NEW.result_payload, '$.sections') <> 'array'
+BEGIN
+  SELECT RAISE(ABORT, 'ASTERA_RESULT_SECTIONS_INVALID');
+END;
+
+CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_sources_invalid
+AFTER UPDATE OF state, result_payload ON app_jobs
+WHEN NEW.private_mode = 0
+ AND NEW.state IN ('completed','partially_completed')
+ AND NEW.result_payload IS NOT NULL
+ AND (OLD.state NOT IN ('completed','partially_completed') OR OLD.result_payload IS NULL)
+ AND json_valid(NEW.result_payload) = 1
+ AND json_type(NEW.result_payload, '$.sections') = 'array'
+ AND json_type(NEW.result_payload, '$.sources') <> 'array'
+BEGIN
+  SELECT RAISE(ABORT, 'ASTERA_RESULT_SOURCES_INVALID');
+END;
+
+CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_source_refs_invalid
+AFTER UPDATE OF state, result_payload ON app_jobs
+WHEN NEW.private_mode = 0
+ AND NEW.state IN ('completed','partially_completed')
+ AND NEW.result_payload IS NOT NULL
+ AND (OLD.state NOT IN ('completed','partially_completed') OR OLD.result_payload IS NULL)
+ AND json_valid(NEW.result_payload) = 1
+ AND json_type(NEW.result_payload, '$.sections') = 'array'
+ AND json_type(NEW.result_payload, '$.sources') = 'array'
+ AND EXISTS (
     SELECT 1 FROM json_each(NEW.result_payload, '$.sources')
     WHERE length(trim(COALESCE(json_extract(value, '$.id'), ''))) = 0
        OR length(trim(COALESCE(json_extract(value, '$.url'), ''))) = 0
        OR length(trim(COALESCE(json_extract(value, '$.title'), ''))) = 0
        OR length(trim(COALESCE(json_extract(value, '$.retrievedAt'), ''))) = 0
        OR COALESCE(json_extract(value, '$.status'), '') NOT IN ('verified','unverified','unavailable')
-  ) THEN RAISE(ABORT, 'ASTERA_SOURCE_REFERENCE_INVALID') END;
-  SELECT CASE WHEN (
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'ASTERA_SOURCE_REFERENCE_INVALID');
+END;
+
+CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_sections_incomplete
+AFTER UPDATE OF state, result_payload ON app_jobs
+WHEN NEW.private_mode = 0
+ AND NEW.state IN ('completed','partially_completed')
+ AND NEW.result_payload IS NOT NULL
+ AND (OLD.state NOT IN ('completed','partially_completed') OR OLD.result_payload IS NULL)
+ AND json_valid(NEW.result_payload) = 1
+ AND json_type(NEW.result_payload, '$.sections') = 'array'
+ AND json_type(NEW.result_payload, '$.sources') = 'array'
+ AND NOT EXISTS (
+    SELECT 1 FROM json_each(NEW.result_payload, '$.sources')
+    WHERE length(trim(COALESCE(json_extract(value, '$.id'), ''))) = 0
+       OR length(trim(COALESCE(json_extract(value, '$.url'), ''))) = 0
+       OR length(trim(COALESCE(json_extract(value, '$.title'), ''))) = 0
+       OR length(trim(COALESCE(json_extract(value, '$.retrievedAt'), ''))) = 0
+       OR COALESCE(json_extract(value, '$.status'), '') NOT IN ('verified','unverified','unavailable')
+  )
+ AND (
     SELECT COUNT(DISTINCT json_extract(value, '$.key'))
     FROM json_each(NEW.result_payload, '$.sections')
     WHERE json_extract(value, '$.key') IN (
@@ -29,8 +82,38 @@ BEGIN
       'counter_view','alternatives','recommendation','next_prompt'
     )
     AND length(trim(COALESCE(json_extract(value, '$.body'), ''))) > 0
-  ) <> 8 THEN RAISE(ABORT, 'ASTERA_RESPONSE_SECTIONS_INCOMPLETE') END;
+  ) <> 8
+BEGIN
+  SELECT RAISE(ABORT, 'ASTERA_RESPONSE_SECTIONS_INCOMPLETE');
+END;
 
+CREATE TRIGGER IF NOT EXISTS app_jobs_persist_result_after_update
+AFTER UPDATE OF state, result_payload ON app_jobs
+WHEN NEW.private_mode = 0
+ AND NEW.state IN ('completed','partially_completed')
+ AND NEW.result_payload IS NOT NULL
+ AND (OLD.state NOT IN ('completed','partially_completed') OR OLD.result_payload IS NULL)
+ AND json_valid(NEW.result_payload) = 1
+ AND json_type(NEW.result_payload, '$.sections') = 'array'
+ AND json_type(NEW.result_payload, '$.sources') = 'array'
+ AND NOT EXISTS (
+    SELECT 1 FROM json_each(NEW.result_payload, '$.sources')
+    WHERE length(trim(COALESCE(json_extract(value, '$.id'), ''))) = 0
+       OR length(trim(COALESCE(json_extract(value, '$.url'), ''))) = 0
+       OR length(trim(COALESCE(json_extract(value, '$.title'), ''))) = 0
+       OR length(trim(COALESCE(json_extract(value, '$.retrievedAt'), ''))) = 0
+       OR COALESCE(json_extract(value, '$.status'), '') NOT IN ('verified','unverified','unavailable')
+  )
+ AND (
+    SELECT COUNT(DISTINCT json_extract(value, '$.key'))
+    FROM json_each(NEW.result_payload, '$.sections')
+    WHERE json_extract(value, '$.key') IN (
+      'true_purpose','missing_assumptions','fact_check','risk_detection',
+      'counter_view','alternatives','recommendation','next_prompt'
+    )
+    AND length(trim(COALESCE(json_extract(value, '$.body'), ''))) > 0
+  ) = 8
+BEGIN
   INSERT OR IGNORE INTO results
     (id, tenant_id, project_id, job_id, title, created_by_user_id, purpose, private_mode,
      schema_version, runtime_version, purpose_version, completion_state, current_revision,

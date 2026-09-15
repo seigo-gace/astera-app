@@ -1,5 +1,5 @@
 # Stage 1: build frontend assets
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN npm run brand:sync && npx vite build
 FROM nginx:alpine AS runner
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/pages-dist /usr/share/nginx/html
 
 EXPOSE 80
 

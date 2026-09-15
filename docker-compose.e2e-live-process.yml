@@ -1,16 +1,22 @@
 services:
-  astera-app-api-e2e7375:
+  astera-app-api-e2e-live:
     build:
       context: .
       dockerfile: contabo/app-api/Dockerfile
-    container_name: astera-app-api-e2e7375
+    container_name: astera-app-api-e2e-live
     env_file:
       - contabo/app-api/.env
-    network_mode: host
     environment:
-      PORT: "8792"
-      ASTERA_PROCESS_ORIGIN: http://127.0.0.1:7375
-      LIBRAL_VAULT_INTERNAL_ORIGIN: http://127.0.0.1:8791
+      PORT: "8788"
+      ASTERA_PROCESS_ORIGIN: ${ASTERA_PROCESS_ORIGIN:?Set ASTERA_PROCESS_ORIGIN}
+      LIBRAL_VAULT_INTERNAL_ORIGIN: http://libral-vault-libral-vault-1:8791
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8793:8788"
+    networks:
+      - astera-app-e2e-live
+      - libral-vault_default
     restart: "no"
     healthcheck:
       test:
@@ -18,25 +24,24 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:8792/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);}).catch(()=>process.exit(1));",
+          "fetch('http://127.0.0.1:8788/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!j.process_origin)process.exit(2);}).catch(()=>process.exit(1));",
         ]
       interval: 5s
       timeout: 5s
       start_period: 20s
       retries: 12
 
-  astera-app-pages-e2e7375:
+  astera-app-pages-e2e-live:
     image: node:22-bookworm
-    container_name: astera-app-pages-e2e7375
+    container_name: astera-app-pages-e2e-live
     working_dir: /work
     volumes:
       - ./:/work
     env_file:
       - contabo/app-api/.env
     environment:
-      ASTERA_RUNTIME_ORIGIN: http://host.docker.internal:8792
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      ASTERA_RUNTIME_ORIGIN: http://astera-app-api-e2e-live:8788
+      E2E_LIVE_PROCESS_PREVIEW_ACTOR: "1"
     command:
       - bash
       - -lc
@@ -44,19 +49,27 @@ services:
         set -euo pipefail
         export ASTERA_RUNTIME_SERVICE_TOKEN="$$(printenv INTERNAL_SERVICE_TOKEN)"
         if [ -z "$$ASTERA_RUNTIME_SERVICE_TOKEN" ]; then echo 'missing INTERNAL_SERVICE_TOKEN' >&2; exit 1; fi
+        {
+          echo "BETTER_AUTH_SECRET=$$ASTERA_RUNTIME_SERVICE_TOKEN"
+          echo "BETTER_AUTH_URL=http://127.0.0.1:8788"
+          echo "ASTERA_RUNTIME_ORIGIN=http://astera-app-api-e2e-live:8788"
+          echo "ASTERA_RUNTIME_SERVICE_TOKEN=$$ASTERA_RUNTIME_SERVICE_TOKEN"
+          echo "E2E_LIVE_PROCESS_PREVIEW_ACTOR=1"
+        } > .dev.vars
         npm run build
         npm run cloudflare:functions:build
+        npx wrangler d1 migrations apply ASTERA_DB --local --persist-to /tmp/astera-d1-e2e-live-process
         npx wrangler pages dev pages-dist --port 8788 --ip 0.0.0.0 --local
     ports:
       - "8780:8788"
     networks:
-      - astera-app-e2e7375
+      - astera-app-e2e-live
     depends_on:
-      astera-app-api-e2e7375:
+      astera-app-api-e2e-live:
         condition: service_healthy
     restart: "no"
 
-  astera-app-ui-e2e7375:
+  astera-app-ui-e2e-live:
     build:
       context: .
       dockerfile: Dockerfile
@@ -67,25 +80,23 @@ services:
         VITE_SUPPORT_CROWDFUNDING_URL: https://asterav8.jp/support/crowdfunding
         VITE_SUPPORT_PARTNERSHIP_URL: https://asterav8.jp/support/partnership
         VITE_PREVIEW_WITHOUT_AUTH: "true"
-    container_name: astera-app-ui-e2e7375
+    container_name: astera-app-ui-e2e-live
     ports:
       - "8083:80"
     volumes:
-      - ./nginx.e2e-process7375.conf:/etc/nginx/conf.d/default.conf:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ./nginx.e2e-live-process.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
-      - astera-app-e2e7375
+      - astera-app-e2e-live
     depends_on:
-      astera-app-api-e2e7375:
+      astera-app-api-e2e-live:
         condition: service_healthy
-      astera-app-pages-e2e7375:
+      astera-app-pages-e2e-live:
         condition: service_started
     restart: "no"
 
 networks:
-  astera-app-e2e7375:
-    name: astera-app-e2e7375
+  astera-app-e2e-live:
+    name: astera-app-e2e-live
   libral-vault_default:
     external: true
     name: libral-vault_default

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const LIVE_JOB_PROMPT = 'A案とB案を比較したい。最終結論は出さず判断材料だけ欲しい。';
 
-test('LIVE-E2E-7375: App UI job reaches Process Main8 via App API (no /api/jobs mock)', async ({ page }) => {
+test('LIVE-E2E-MAIN8: App UI job reaches Process Main8 via App API (no /api/jobs mock)', async ({ page }) => {
   const jobPosts: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
