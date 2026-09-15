@@ -9,7 +9,7 @@ services:
     network_mode: host
     environment:
       PORT: "8793"
-      ASTERA_PROCESS_ORIGIN: http://127.0.0.1:7375
+      ASTERA_PROCESS_ORIGIN: ${ASTERA_PROCESS_ORIGIN:?set ASTERA_PROCESS_ORIGIN from astera-v8 ASTERA_PORT}
       LIBRAL_VAULT_INTERNAL_ORIGIN: http://127.0.0.1:8791
     restart: "no"
     healthcheck:
@@ -18,7 +18,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);}).catch(()=>process.exit(1));",
+          "const n=s=>String(s||'').replace(/\\/$/,'');const e=n(process.env.ASTERA_PROCESS_ORIGIN);fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!e||n(j.process_origin)!==e)process.exit(2);}).catch(()=>process.exit(1));",
         ]
       interval: 5s
       timeout: 5s

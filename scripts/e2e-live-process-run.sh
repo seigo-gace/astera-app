@@ -89,8 +89,10 @@ dump_diagnostics() {
   echo "=== app-api GET /ready ===" >&2
   curl -sS -m 8 http://127.0.0.1:8793/ready >&2 || echo "(app-api /ready unreachable)" >&2
   echo "" >&2
-  echo "=== astera-v8 GET /healthz ===" >&2
-  curl -sS -m 8 http://127.0.0.1:7375/healthz >&2 || echo "(7375 /healthz unreachable)" >&2
+  echo "=== Astera Process GET /healthz ===" >&2
+  _proc_health="${ASTERA_PROCESS_ORIGIN%/}/healthz"
+  curl -sS -m 8 "${_proc_health}" >&2 || echo "(process /healthz unreachable at ${ASTERA_PROCESS_ORIGIN})" >&2
+  unset _proc_health
   echo "" >&2
 }
 
@@ -137,12 +139,12 @@ cp -f .wrangler/functions-build/index.js pages-dist/_worker.js
 "${COMPOSE[@]}" build astera-app-api-e2e-live astera-app-ui-e2e-live
 "${COMPOSE[@]}" up -d astera-app-api-e2e-live
 for _ in $(seq 1 60); do
-  if "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);process.exit(0);}).catch(()=>process.exit(1));" 2>/dev/null; then
+  if "${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "const n=s=>String(s||'').replace(/\\/$/,'');const e=n(process.env.ASTERA_PROCESS_ORIGIN);fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!e||n(j.process_origin)!==e)process.exit(2);process.exit(0);}).catch(()=>process.exit(1));" 2>/dev/null; then
     break
   fi
   sleep 2
 done
-"${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!String(j.process_origin||'').includes('7375'))process.exit(2);console.log('ready process_origin='+j.process_origin);}).catch(()=>process.exit(1));" || fail "app-api /ready process_origin mismatch"
+"${COMPOSE[@]}" exec -T astera-app-api-e2e-live node -e "const n=s=>String(s||'').replace(/\\/$/,'');const e=n(process.env.ASTERA_PROCESS_ORIGIN);fetch('http://127.0.0.1:8793/ready').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!e||n(j.process_origin)!==e)process.exit(2);console.log('ready process_origin='+j.process_origin);}).catch(()=>process.exit(1));" || fail "app-api /ready process_origin mismatch"
 
 "${COMPOSE[@]}" up -d --force-recreate astera-app-pages-e2e-live
 for _ in $(seq 1 150); do
