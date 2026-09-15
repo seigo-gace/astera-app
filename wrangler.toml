@@ -5,8 +5,8 @@ pages_build_output_dir = "dist"
 
 [[d1_databases]]
 binding = "ASTERA_DB"
-database_name = "astera-app-staging"
-database_id = "08a705ac-50f4-4592-b726-d50154a2a8cb"
+database_name = "astera-app-staging-isolated"
+database_id = "193ccf30-785b-4317-bdf4-3b06fcb1d3c4"
 migrations_dir = "migrations/d1"
 
 [[r2_buckets]]
