@@ -121,7 +121,7 @@ function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boole
   };
   return (
     <PublicPageFrame route={route} description={reset ? '有効なTokenで新しいPasswordを設定します。' : 'Accountの存在を第三者へ露出せず再設定を開始します。'}>
-      <AuthCard footer={<a href={loginPath(returnTo)}>Loginへ戻る</a>}>
+      <AuthCard>
         <form className="platform-form" onSubmit={onSubmit}>
           {reset ? <>
             <Field label="新しいPassword" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
@@ -130,6 +130,9 @@ function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boole
           <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{reset ? 'Passwordを更新' : '再設定Emailを送信'}</button>
         </form>
         <FormResult state={state} />
+        <div className="platform-auth-route-actions" aria-label="Login操作">
+          <a className="platform-button" href={loginPath(returnTo)}>Login</a>
+        </div>
       </AuthCard>
     </PublicPageFrame>
   );
