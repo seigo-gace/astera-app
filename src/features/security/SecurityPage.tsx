@@ -130,6 +130,13 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       addPasskey: 'Add passkey',
       twoFactorDescription: 'When two-factor authentication is enabled, choose email or an authenticator app for the verification code.',
       setupTwoFactor: 'Set up',
+      passwordSetupTitle: 'Set an Astera password',
+      passwordSetupDescription: 'This account does not have an Astera password yet. Set one here, then continue directly to two-factor setup.',
+      newPassword: 'New Astera password',
+      confirmPassword: 'Confirm password',
+      savePassword: 'Save password and continue',
+      passwordMismatch: 'Passwords do not match.',
+      passwordSaved: 'Astera password saved. Continue with two-factor setup.',
       confirmIdentity: 'Confirm your identity',
       confirmIdentityDescription: 'Enter your current Astera password to continue.',
       cancel: 'Cancel',
@@ -163,6 +170,13 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       addPasskey: 'Passkeyを追加',
       twoFactorDescription: '2段階認証を有効にすると、登録済みメールまたは認証アプリの確認コードを選んで認証できます。',
       setupTwoFactor: '設定する',
+      passwordSetupTitle: 'Astera用Passwordを設定',
+      passwordSetupDescription: 'このAccountにはAstera用Passwordがまだありません。この場で設定して、そのまま2段階認証の設定へ進みます。',
+      newPassword: '新しいAstera用Password',
+      confirmPassword: 'Password確認',
+      savePassword: 'Passwordを設定して続ける',
+      passwordMismatch: 'Passwordが一致しません。',
+      passwordSaved: 'Astera用Passwordを設定しました。続けて2段階認証を設定してください。',
       confirmIdentity: '本人確認',
       confirmIdentityDescription: '続行するには現在のAstera用パスワードを入力してください。',
       cancel: 'キャンセル',
@@ -275,6 +289,33 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       await reload();
     } catch (error) {
       setFeedback({ type: 'error', message: error instanceof Error ? error.message : text('securityPasskeyDeleteFailed') });
+    }
+  };
+
+  const setPasswordForTwoFactor = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (previewMode) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const password = String(data.get('new_password') ?? '');
+    const confirm = String(data.get('password_confirm') ?? '');
+    if (password !== confirm) {
+      setFeedback({ type: 'error', message: local.passwordMismatch });
+      return;
+    }
+    setFeedback({ type: 'working' });
+    try {
+      await apiRequest('/api/auth/set-password', {
+        method: 'POST',
+        body: { newPassword: password },
+        idempotent: true,
+      });
+      form.reset();
+      await reload();
+      setTwoFactorSetupOpen(true);
+      setFeedback({ type: 'success', message: local.passwordSaved });
+    } catch (error) {
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : text('securityTwoFactorStartFailed') });
     }
   };
 
@@ -432,9 +473,32 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
             <span className={`security-status${security.twoFactorEnabled ? ' is-enabled' : ''}`}>{security.twoFactorEnabled ? text('securityEnabled') : text('securityDisabled')}</span>
           </div>
 
-          {!security.twoFactorEnabled && !enrollment && security.passwordConfigured && !twoFactorSetupOpen && (
+          {!security.twoFactorEnabled && !enrollment && !twoFactorSetupOpen && (
             <div className="security-card-action">
               <button className="platform-button is-primary" type="button" onClick={() => setTwoFactorSetupOpen(true)} disabled={feedback.type === 'working' || previewMode}>{local.setupTwoFactor}</button>
+            </div>
+          )}
+
+          {!security.twoFactorEnabled && !enrollment && !security.passwordConfigured && twoFactorSetupOpen && (
+            <div className="security-step">
+              <div>
+                <h3>{local.passwordSetupTitle}</h3>
+                <p>{local.passwordSetupDescription}</p>
+              </div>
+              <form className="security-form" onSubmit={setPasswordForTwoFactor}>
+                <label>
+                  <span>{local.newPassword}</span>
+                  <input name="new_password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} disabled={previewMode} />
+                </label>
+                <label>
+                  <span>{local.confirmPassword}</span>
+                  <input name="password_confirm" type="password" autoComplete="new-password" required minLength={6} maxLength={128} disabled={previewMode} />
+                </label>
+                <div className="security-form-actions">
+                  <button className="platform-button" type="button" onClick={() => setTwoFactorSetupOpen(false)}>{local.cancel}</button>
+                  <button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{local.savePassword}</button>
+                </div>
+              </form>
             </div>
           )}
 
