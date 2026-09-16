@@ -70,7 +70,7 @@ export function createAuth(env: AuthEnv) {
     },
     emailAndPassword: {
       enabled: true,
-      minPasswordLength: 12,
+      minPasswordLength: 6,
       maxPasswordLength: 128,
       requireEmailVerification: true,
       sendResetPassword: async ({ user, url }) => {

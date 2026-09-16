@@ -249,8 +249,8 @@ test('STORY-AUTH-006 password setup activates account before returning to protec
   });
 
   await page.goto('/account/password/setup?return_to=%2Fapp%2Fnew');
-  await page.locator('input[name="password"]').fill('story-password-123');
-  await page.locator('input[name="password_confirm"]').fill('story-password-123');
+  await page.locator('input[name="password"]').fill('pass06');
+  await page.locator('input[name="password_confirm"]').fill('pass06');
   await page.getByRole('button', { name: /続行|Continue/i }).click();
   await expect(page).toHaveURL(/\/app\/new$/);
 
@@ -278,8 +278,8 @@ test('STORY-AUTH-006 full provisional flow from new app entry through password s
   await expect(page).toHaveURL(/\/account\/password\/setup\?/);
   expect(new URL(page.url()).searchParams.get('return_to')).toBe('/app/new');
 
-  await page.locator('input[name="password"]').fill('story-password-123');
-  await page.locator('input[name="password_confirm"]').fill('story-password-123');
+  await page.locator('input[name="password"]').fill('pass06');
+  await page.locator('input[name="password_confirm"]').fill('pass06');
   await page.getByRole('button', { name: /続行|Continue/i }).click();
   await expect(page).toHaveURL(/\/app\/new$/);
 });

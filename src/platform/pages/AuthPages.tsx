@@ -172,8 +172,8 @@ function PasswordSetupPage({ route }: { route: RouteMatch }) {
   return (
     <PublicPageFrame route={route} description={text('authPasswordSetupDescription')}>
       <AuthCard><form className="platform-form" onSubmit={onSubmit}>
-        <Field label={text('authAsteraPassword')} name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-        <Field label={text('authPasswordConfirm')} name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+        <Field label={text('authAsteraPassword')} name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
+        <Field label={text('authPasswordConfirm')} name="password_confirm" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
         <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authPasswordSetupContinue')}</button>
       </form><FormResult state={state} /></AuthCard>
     </PublicPageFrame>

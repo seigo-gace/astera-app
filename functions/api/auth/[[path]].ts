@@ -277,7 +277,15 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     }
     let response: Response;
     try {
-      response = await auth.handler(context.request);
+      if (pathname === '/api/auth/set-password' && context.request.method === 'POST') {
+        response = await auth.api.setPassword({
+          headers: context.request.headers,
+          request: context.request,
+          asResponse: true,
+        }) as Response;
+      } else {
+        response = await auth.handler(context.request);
+      }
     } catch (handlerError) {
       if (isOAuthCallbackPath(pathname)) {
         logOAuthCallbackDiag(
