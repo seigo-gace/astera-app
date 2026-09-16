@@ -9,7 +9,22 @@ permissions:
   contents: read
 
 jobs:
-  compile:
+  frontend-functions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Typecheck and build frontend
+        run: npm run build
+      - name: Bundle Cloudflare Pages Functions
+        run: npm run cloudflare:functions:build
+
+  contracts-contabo:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -21,10 +36,6 @@ jobs:
         run: npm install --no-fund --no-audit
       - name: Typecheck Worker contracts and Contabo runtime
         run: npm run contract:check
-      - name: Typecheck and build frontend
-        run: npm run build
-      - name: Bundle Cloudflare Pages Functions
-        run: npm run cloudflare:functions:build
 
   build-and-device-matrix:
     runs-on: ubuntu-24.04
