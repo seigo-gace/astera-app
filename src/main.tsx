@@ -10,7 +10,6 @@ import './horizontal-stability.css';
 import './orientation-stability.css';
 import './platform/auth-responsive.css';
 import './features/developer/developer-layout-correction.css';
-import { AuthLanguageToggle } from './features/auth/AuthLanguageToggle';
 import { initializeDeviceCompatibility } from './device-compatibility';
 import { initializeNativeShell } from './native-shell';
 import { initializeRevisionCreditBridge } from './revision-credit-bridge';
@@ -29,7 +28,6 @@ if (!runtimeUnsupported) {
   createRoot(root).render(
     <StrictMode>
       <AppRouter />
-      <AuthLanguageToggle />
     </StrictMode>,
   );
 }
