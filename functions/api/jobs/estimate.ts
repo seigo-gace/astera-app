@@ -82,7 +82,7 @@ async function loadUploads(
   return ordered;
 }
 
-async function revisionBillableMetric(
+async function revisionBillableCharacters(
   context: PagesContext,
   tenantId: string,
   userId: string,
@@ -131,7 +131,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
 
     const [promptSha256, revisionMetric] = await Promise.all([
       promptFingerprint(input.prompt),
-      revisionBillableMetric(context, actor.profile.tenant_id, actor.user.id, input, policy),
+      revisionBillableCharacters(context, actor.profile.tenant_id, actor.user.id, input, policy),
     ]);
     const billableCharacters = revisionMetric?.characters ?? [...input.prompt].length;
     const fingerprint = await requestFingerprint(input, uploads.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
