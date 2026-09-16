@@ -130,7 +130,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .plan-credit-storage-pack:not(:disabled):hover {
+  .plan-credit-storage-pack:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
     background: color-mix(in srgb, var(--text-primary) 2.5%, var(--bg-primary));
