@@ -28,6 +28,8 @@ jobs:
       VITE_PREVIEW_WITHOUT_AUTH: 'true'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      STAGING_DOMAIN: 'staging.asterav8.jp'
       EVIDENCE_ISSUE: '9'
     steps:
       - name: Checkout
@@ -50,6 +52,26 @@ jobs:
             exit 1
           fi
 
+      - name: Pin Pages production branch to main
+        id: pages_config
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --fail-with-body \
+            --request PATCH \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PAGES_PROJECT}" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data '{"production_branch":"main"}')"
+          RESPONSE="$response" node <<'NODE'
+          const body = JSON.parse(process.env.RESPONSE || '{}');
+          if (body.success === false) throw new Error(`Cloudflare project update failed: ${JSON.stringify(body.errors || [])}`);
+          if (body.result?.production_branch !== 'main') throw new Error(`Unexpected production branch: ${body.result?.production_branch ?? 'missing'}`);
+          if (!Array.isArray(body.result?.domains) || !body.result.domains.includes(process.env.STAGING_DOMAIN)) {
+            throw new Error(`Staging custom domain is not attached: ${process.env.STAGING_DOMAIN}`);
+          }
+          NODE
+
       - name: Install dependencies
         id: install
         run: npm install --no-audit
@@ -58,13 +80,68 @@ jobs:
         id: frontend_build
         run: npm run build
 
+      - name: Write deployment marker
+        id: deployment_marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"github_sha":"%s","branch":"main"}\n' "${GITHUB_SHA}" > dist/__staging_deployment.json
+
       - name: Build Cloudflare Functions
         id: functions_build
         run: npm run cloudflare:functions:build
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy main to Cloudflare Pages staging
         id: pages_deploy
-        run: npx wrangler pages deploy dist --project-name=astera-app-staging --branch=main
+        run: npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
+
+      - name: Verify staging custom domain serves this main commit
+        id: public_verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const expectedSha = process.env.GITHUB_SHA;
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const projectName = process.env.CLOUDFLARE_PAGES_PROJECT;
+          const stagingDomain = process.env.STAGING_DOMAIN;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+
+          const projectResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`, { headers });
+          const projectBody = await projectResponse.json();
+          if (!projectResponse.ok || projectBody.success === false) throw new Error(`Project read failed: ${JSON.stringify(projectBody.errors || [])}`);
+          if (projectBody.result?.production_branch !== 'main') throw new Error(`Production branch drifted to ${projectBody.result?.production_branch ?? 'missing'}`);
+          if (!Array.isArray(projectBody.result?.domains) || !projectBody.result.domains.includes(stagingDomain)) throw new Error(`Custom domain missing: ${stagingDomain}`);
+
+          const deploymentsResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/deployments?env=production&per_page=1`, { headers });
+          const deploymentsBody = await deploymentsResponse.json();
+          const latest = Array.isArray(deploymentsBody.result) ? deploymentsBody.result[0] : null;
+          if (!deploymentsResponse.ok || deploymentsBody.success === false || !latest) throw new Error('Latest production deployment could not be read.');
+          const branch = latest.deployment_trigger?.metadata?.branch || '';
+          const commitHash = latest.deployment_trigger?.metadata?.commit_hash || '';
+          if (branch !== 'main') throw new Error(`Latest production deployment branch is ${branch || 'missing'}, expected main.`);
+          if (commitHash !== expectedSha) throw new Error(`Latest production deployment SHA is ${commitHash || 'missing'}, expected ${expectedSha}.`);
+
+          let publicSha = '';
+          let lastError = '';
+          for (let attempt = 1; attempt <= 10; attempt += 1) {
+            try {
+              const url = `https://${stagingDomain}/__staging_deployment.json?sha=${encodeURIComponent(expectedSha)}&attempt=${attempt}`;
+              const response = await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const body = await response.json();
+              publicSha = body.github_sha || '';
+              if (publicSha === expectedSha && body.branch === 'main') break;
+              lastError = `served SHA ${publicSha || 'missing'}`;
+            } catch (error) {
+              lastError = error instanceof Error ? error.message : String(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          }
+          if (publicSha !== expectedSha) throw new Error(`staging.asterav8.jp did not serve ${expectedSha}: ${lastError}`);
+          console.log(`Verified https://${stagingDomain}/ -> ${expectedSha}`);
+          NODE
 
       - name: Report deployment evidence
         if: always()
@@ -73,53 +150,60 @@ jobs:
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
           NODE_OUTCOME: ${{ steps.node.outcome }}
           CREDENTIALS_OUTCOME: ${{ steps.credentials.outcome }}
+          PAGES_CONFIG_OUTCOME: ${{ steps.pages_config.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           FRONTEND_BUILD_OUTCOME: ${{ steps.frontend_build.outcome }}
+          DEPLOYMENT_MARKER_OUTCOME: ${{ steps.deployment_marker.outcome }}
           FUNCTIONS_BUILD_OUTCOME: ${{ steps.functions_build.outcome }}
           PAGES_DEPLOY_OUTCOME: ${{ steps.pages_deploy.outcome }}
+          PUBLIC_VERIFY_OUTCOME: ${{ steps.public_verify.outcome }}
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE' > /tmp/pages-evidence.md
           const token = process.env.CLOUDFLARE_API_TOKEN || '';
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-          const project = 'astera-app-staging';
+          const project = process.env.CLOUDFLARE_PAGES_PROJECT;
           const report = {
             github_sha: process.env.GITHUB_SHA,
+            canonical_staging_url: `https://${process.env.STAGING_DOMAIN}/`,
             steps: {
               checkout: process.env.CHECKOUT_OUTCOME,
               setup_node: process.env.NODE_OUTCOME,
               credentials: process.env.CREDENTIALS_OUTCOME,
+              pages_config: process.env.PAGES_CONFIG_OUTCOME,
               install: process.env.INSTALL_OUTCOME,
               frontend_build: process.env.FRONTEND_BUILD_OUTCOME,
+              deployment_marker: process.env.DEPLOYMENT_MARKER_OUTCOME,
               functions_build: process.env.FUNCTIONS_BUILD_OUTCOME,
               pages_deploy: process.env.PAGES_DEPLOY_OUTCOME,
+              public_verify: process.env.PUBLIC_VERIFY_OUTCOME,
             },
             cloudflare: null,
           };
           if (token) {
-            const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${project}/deployments?env=production`, {
-              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-            });
-            const body = await response.json().catch(() => ({}));
-            if (response.ok && body.success !== false && Array.isArray(body.result)) {
-              const latest = body.result[0] || null;
-              report.cloudflare = latest ? {
+            const [projectResponse, deploymentsResponse] = await Promise.all([
+              fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${project}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
+              fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${project}/deployments?env=production&per_page=1`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
+            ]);
+            const projectBody = await projectResponse.json().catch(() => ({}));
+            const deploymentsBody = await deploymentsResponse.json().catch(() => ({}));
+            const latest = Array.isArray(deploymentsBody.result) ? deploymentsBody.result[0] : null;
+            report.cloudflare = {
+              project: projectResponse.ok && projectBody.success !== false ? {
+                name: projectBody.result?.name || null,
+                production_branch: projectBody.result?.production_branch || null,
+                domains: projectBody.result?.domains || [],
+              } : { query_failed: true, status: projectResponse.status },
+              production_deployment: latest ? {
                 deployment_id: latest.id || null,
                 environment: latest.environment || null,
                 url: latest.url || null,
-                created_on: latest.created_on || null,
-                latest_stage: latest.latest_stage ? {
-                  name: latest.latest_stage.name || null,
-                  status: latest.latest_stage.status || null,
-                  ended_on: latest.latest_stage.ended_on || null,
-                } : null,
+                latest_stage: latest.latest_stage || null,
                 branch: latest.deployment_trigger?.metadata?.branch || null,
                 commit_hash: latest.deployment_trigger?.metadata?.commit_hash || null,
-              } : null;
-            } else {
-              report.cloudflare = { query_failed: true, status: response.status, errors: (body.errors || []).map((e) => e.code || e.message || 'unknown') };
-            }
+              } : { query_failed: true, status: deploymentsResponse.status },
+            };
           } else {
             report.cloudflare = { query_failed: true, reason: 'token-missing' };
           }
