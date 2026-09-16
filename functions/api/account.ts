@@ -69,6 +69,9 @@ async function hasPasswordCredential(db: D1Database, userId: string): Promise<bo
 
 function accountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
   if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
+  // Registration requirements decide whether a new/pending account can become active.
+  // Once the persisted profile is active, normal Login/reload/deploy must never restart registration.
+  if (existing?.account_status === 'active') return 'active';
   if (user.emailVerified === false) return 'pending_email_verification';
   return passwordConfigured ? 'active' : 'pending_password_setup';
 }
