@@ -1,8 +1,8 @@
 import {
   FunctionHttpError,
   functionErrorResponse,
+  observeAsteraActor,
   requestCorrelationId,
-  requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../_account-projection';
 
@@ -12,7 +12,7 @@ type PagesContext = { request: Request; env: Env };
 export async function onRequestGet(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
-    const actor = await requireAsteraActor(context.request, context.env);
+    const actor = await observeAsteraActor(context.request, context.env);
     const { user, session, profile, credit } = actor;
     return Response.json({
       account: {
