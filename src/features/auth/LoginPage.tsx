@@ -10,11 +10,20 @@ function absoluteAppUrl(path: string): string {
   return new URL(path, window.location.origin).toString();
 }
 
+function availableTwoFactorMethods(source: Record<string, unknown>): Array<'totp' | 'otp'> {
+  const value = source.twoFactorMethods;
+  if (!Array.isArray(value)) return [];
+  return value.map(String).filter((method): method is 'totp' | 'otp' => method === 'totp' || method === 'otp');
+}
+
 function continuation(payload: unknown, returnTo: string): string {
   const root = asRecord(payload);
   const source = { ...asRecord(root.data), ...asRecord(root.user), ...asRecord(root.account), ...root };
   if (source.twoFactorRedirect === true || source.requires_2fa === true || source.auth_stage === 'pending_2fa') {
-    return `/auth/2fa?return_to=${encodeURIComponent(returnTo)}`;
+    const params = new URLSearchParams({ return_to: returnTo });
+    const methods = availableTwoFactorMethods(source);
+    if (methods.length > 0) params.set('methods', methods.join(','));
+    return `/auth/2fa?${params.toString()}`;
   }
   if (source.emailVerified === false || source.account_status === 'pending_email_verification') {
     const params = new URLSearchParams({ return_to: returnTo });
