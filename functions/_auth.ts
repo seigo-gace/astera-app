@@ -124,6 +124,7 @@ export function createAuth(env: AuthEnv) {
     plugins: [
       twoFactor({
         issuer: 'Astera',
+        allowPasswordless: true,
         otpOptions: {
           period: 300,
           async sendOTP({ user, otp }) {
