@@ -49,8 +49,49 @@ const OAUTH_CALLBACK_PATHS = new Set([
   '/api/auth/callback/github',
 ]);
 
+const OAUTH_STATE_COOKIE_NAME = '__Secure-astera.state';
+
+const OAUTH_CALLBACK_EXCEPTION_ALLOWLIST = new Set([
+  'state_not_found',
+  'state_mismatch',
+  'state_security_mismatch',
+  'state_invalid',
+  'state_generation_error',
+  'invalid_callback_request',
+  'no_code',
+]);
+
 function isOAuthCallbackPath(pathname: string): boolean {
   return OAUTH_CALLBACK_PATHS.has(pathname);
+}
+
+function oauthStateCookiePresent(cookieHeader: string): boolean {
+  if (cookieHeader.length === 0) return false;
+  for (const segment of cookieHeader.split(';')) {
+    const name = segment.trim().split('=')[0]?.trim() ?? '';
+    if (name === OAUTH_STATE_COOKIE_NAME) return true;
+  }
+  return false;
+}
+
+function resolveOAuthCallbackException(error: unknown): string {
+  const candidates: string[] = [];
+  if (error instanceof Error) {
+    candidates.push(error.message);
+  }
+  if (error && typeof error === 'object') {
+    const rec = error as Record<string, unknown>;
+    if (typeof rec.code === 'string') candidates.push(rec.code);
+    const body = rec.body;
+    if (body && typeof body === 'object') {
+      const bodyCode = (body as Record<string, unknown>).code;
+      if (typeof bodyCode === 'string') candidates.push(bodyCode);
+    }
+  }
+  for (const candidate of candidates) {
+    if (OAUTH_CALLBACK_EXCEPTION_ALLOWLIST.has(candidate)) return candidate;
+  }
+  return 'UNKNOWN';
 }
 
 function locationDiagFields(response: Response, requestUrl: string): { location_pathname: string | null; location_error: string | null } {
@@ -67,7 +108,13 @@ function locationDiagFields(response: Response, requestUrl: string): { location_
   }
 }
 
-function logOAuthCallbackDiag(request: Request, pathname: string, phase: 'before' | 'after', response?: Response): void {
+function logOAuthCallbackDiag(
+  request: Request,
+  pathname: string,
+  phase: 'before' | 'after' | 'exception',
+  response?: Response,
+  callbackException?: string,
+): void {
   const url = new URL(request.url);
   const providerError = url.searchParams.get('error');
   const cookieHeader = request.headers.get('cookie') ?? '';
@@ -80,10 +127,14 @@ function logOAuthCallbackDiag(request: Request, pathname: string, phase: 'before
     has_provider_error: providerError !== null,
     provider_error: providerError,
     cookie_present: cookieHeader.length > 0,
+    oauth_state_cookie_present: oauthStateCookiePresent(cookieHeader),
   };
   if (phase === 'after' && response) {
     payload.response_status = response.status;
     Object.assign(payload, locationDiagFields(response, request.url));
+  }
+  if (phase === 'exception') {
+    payload.callback_exception = callbackException ?? 'UNKNOWN';
   }
   console.log(`ASTERA_OAUTH_CALLBACK_DIAG ${JSON.stringify(payload)}`);
 }
@@ -223,7 +274,21 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     if (isOAuthCallbackPath(pathname)) {
       logOAuthCallbackDiag(context.request, pathname, 'before');
     }
-    const response = await auth.handler(context.request);
+    let response: Response;
+    try {
+      response = await auth.handler(context.request);
+    } catch (handlerError) {
+      if (isOAuthCallbackPath(pathname)) {
+        logOAuthCallbackDiag(
+          context.request,
+          pathname,
+          'exception',
+          undefined,
+          resolveOAuthCallbackException(handlerError),
+        );
+      }
+      throw handlerError;
+    }
     if (isOAuthCallbackPath(pathname)) {
       logOAuthCallbackDiag(context.request, pathname, 'after', response);
     }
