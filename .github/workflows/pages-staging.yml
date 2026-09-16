@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      VITE_PREVIEW_WITHOUT_AUTH: 'true'
+      VITE_PREVIEW_WITHOUT_AUTH: 'false'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
       CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
@@ -43,6 +43,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.12'
+
+      - name: Reject preview auth bypass
+        id: auth_mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${VITE_PREVIEW_WITHOUT_AUTH}" != "false" ]; then
+            echo "Staging must run with real authentication. VITE_PREVIEW_WITHOUT_AUTH=${VITE_PREVIEW_WITHOUT_AUTH}" >&2
+            exit 1
+          fi
+          echo "Staging authentication mode: real"
 
       - name: Require deploy credentials
         id: credentials
@@ -85,7 +96,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '{"github_sha":"%s","branch":"main"}\n' "${GITHUB_SHA}" > dist/__staging_deployment.json
+          printf '{"github_sha":"%s","branch":"main","auth_mode":"real"}\n' "${GITHUB_SHA}" > dist/__staging_deployment.json
 
       - name: Build Cloudflare Functions
         id: functions_build
@@ -124,6 +135,7 @@ jobs:
           if (commitHash !== expectedSha) throw new Error(`Latest production deployment SHA is ${commitHash || 'missing'}, expected ${expectedSha}.`);
 
           let publicSha = '';
+          let publicAuthMode = '';
           let lastError = '';
           for (let attempt = 1; attempt <= 10; attempt += 1) {
             try {
@@ -132,15 +144,18 @@ jobs:
               if (!response.ok) throw new Error(`HTTP ${response.status}`);
               const body = await response.json();
               publicSha = body.github_sha || '';
-              if (publicSha === expectedSha && body.branch === 'main') break;
-              lastError = `served SHA ${publicSha || 'missing'}`;
+              publicAuthMode = body.auth_mode || '';
+              if (publicSha === expectedSha && body.branch === 'main' && publicAuthMode === 'real') break;
+              lastError = `served SHA ${publicSha || 'missing'}, auth_mode ${publicAuthMode || 'missing'}`;
             } catch (error) {
               lastError = error instanceof Error ? error.message : String(error);
             }
             await new Promise((resolve) => setTimeout(resolve, 3000));
           }
-          if (publicSha !== expectedSha) throw new Error(`staging.asterav8.jp did not serve ${expectedSha}: ${lastError}`);
-          console.log(`Verified https://${stagingDomain}/ -> ${expectedSha}`);
+          if (publicSha !== expectedSha || publicAuthMode !== 'real') {
+            throw new Error(`staging.asterav8.jp did not serve authenticated build ${expectedSha}: ${lastError}`);
+          }
+          console.log(`Verified https://${stagingDomain}/ -> ${expectedSha} (real authentication)`);
           NODE
 
       - name: Report deployment evidence
@@ -149,6 +164,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
           NODE_OUTCOME: ${{ steps.node.outcome }}
+          AUTH_MODE_OUTCOME: ${{ steps.auth_mode.outcome }}
           CREDENTIALS_OUTCOME: ${{ steps.credentials.outcome }}
           PAGES_CONFIG_OUTCOME: ${{ steps.pages_config.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
@@ -167,9 +183,11 @@ jobs:
           const report = {
             github_sha: process.env.GITHUB_SHA,
             canonical_staging_url: `https://${process.env.STAGING_DOMAIN}/`,
+            auth_mode: 'real',
             steps: {
               checkout: process.env.CHECKOUT_OUTCOME,
               setup_node: process.env.NODE_OUTCOME,
+              auth_mode: process.env.AUTH_MODE_OUTCOME,
               credentials: process.env.CREDENTIALS_OUTCOME,
               pages_config: process.env.PAGES_CONFIG_OUTCOME,
               install: process.env.INSTALL_OUTCOME,
