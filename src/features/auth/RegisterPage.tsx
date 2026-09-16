@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
-import { isNativeRuntime, nativeCallback, openExternalUrl } from '../../platform/external-navigation';
+import { queryValue, textValue } from '../../platform/api-client';
+import { isNativeRuntime, nativeCallback } from '../../platform/external-navigation';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
@@ -18,6 +18,22 @@ function nativeOAuthCompleteUrl(returnTo: string): string {
   const endpoint = new URL('/api/auth/native/oauth-complete', window.location.origin);
   endpoint.searchParams.set('return_to', returnTo);
   return endpoint.toString();
+}
+
+function postSocialSignIn(fields: Record<string, string>): void {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/api/auth/sign-in/social';
+  form.style.display = 'none';
+  for (const [name, value] of Object.entries(fields)) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
 }
 
 export default function RegisterPage({ route }: { route: RouteMatch }) {
@@ -50,10 +66,10 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
     }
   };
 
-  const startOAuthRegistration = async (provider: 'google' | 'github') => {
+  const startOAuthRegistration = (provider: 'google' | 'github') => {
     const nativeComplete = nativeOAuthCompleteUrl(returnTo);
     const callbackURL = isNativeRuntime() ? nativeComplete : absoluteAppUrl(returnTo);
-    const payload = await submitForm('/api/auth/sign-in/social', {
+    postSocialSignIn({
       provider,
       callbackURL,
       errorCallbackURL: absoluteAppUrl(`/register?return_to=${encodeURIComponent(returnTo)}`),
@@ -62,26 +78,7 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
         : absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
       // Native OAuth の既存・検証済み Login deep-link 経路を再利用する。
       native_callback: nativeCallback('/login'),
-      disableRedirect: true,
-    }, setState, { success: `${provider}登録を開始します。`, idempotent: true });
-
-    if (!payload) return;
-    const redirectUrl = recordText(asRecord(asRecord(payload).data ?? payload), ['url', 'redirect']);
-    if (!redirectUrl) {
-      setState({ type: 'error', message: 'OAuth Redirect URLを受信できませんでした。', code: 'OAUTH_REDIRECT_URL_MISSING' });
-      return;
-    }
-
-    try {
-      await openExternalUrl(redirectUrl);
-      setState({ type: 'idle' });
-    } catch (error) {
-      setState({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'OAuth登録を開始できませんでした。',
-        code: 'OAUTH_START_FAILED',
-      });
-    }
+    });
   };
 
   return (
@@ -96,8 +93,8 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
 
         <div className="platform-divider"><span>または</span></div>
         <div className="platform-stack-actions">
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuthRegistration('google')}>Googleアカウントで登録</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuthRegistration('github')}>GitHubで登録</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuthRegistration('google')}>Googleアカウントで登録</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuthRegistration('github')}>GitHubで登録</button>
         </div>
 
         <FormResult state={state} />

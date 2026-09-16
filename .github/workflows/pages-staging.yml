@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      VITE_PREVIEW_WITHOUT_AUTH: 'true'
+      VITE_PREVIEW_WITHOUT_AUTH: 'false'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
       EVIDENCE_ISSUE: '9'
