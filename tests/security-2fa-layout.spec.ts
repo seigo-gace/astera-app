@@ -10,7 +10,9 @@ function json(route: Route, body: unknown, status = 200): Promise<void> {
   });
 }
 
-async function mockSecurityApi(page: Page, language: Language): Promise<void> {
+async function mockSecurityApi(page: Page, initialLanguage: Language): Promise<void> {
+  let currentLanguage: Language = initialLanguage;
+
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -24,9 +26,18 @@ async function mockSecurityApi(page: Page, language: Language): Promise<void> {
           nickname: 'Security Layout Test',
           email: 'security-layout@example.test',
           email_verified: true,
-          ui_language: language,
+          ui_language: currentLanguage === 'en' ? 'en-US' : 'ja-JP',
         },
       });
+      return;
+    }
+
+    if (path === '/api/preferences/display') {
+      if (request.method() === 'PUT') {
+        const body = request.postDataJSON() as { ui_language?: string } | null;
+        currentLanguage = body?.ui_language?.toLowerCase().startsWith('en') ? 'en' : 'ja';
+      }
+      await json(route, { display: { ui_language: currentLanguage === 'en' ? 'en-US' : 'ja-JP' } });
       return;
     }
 
@@ -187,14 +198,21 @@ test('Security and 2FA keep compact pill headings and responsive layouts', async
   }
 });
 
-test('Security and 2FA copy follows the English language setting', async ({ page }) => {
-  await mockSecurityApi(page, 'en');
+test('Security and 2FA follow the actual Japanese-English language switch', async ({ page }) => {
+  await mockSecurityApi(page, 'ja');
+
+  await page.goto('/app/settings/language', { waitUntil: 'domcontentloaded' });
+  await page.getByLabel('表示言語').selectOption('en');
+  await page.getByRole('button', { name: '保存' }).click();
+  await expect(page.getByRole('heading', { name: 'Language', level: 1 })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 
   await page.goto('/account/security', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('heading', { name: 'Security', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Two-factor authentication', level: 2 })).toBeVisible();
   await expect(page.getByText('Signed-in devices', { exact: true })).toBeVisible();
   await expect(page.getByText('Authenticator app', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expectNoHorizontalOverflow(page);
 
   await page.goto('/auth/2fa?return_to=%2Fapp%2Fnew&methods=totp,otp', { waitUntil: 'domcontentloaded' });
@@ -202,5 +220,6 @@ test('Security and 2FA copy follows the English language setting', async ({ page
   await expect(page.getByText('Authentication method', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Authenticator app/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Email/ })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expectNoHorizontalOverflow(page);
 });
