@@ -58,18 +58,32 @@ function errorResponse(status: number, code: string, message: string, requestId:
   );
 }
 
-function accountStatus(user: SessionUser): string {
+const PROTECTED_ACCOUNT_STATUSES = new Set(['security_hold', 'suspended', 'deletion_scheduled', 'deleted']);
+
+async function hasPasswordCredential(db: D1Database, userId: string): Promise<boolean> {
+  const credential = await db.prepare(
+    'SELECT id FROM "account" WHERE "userId"=?1 AND "providerId"=?2 AND password IS NOT NULL AND length(password) > 0 LIMIT 1',
+  ).bind(userId, 'credential').first<{ id: string }>();
+  return Boolean(credential?.id);
+}
+
+function accountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
+  if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
   if (user.emailVerified === false) return 'pending_email_verification';
-  // Password setup is a registration continuation, not a condition for every social login.
-  // Existing Google/GitHub accounts remain active even when they do not have a credential account.
-  return 'active';
+  if (existing?.account_status === 'active') return 'active';
+  return passwordConfigured ? 'active' : 'pending_password_setup';
 }
 
 async function ensureAsteraAccount(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
   const now = new Date().toISOString();
   const tenantId = `personal:${user.id}`;
   const creditId = `credit:${tenantId}`;
-  const desiredStatus = accountStatus(user);
+  const existingProfile = await db.prepare(
+    `SELECT user_id, tenant_id, nickname, account_status, ui_language, created_at, updated_at
+     FROM user_profiles WHERE user_id = ?1 LIMIT 1`,
+  ).bind(user.id).first<UserProfileRow>();
+  const passwordConfigured = await hasPasswordCredential(db, user.id);
+  const desiredStatus = accountStatus(user, existingProfile, passwordConfigured);
   const nickname = user.name?.trim() || user.email.split('@')[0] || 'Astera User';
 
   await db.batch([
@@ -84,10 +98,7 @@ async function ensureAsteraAccount(db: D1Database, user: SessionUser): Promise<{
        ON CONFLICT(user_id) DO UPDATE SET
          tenant_id = excluded.tenant_id,
          nickname = CASE WHEN user_profiles.nickname = '' THEN excluded.nickname ELSE user_profiles.nickname END,
-         account_status = CASE
-           WHEN user_profiles.account_status IN ('security_hold', 'suspended', 'deletion_scheduled', 'deleted') THEN user_profiles.account_status
-           ELSE excluded.account_status
-         END,
+         account_status = excluded.account_status,
          updated_at = excluded.updated_at`,
     ).bind(user.id, tenantId, nickname, desiredStatus, now),
     db.prepare(
@@ -131,6 +142,7 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
         display_name: profile.nickname,
         account_status: profile.account_status,
         auth_stage: profile.account_status === 'active' ? 'authenticated' : profile.account_status,
+        requires_password_setup: profile.account_status === 'pending_password_setup',
         ui_language: profile.ui_language,
         image: user.image ?? null,
         two_factor_enabled: user.twoFactorEnabled === true,
