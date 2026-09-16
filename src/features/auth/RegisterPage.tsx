@@ -76,16 +76,18 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
   const startOAuthRegistration = (provider: 'google' | 'github') => {
     const nativeComplete = nativeOAuthCompleteUrl(returnTo);
     const callbackURL = isNativeRuntime() ? nativeComplete : absoluteAppUrl(returnTo);
-    postSocialSignIn({
+    const fields: Record<string, string> = {
       provider,
       callbackURL,
       errorCallbackURL: absoluteAppUrl(`/register?return_to=${encodeURIComponent(returnTo)}`),
       newUserCallbackURL: isNativeRuntime()
         ? nativeComplete
         : absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
-      // Native OAuth の既存・検証済み Login deep-link 経路を再利用する。
-      native_callback: nativeCallback('/login'),
-    });
+    };
+    // Native OAuth の既存・検証済み Login deep-link 経路を再利用する。
+    const nativeCb = nativeCallback('/login');
+    if (nativeCb) fields.native_callback = nativeCb;
+    postSocialSignIn(fields);
   };
 
   return (

@@ -115,13 +115,15 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
   const startOAuth = (provider: 'google' | 'github') => {
     const nativeComplete = nativeOAuthCompleteUrl(returnTo);
     const callbackURL = isNativeRuntime() ? nativeComplete : absoluteAppUrl(returnTo);
-    postSocialSignIn({
+    const fields: Record<string, string> = {
       provider,
       callbackURL,
       errorCallbackURL: absoluteAppUrl(`/login?return_to=${encodeURIComponent(returnTo)}`),
       newUserCallbackURL: isNativeRuntime() ? nativeComplete : absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
-      native_callback: nativeCallback('/login'),
-    });
+    };
+    const nativeCb = nativeCallback('/login');
+    if (nativeCb) fields.native_callback = nativeCb;
+    postSocialSignIn(fields);
   };
 
   const registerPath = `/register?return_to=${encodeURIComponent(returnTo)}`;
