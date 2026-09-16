@@ -86,7 +86,6 @@ async function hasPasswordCredential(db: D1Database, userId: string): Promise<bo
 function desiredAccountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
   if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
   if (user.emailVerified === false) return 'pending_email_verification';
-  if (existing?.account_status === 'active') return 'active';
   return passwordConfigured ? 'active' : 'pending_password_setup';
 }
 
