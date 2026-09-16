@@ -20,7 +20,6 @@ export const PREVIEW_ACCOUNT_SESSION: AccountSessionProjection = {
 };
 
 const AccountSessionContext = createContext<AccountSessionProjection | null>(null);
-const UI_LANGUAGE_STORAGE_KEY = 'astera.ui.language';
 
 function accountLanguage(payload: unknown): 'ja' | 'en' | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
@@ -39,7 +38,7 @@ export function AccountSessionProvider({ value, children }: { value: AccountSess
   useEffect(() => {
     const language = accountLanguage(value.payload);
     if (!language) return;
-    localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, language);
+    localStorage.setItem('astera-language', language);
     document.documentElement.lang = language;
     document.documentElement.dir = 'ltr';
     if (i18n.resolvedLanguage !== language) void i18n.changeLanguage(language);
