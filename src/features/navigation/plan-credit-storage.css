@@ -112,6 +112,7 @@
   text-align: left;
   font: inherit;
   cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
 .plan-credit-storage-pack h3 {
