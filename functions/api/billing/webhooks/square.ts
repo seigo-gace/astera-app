@@ -4,6 +4,7 @@ import {
   requestCorrelationId,
   type AsteraFunctionEnv,
 } from "../../../_account-projection";
+import { handleStoragePaymentIfMatched } from "../../../_storage-square";
 import { verifySquareWebhook, type SquareEnv } from "../../../_square";
 
 type Env = AsteraFunctionEnv & SquareEnv;
@@ -91,6 +92,15 @@ async function handlePaymentEvent(
     .bind(orderId)
     .first<BillingIntentRow>();
   if (!intent) {
+    const storageStatus = await handleStoragePaymentIfMatched(env, {
+      eventId,
+      orderId,
+      paymentId,
+      status,
+      paidAmount,
+      paidCurrency,
+    });
+    if (storageStatus) return storageStatus;
     await updateEvent(env, eventId, "unmatched_order", null);
     return "unmatched_order";
   }
