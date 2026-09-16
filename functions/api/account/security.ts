@@ -8,7 +8,7 @@ import {
 
 type Context = { request: Request; env: AsteraFunctionEnv };
 
-type CredentialRow = { id: string; updatedAt: number | string };
+type CredentialRow = { id: string; password: string | null; updatedAt: number | string };
 type PasskeyRow = {
   id: string;
   name: string | null;
@@ -16,6 +16,7 @@ type PasskeyRow = {
   backedUp: number;
   transports: string | null;
   createdAt: number | string | null;
+  aaguid: string | null;
 };
 type TwoFactorRow = { id: string; verified: number; lockedUntil: number | string | null };
 type SessionRow = {
@@ -53,10 +54,10 @@ export async function onRequestGet(context: Context): Promise<Response> {
 
     const [credential, passkeysResult, twoFactor, sessionsResult] = await Promise.all([
       context.env.ASTERA_DB.prepare(
-        'SELECT id, "updatedAt" FROM "account" WHERE "userId"=?1 AND "providerId"=?2 LIMIT 1',
+        'SELECT id,password,"updatedAt" FROM "account" WHERE "userId"=?1 AND "providerId"=?2 AND password IS NOT NULL AND length(password) > 0 LIMIT 1',
       ).bind(userId, 'credential').first<CredentialRow>(),
       context.env.ASTERA_DB.prepare(
-        'SELECT id,name,"deviceType","backedUp",transports,"createdAt" FROM passkey WHERE "userId"=?1 ORDER BY "createdAt" DESC LIMIT 50',
+        'SELECT id,name,"deviceType","backedUp",transports,"createdAt",aaguid FROM passkey WHERE "userId"=?1 ORDER BY "createdAt" DESC LIMIT 50',
       ).bind(userId).all<PasskeyRow>(),
       context.env.ASTERA_DB.prepare(
         'SELECT id,verified,"lockedUntil" FROM "twoFactor" WHERE "userId"=?1 LIMIT 1',
@@ -73,6 +74,7 @@ export async function onRequestGet(context: Context): Promise<Response> {
       backed_up: Boolean(row.backedUp),
       transports: row.transports,
       created_at: timeValue(row.createdAt),
+      aaguid: row.aaguid,
     }));
 
     const currentSessionId = actor.session?.id?.trim() || '';
@@ -86,9 +88,6 @@ export async function onRequestGet(context: Context): Promise<Response> {
       user_agent: row.userAgent || (currentSessionId && row.id === currentSessionId ? currentUserAgent : null),
     }));
 
-    // Better Auth has already authenticated this request. Even if the session table query is
-    // temporarily empty or delayed, the current authenticated session must still be visible to
-    // the user instead of incorrectly showing "0 devices".
     if (currentSessionId && !sessions.some((session) => session.id === currentSessionId)) {
       sessions.unshift({
         id: currentSessionId,
@@ -102,7 +101,7 @@ export async function onRequestGet(context: Context): Promise<Response> {
 
     return Response.json({
       security: {
-        password_configured: Boolean(credential),
+        password_configured: Boolean(credential?.password),
         password_updated_at: timeValue(credential?.updatedAt),
         passkey_enabled: passkeys.length > 0,
         passkey_count: passkeys.length,
