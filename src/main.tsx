@@ -10,6 +10,7 @@ import './horizontal-stability.css';
 import './orientation-stability.css';
 import './platform/auth-responsive.css';
 import './features/developer/developer-layout-correction.css';
+import './platform/session-status-overrides.css';
 import { initializeDeviceCompatibility } from './device-compatibility';
 import { initializeNativeShell } from './native-shell';
 import { initializeRevisionCreditBridge } from './revision-credit-bridge';
