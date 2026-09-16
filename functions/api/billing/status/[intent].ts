@@ -30,6 +30,25 @@ type BillingIntentRow = {
   updated_at: string;
 };
 
+type StorageIntentRow = {
+  id: string;
+  tenant_id: string;
+  catalog_version: string;
+  product_id: string;
+  capacity_gb: number;
+  price_jpy: number;
+  status: string;
+  provider_checkout_id: string | null;
+  provider_order_id: string | null;
+  provider_payment_id: string | null;
+  checkout_url: string | null;
+  expires_at: string | null;
+  completed_at: string | null;
+  failure_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function onRequestGet(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
@@ -42,7 +61,41 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
               return_context_id, expires_at, completed_at, failure_code, created_at, updated_at
        FROM billing_intents WHERE id = ?1 AND tenant_id = ?2 LIMIT 1`,
     ).bind(intentId, actor.profile.tenant_id).first<BillingIntentRow>();
-    if (!intent) throw new FunctionHttpError(404, 'BILLING_INTENT_NOT_FOUND', 'Billing Intentが見つかりません。');
+
+    if (!intent) {
+      const storage = await context.env.ASTERA_DB.prepare(
+        `SELECT id, tenant_id, catalog_version, product_id, capacity_gb, price_jpy, status,
+                provider_checkout_id, provider_order_id, provider_payment_id, checkout_url,
+                expires_at, completed_at, failure_code, created_at, updated_at
+         FROM astera_storage_pack_intents WHERE id=?1 AND tenant_id=?2 LIMIT 1`,
+      ).bind(intentId, actor.profile.tenant_id).first<StorageIntentRow>();
+      if (!storage) throw new FunctionHttpError(404, 'BILLING_INTENT_NOT_FOUND', 'Billing Intentが見つかりません。');
+      const purchase = await context.env.ASTERA_DB.prepare(
+        `SELECT id, capacity_gb, purchased_at
+         FROM astera_storage_pack_purchases WHERE id=?1 AND tenant_id=?2 LIMIT 1`,
+      ).bind(intentId, actor.profile.tenant_id).first<{ id: string; capacity_gb: number; purchased_at: string }>();
+      return Response.json({
+        intent_id: storage.id,
+        status: storage.status,
+        product_kind: 'storage',
+        product_id: storage.product_id,
+        catalog_version: storage.catalog_version,
+        money: { amount: Number(storage.price_jpy), currency: 'JPY' },
+        capacity_gb: Number(storage.capacity_gb),
+        provider_checkout_id: storage.provider_checkout_id,
+        provider_order_id: storage.provider_order_id,
+        provider_payment_id: storage.provider_payment_id,
+        expires_at: storage.expires_at,
+        completed_at: storage.completed_at,
+        failure_code: storage.failure_code,
+        created_at: storage.created_at,
+        updated_at: storage.updated_at,
+        storage_capacity_posted: Boolean(purchase),
+        storage_purchase: purchase ?? null,
+        resume_mode: storage.status === 'completed' ? 'user_confirm' : 'wait_for_webhook',
+        return_to: '/app/plan-credit',
+      }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
+    }
 
     const grant = await context.env.ASTERA_DB.prepare(
       `SELECT transaction_id, amount, created_at
