@@ -58,25 +58,18 @@ function errorResponse(status: number, code: string, message: string, requestId:
   );
 }
 
-function accountStatus(user: SessionUser, credentialAccountExists: boolean): string {
+function accountStatus(user: SessionUser): string {
   if (user.emailVerified === false) return 'pending_email_verification';
-  if (!credentialAccountExists) return 'pending_password_setup';
+  // Password setup is a registration continuation, not a condition for every social login.
+  // Existing Google/GitHub accounts remain active even when they do not have a credential account.
   return 'active';
-}
-
-async function credentialAccountExists(db: D1Database, userId: string): Promise<boolean> {
-  const row = await db.prepare(
-    'SELECT id FROM account WHERE userId = ?1 AND providerId = ?2 LIMIT 1',
-  ).bind(userId, 'credential').first<{ id: string }>();
-  return Boolean(row?.id);
 }
 
 async function ensureAsteraAccount(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
   const now = new Date().toISOString();
   const tenantId = `personal:${user.id}`;
   const creditId = `credit:${tenantId}`;
-  const hasCredential = await credentialAccountExists(db, user.id);
-  const desiredStatus = accountStatus(user, hasCredential);
+  const desiredStatus = accountStatus(user);
   const nickname = user.name?.trim() || user.email.split('@')[0] || 'Astera User';
 
   await db.batch([
