@@ -37,62 +37,10 @@ function safeNonNegativeInteger(value: unknown, code: string): number {
 
 export async function activeStorageCatalogVersion(db: D1Database): Promise<string> {
   const row = await db.prepare(
-    `SELECT cv.version
-     FROM catalog_versions cv
-     WHERE cv.status='active'
-       AND EXISTS (
-         SELECT 1 FROM astera_storage_pack_catalog p
-         WHERE p.catalog_version=cv.version AND p.active=1
-       )
-     LIMIT 1`,
+    `SELECT version FROM catalog_versions WHERE status='active' LIMIT 1`,
   ).first<ActiveVersionRow>();
-  if (row?.version) return row.version;
-
-  const fallback = await db.prepare(
-    `SELECT catalog_version AS version
-     FROM astera_storage_pack_catalog
-     WHERE active=1
-     ORDER BY catalog_version DESC
-     LIMIT 1`,
-  ).first<ActiveVersionRow>();
-  if (!fallback?.version) {
-    throw new FunctionHttpError(503, 'STORAGE_CATALOG_NOT_PUBLISHED', 'Storage Catalogを確認できません。');
-  }
-  return fallback.version;
-}
-
-async function storageCatalogVersionForPlan(db: D1Database, planId: string): Promise<string> {
-  const row = await db.prepare(
-    `SELECT l.catalog_version AS version
-     FROM astera_storage_plan_limits l
-     JOIN catalog_versions cv ON cv.version=l.catalog_version
-     WHERE cv.status='active'
-       AND l.plan_id=?1
-       AND l.active=1
-       AND EXISTS (
-         SELECT 1 FROM astera_storage_pack_catalog p
-         WHERE p.catalog_version=l.catalog_version AND p.active=1
-       )
-     LIMIT 1`,
-  ).bind(planId).first<ActiveVersionRow>();
-  if (row?.version) return row.version;
-
-  const fallback = await db.prepare(
-    `SELECT l.catalog_version AS version
-     FROM astera_storage_plan_limits l
-     WHERE l.plan_id=?1
-       AND l.active=1
-       AND EXISTS (
-         SELECT 1 FROM astera_storage_pack_catalog p
-         WHERE p.catalog_version=l.catalog_version AND p.active=1
-       )
-     ORDER BY l.catalog_version DESC
-     LIMIT 1`,
-  ).bind(planId).first<ActiveVersionRow>();
-  if (!fallback?.version) {
-    throw new FunctionHttpError(503, 'STORAGE_CATALOG_NOT_PUBLISHED', 'Storage Catalogを確認できません。');
-  }
-  return fallback.version;
+  if (!row?.version) throw new FunctionHttpError(503, 'ACTIVE_CATALOG_NOT_PUBLISHED', 'Active Catalogを確認できません。');
+  return row.version;
 }
 
 export async function currentPlanId(db: D1Database, tenantId: string): Promise<string> {
@@ -105,8 +53,8 @@ export async function currentPlanId(db: D1Database, tenantId: string): Promise<s
 
 export async function loadStorageCommerceProjection(db: D1Database, tenantId: string): Promise<StorageCommerceProjection> {
   try {
+    const catalogVersion = await activeStorageCatalogVersion(db);
     const planId = await currentPlanId(db, tenantId);
-    const catalogVersion = await storageCatalogVersionForPlan(db, planId);
     const [limit, legacy, purchased, packResult] = await Promise.all([
       db.prepare(
         `SELECT max_capacity_gb FROM astera_storage_plan_limits
