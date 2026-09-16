@@ -67,6 +67,15 @@ type StoragePurchaseState =
   | { status: 'working'; productId: string }
   | { status: 'error'; message: string };
 
+function storagePackFallbacks(language: 'ja' | 'en'): StoragePack[] {
+  const fullWidthPlus = language === 'ja' ? '＋' : '+';
+  return [
+    { productId: 'storage_1gb', displayName: `${fullWidthPlus}1GB`, capacityGb: 1, priceJpy: 480, canPurchase: false },
+    { productId: 'storage_10gb', displayName: `${fullWidthPlus}10GB`, capacityGb: 10, priceJpy: 1980, canPurchase: false },
+    { productId: 'storage_50gb', displayName: `${fullWidthPlus}50GB`, capacityGb: 50, priceJpy: 5980, canPurchase: false },
+  ];
+}
+
 function normalizePlanId(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -334,7 +343,7 @@ function SimpleGrid({ title, items, defaultCreditLabel, description }: {
 function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; previewMode: boolean }) {
   const copy = language === 'ja' ? {
     title: '追加ストレージ',
-    description: '買い切りで容量を追加します。購入容量は合算され、現在プランの上限まで増やせます。',
+    description: '何度でも購入でき合算されます。',
     loading: 'Storage容量を確認しています…',
     usage: '使用量',
     currentMax: '現在のMaxストレージ',
@@ -346,7 +355,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     purchaseError: 'Storage Checkoutを開始できませんでした。',
   } : {
     title: 'Additional Storage',
-    description: 'Add storage with one-time purchases. Purchased capacity accumulates up to your current plan limit.',
+    description: 'Purchase as many times as needed; capacities are combined.',
     loading: 'Loading storage capacity…',
     usage: 'Used',
     currentMax: 'Current max storage',
@@ -357,6 +366,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     planExceeded: 'Current capacity exceeds the plan limit. New writes and purchases are suspended.',
     purchaseError: 'Could not start Storage Checkout.',
   };
+  const fallbackPacks = storagePackFallbacks(language);
   const [load, setLoad] = useState<StorageLoadState>({ status: 'loading' });
   const [purchase, setPurchase] = useState<StoragePurchaseState>({ status: 'idle' });
 
@@ -367,7 +377,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
         data: {
           planId: 'free', planMaxCapacityGb: 0, currentCapacityGb: 0, remainingPurchaseCapacityGb: 0,
           usedBytes: 0, remainingBytes: 0, state: 'inactive', writeAllowed: false, overPlanLimit: false,
-          packs: [],
+          packs: fallbackPacks,
         },
       });
       return;
@@ -382,10 +392,12 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     reload();
     // language changes only alter labels; the server projection is language-neutral.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewMode]);
+  }, [previewMode, language]);
 
   const startPurchase = async (productId: string) => {
-    if (previewMode || purchase.status === 'working') return;
+    if (previewMode || load.status !== 'ready' || purchase.status === 'working') return;
+    const pack = load.data.packs.find((item) => item.productId === productId);
+    if (!pack?.canPurchase) return;
     setPurchase({ status: 'working', productId });
     try {
       const payload = await apiRequest('/api/storage/checkout-intents', {
@@ -401,18 +413,23 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     }
   };
 
+  const displayPacks = load.status === 'ready' && load.data.packs.length > 0 ? load.data.packs : fallbackPacks;
+
   return (
     <section className="plan-credit-section plan-credit-storage-section">
       <h2>{copy.title}</h2>
       <p className="plan-credit-section-description">{copy.description}</p>
-      {load.status === 'loading' ? (
+
+      {load.status === 'loading' && (
         <div className="plan-credit-storage-status">{copy.loading}</div>
-      ) : load.status === 'error' ? (
+      )}
+      {load.status === 'error' && (
         <div className="plan-credit-storage-status is-error">
           <span>{load.message}</span>
           <button type="button" onClick={reload}>再試行</button>
         </div>
-      ) : (
+      )}
+      {load.status === 'ready' && (
         <>
           <div className="plan-credit-storage-overview">
             <div className="plan-credit-storage-metrics">
@@ -435,29 +452,29 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
 
           {load.data.planMaxCapacityGb <= 0 && <div className="plan-credit-storage-status">{copy.unavailable}</div>}
           {load.data.overPlanLimit && <div className="plan-credit-storage-status is-error">{copy.planExceeded}</div>}
-
-          <div className="plan-credit-storage-pack-grid">
-            {load.data.packs.map((pack) => {
-              const working = purchase.status === 'working' && purchase.productId === pack.productId;
-              const disabled = !pack.canPurchase || purchase.status === 'working';
-              return (
-                <button
-                  type="button"
-                  className="plan-credit-storage-pack"
-                  key={pack.productId}
-                  disabled={disabled}
-                  onClick={() => startPurchase(pack.productId)}
-                >
-                  <span className="plan-credit-storage-pack-size">{pack.displayName}</span>
-                  <strong>¥{pack.priceJpy.toLocaleString('ja-JP')}</strong>
-                  <small>{working ? 'Checkout…' : `${copy.add} → ${storageCapacityLabel(load.data.currentCapacityGb + pack.capacityGb)}`}</small>
-                </button>
-              );
-            })}
-          </div>
-          {purchase.status === 'error' && <div className="plan-credit-storage-status is-error">{purchase.message}</div>}
         </>
       )}
+
+      <div className="plan-credit-storage-pack-grid" aria-label={copy.title}>
+        {displayPacks.map((pack) => {
+          const working = purchase.status === 'working' && purchase.productId === pack.productId;
+          const disabled = load.status !== 'ready' || !pack.canPurchase || purchase.status === 'working';
+          return (
+            <button
+              type="button"
+              className="plan-credit-card is-credit plan-credit-storage-pack"
+              key={pack.productId}
+              disabled={disabled}
+              aria-label={`${pack.displayName} ¥${pack.priceJpy.toLocaleString('ja-JP')}${pack.canPurchase ? ` ${copy.add}` : ''}`}
+              onClick={() => startPurchase(pack.productId)}
+            >
+              <h3>{pack.displayName}</h3>
+              <div className="plan-credit-price">{working ? 'Checkout…' : `¥${pack.priceJpy.toLocaleString('ja-JP')}`}</div>
+            </button>
+          );
+        })}
+      </div>
+      {purchase.status === 'error' && <div className="plan-credit-storage-status is-error">{purchase.message}</div>}
     </section>
   );
 }
