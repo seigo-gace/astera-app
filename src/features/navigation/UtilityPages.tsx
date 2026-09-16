@@ -36,6 +36,37 @@ type SubscriptionProjection = {
   hasLiveSubscription: boolean;
 };
 
+type StoragePack = {
+  productId: string;
+  displayName: string;
+  capacityGb: number;
+  priceJpy: number;
+  canPurchase: boolean;
+};
+
+type StorageProjection = {
+  planId: string;
+  planMaxCapacityGb: number;
+  currentCapacityGb: number;
+  remainingPurchaseCapacityGb: number;
+  usedBytes: number;
+  remainingBytes: number;
+  state: string;
+  writeAllowed: boolean;
+  overPlanLimit: boolean;
+  packs: StoragePack[];
+};
+
+type StorageLoadState =
+  | { status: 'loading' }
+  | { status: 'ready'; data: StorageProjection }
+  | { status: 'error'; message: string };
+
+type StoragePurchaseState =
+  | { status: 'idle' }
+  | { status: 'working'; productId: string }
+  | { status: 'error'; message: string };
+
 function normalizePlanId(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -57,6 +88,66 @@ function subscriptionFromPayload(payload: unknown): SubscriptionProjection {
     billingCycle,
     hasLiveSubscription: Boolean(providerSubscriptionId) && !['none', 'cancelled', 'failed'].includes(status),
   };
+}
+
+function numeric(record: Record<string, unknown>, keys: string[], fallback = 0): number {
+  for (const key of keys) {
+    const value = record[key];
+    const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN;
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function storageFromPayload(payload: unknown): StorageProjection {
+  const root = asRecord(payload);
+  const usage = asRecord(root.usage);
+  const packsRaw = Array.isArray(root.packs) ? root.packs : [];
+  const packs = packsRaw.map(asRecord).map((pack) => ({
+    productId: recordText(pack, ['product_id', 'productId']),
+    displayName: recordText(pack, ['display_name', 'displayName'], 'Storage'),
+    capacityGb: numeric(pack, ['capacity_gb', 'capacityGb']),
+    priceJpy: numeric(pack, ['price_jpy', 'priceJpy']),
+    canPurchase: pack.can_purchase === true || pack.canPurchase === true,
+  })).filter((pack) => pack.productId && pack.capacityGb > 0 && pack.priceJpy > 0);
+  return {
+    planId: normalizePlanId(recordText(root, ['plan_id', 'planId'], 'free')),
+    planMaxCapacityGb: numeric(root, ['plan_max_capacity_gb', 'planMaxCapacityGb']),
+    currentCapacityGb: numeric(root, ['current_capacity_gb', 'currentCapacityGb']),
+    remainingPurchaseCapacityGb: numeric(root, ['remaining_purchase_capacity_gb', 'remainingPurchaseCapacityGb']),
+    usedBytes: numeric(usage, ['used_bytes', 'usedBytes']),
+    remainingBytes: numeric(usage, ['remaining_bytes', 'remainingBytes']),
+    state: recordText(root, ['state'], 'inactive'),
+    writeAllowed: root.write_allowed === true || root.writeAllowed === true,
+    overPlanLimit: root.over_plan_limit === true || root.overPlanLimit === true,
+    packs,
+  };
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const gib = bytes / (1024 ** 3);
+  if (gib >= 1) return `${gib >= 100 ? gib.toFixed(0) : gib.toFixed(2).replace(/\.00$/, '')} GB`;
+  const mib = bytes / (1024 ** 2);
+  if (mib >= 1) return `${mib.toFixed(mib >= 100 ? 0 : 1).replace(/\.0$/, '')} MB`;
+  const kib = bytes / 1024;
+  return `${kib.toFixed(kib >= 100 ? 0 : 1).replace(/\.0$/, '')} KB`;
+}
+
+function storageCapacityLabel(capacityGb: number): string {
+  if (capacityGb >= 1000) return `${capacityGb / 1000} TB`;
+  return `${capacityGb} GB`;
+}
+
+function allowedCheckoutUrl(value: string): boolean {
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.toLowerCase();
+    return host === 'square.link' || host.endsWith('.square.site') || host.endsWith('.squareup.com');
+  } catch {
+    return false;
+  }
 }
 
 function PlanGrid({
@@ -240,6 +331,137 @@ function SimpleGrid({ title, items, defaultCreditLabel, description }: {
   );
 }
 
+function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; previewMode: boolean }) {
+  const copy = language === 'ja' ? {
+    title: '追加ストレージ',
+    description: '買い切りで容量を追加します。購入容量は合算され、現在プランの上限まで増やせます。',
+    loading: 'Storage容量を確認しています…',
+    usage: '使用量',
+    currentMax: '現在のMaxストレージ',
+    planLimit: 'プラン上限',
+    remaining: '空き',
+    add: '追加する',
+    unavailable: '現在のプランではAstera Storageを追加できません。',
+    planExceeded: '現在の契約容量がプラン上限を超えているため、新規保存と追加購入を停止しています。',
+    purchaseError: 'Storage Checkoutを開始できませんでした。',
+  } : {
+    title: 'Additional Storage',
+    description: 'Add storage with one-time purchases. Purchased capacity accumulates up to your current plan limit.',
+    loading: 'Loading storage capacity…',
+    usage: 'Used',
+    currentMax: 'Current max storage',
+    planLimit: 'Plan limit',
+    remaining: 'Available',
+    add: 'Add',
+    unavailable: 'Astera Storage is not available on the current plan.',
+    planExceeded: 'Current capacity exceeds the plan limit. New writes and purchases are suspended.',
+    purchaseError: 'Could not start Storage Checkout.',
+  };
+  const [load, setLoad] = useState<StorageLoadState>({ status: 'loading' });
+  const [purchase, setPurchase] = useState<StoragePurchaseState>({ status: 'idle' });
+
+  const reload = () => {
+    if (previewMode) {
+      setLoad({
+        status: 'ready',
+        data: {
+          planId: 'free', planMaxCapacityGb: 0, currentCapacityGb: 0, remainingPurchaseCapacityGb: 0,
+          usedBytes: 0, remainingBytes: 0, state: 'inactive', writeAllowed: false, overPlanLimit: false,
+          packs: [],
+        },
+      });
+      return;
+    }
+    setLoad({ status: 'loading' });
+    apiRequest('/api/storage/catalog')
+      .then((payload) => setLoad({ status: 'ready', data: storageFromPayload(payload) }))
+      .catch((error: unknown) => setLoad({ status: 'error', message: error instanceof Error ? error.message : copy.purchaseError }));
+  };
+
+  useEffect(() => {
+    reload();
+    // language changes only alter labels; the server projection is language-neutral.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewMode]);
+
+  const startPurchase = async (productId: string) => {
+    if (previewMode || purchase.status === 'working') return;
+    setPurchase({ status: 'working', productId });
+    try {
+      const payload = await apiRequest('/api/storage/checkout-intents', {
+        method: 'POST',
+        body: { product_id: productId },
+        idempotent: true,
+      });
+      const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']);
+      if (!url || !allowedCheckoutUrl(url)) throw new Error('許可されたSquare Checkout URLを確認できません。');
+      window.location.assign(url);
+    } catch (error) {
+      setPurchase({ status: 'error', message: error instanceof Error ? error.message : copy.purchaseError });
+    }
+  };
+
+  return (
+    <section className="plan-credit-section plan-credit-storage-section">
+      <h2>{copy.title}</h2>
+      <p className="plan-credit-section-description">{copy.description}</p>
+      {load.status === 'loading' ? (
+        <div className="plan-credit-storage-status">{copy.loading}</div>
+      ) : load.status === 'error' ? (
+        <div className="plan-credit-storage-status is-error">
+          <span>{load.message}</span>
+          <button type="button" onClick={reload}>再試行</button>
+        </div>
+      ) : (
+        <>
+          <div className="plan-credit-storage-overview">
+            <div className="plan-credit-storage-metrics">
+              <div><span>{copy.usage}</span><strong>{formatBytes(load.data.usedBytes)}</strong></div>
+              <div><span>{copy.currentMax}</span><strong>{storageCapacityLabel(load.data.currentCapacityGb)}</strong></div>
+              <div><span>{copy.planLimit}</span><strong>{storageCapacityLabel(load.data.planMaxCapacityGb)}</strong></div>
+            </div>
+            <div
+              className="plan-credit-storage-gauge"
+              role="progressbar"
+              aria-label={`${copy.usage} ${formatBytes(load.data.usedBytes)}`}
+              aria-valuemin={0}
+              aria-valuemax={Math.max(1, load.data.currentCapacityGb * 1024 ** 3)}
+              aria-valuenow={Math.min(load.data.usedBytes, Math.max(1, load.data.currentCapacityGb * 1024 ** 3))}
+            >
+              <span style={{ width: `${load.data.currentCapacityGb > 0 ? Math.min(100, (load.data.usedBytes / (load.data.currentCapacityGb * 1024 ** 3)) * 100) : 0}%` }} />
+            </div>
+            <div className="plan-credit-storage-remaining">{copy.remaining}: {formatBytes(load.data.remainingBytes)}</div>
+          </div>
+
+          {load.data.planMaxCapacityGb <= 0 && <div className="plan-credit-storage-status">{copy.unavailable}</div>}
+          {load.data.overPlanLimit && <div className="plan-credit-storage-status is-error">{copy.planExceeded}</div>}
+
+          <div className="plan-credit-storage-pack-grid">
+            {load.data.packs.map((pack) => {
+              const working = purchase.status === 'working' && purchase.productId === pack.productId;
+              const disabled = !pack.canPurchase || purchase.status === 'working';
+              return (
+                <button
+                  type="button"
+                  className="plan-credit-storage-pack"
+                  key={pack.productId}
+                  disabled={disabled}
+                  onClick={() => startPurchase(pack.productId)}
+                >
+                  <span className="plan-credit-storage-pack-size">{pack.displayName}</span>
+                  <strong>¥{pack.priceJpy.toLocaleString('ja-JP')}</strong>
+                  <small>{working ? 'Checkout…' : `${copy.add} → ${storageCapacityLabel(load.data.currentCapacityGb + pack.capacityGb)}`}</small>
+                </button>
+              );
+            })}
+          </div>
+          {purchase.status === 'error' && <div className="plan-credit-storage-status is-error">{purchase.message}</div>}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function PlanCreditPage({ route }: { route: RouteMatch }) {
   const { language } = useAppText();
   const session = useVerifiedAccountSession();
@@ -304,11 +526,7 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           items={pageText.credits}
           defaultCreditLabel={pageText.grantedCredit}
         />
-        <SimpleGrid
-          title={pageText.storageSectionTitle}
-          items={pageText.storage}
-          description={pageText.storageSectionDescription}
-        />
+        <StorageSection language={language} previewMode={previewMode} />
       </div>
     </ResponsivePageShell>
   );
