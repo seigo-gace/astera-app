@@ -26,8 +26,18 @@ type SessionRow = {
   userAgent: string | null;
 };
 
-function timeValue(value: number | string | null | undefined): string | null {
+type SessionProjection = {
+  id: string;
+  current: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  expires_at: string | null;
+  user_agent: string | null;
+};
+
+function timeValue(value: number | string | Date | null | undefined): string | null {
   if (value === null || value === undefined) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   const numeric = typeof value === 'number' ? value : Number(value);
   const date = Number.isFinite(numeric)
     ? new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric)
@@ -64,14 +74,31 @@ export async function onRequestGet(context: Context): Promise<Response> {
       transports: row.transports,
       created_at: timeValue(row.createdAt),
     }));
-    const sessions = (sessionsResult.results ?? []).map((row) => ({
+
+    const currentSessionId = actor.session?.id?.trim() || '';
+    const currentUserAgent = context.request.headers.get('User-Agent')?.trim() || null;
+    const sessions: SessionProjection[] = (sessionsResult.results ?? []).map((row) => ({
       id: row.id,
-      current: row.id === actor.session?.id,
+      current: Boolean(currentSessionId && row.id === currentSessionId),
       created_at: timeValue(row.createdAt),
       updated_at: timeValue(row.updatedAt),
       expires_at: timeValue(row.expiresAt),
-      user_agent: row.userAgent,
+      user_agent: row.userAgent || (currentSessionId && row.id === currentSessionId ? currentUserAgent : null),
     }));
+
+    // Better Auth has already authenticated this request. Even if the session table query is
+    // temporarily empty or delayed, the current authenticated session must still be visible to
+    // the user instead of incorrectly showing "0 devices".
+    if (currentSessionId && !sessions.some((session) => session.id === currentSessionId)) {
+      sessions.unshift({
+        id: currentSessionId,
+        current: true,
+        created_at: timeValue(actor.session?.createdAt),
+        updated_at: timeValue(actor.session?.updatedAt) ?? new Date().toISOString(),
+        expires_at: timeValue(actor.session?.expiresAt),
+        user_agent: currentUserAgent,
+      });
+    }
 
     return Response.json({
       security: {
