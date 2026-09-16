@@ -1,5 +1,29 @@
-/* Login / registration layout authority.
-   Loaded after generic stability CSS so auth screens keep deliberate widths. */
+/* Authentication layout authority.
+   Loaded after generic stability CSS so every AuthCard keeps deliberate widths. */
+
+.platform-auth-card,
+.platform-auth-card .platform-form,
+.platform-auth-card .platform-field,
+.platform-auth-card .platform-stack-actions {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.platform-auth-card .platform-field input,
+.platform-auth-card .platform-field select,
+.platform-auth-card .platform-field textarea,
+.platform-auth-card .platform-button {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.platform-auth-card .platform-field input[type="password"] {
+  display: block;
+}
 
 html[data-route-path="/login"] .platform-public-page,
 html[data-route-path="/register"] .platform-public-page {
@@ -174,11 +198,11 @@ html[data-route-path="/register"] .platform-auth-card footer {
     border-radius: 14px;
   }
 
-  html[data-route-path="/login"] .platform-field input,
-  html[data-route-path="/register"] .platform-field input,
-  html[data-route-path="/login"] .platform-button,
-  html[data-route-path="/register"] .platform-button {
+  .platform-auth-card .platform-field input,
+  .platform-auth-card .platform-field select,
+  .platform-auth-card .platform-button {
     min-height: 48px;
+    font-size: 16px;
   }
 
   html[data-route-path="/login"] .platform-divider,
