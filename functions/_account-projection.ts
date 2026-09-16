@@ -75,9 +75,9 @@ export class FunctionHttpError extends Error {
 
 const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 
-function desiredAccountStatus(user: SessionUser, hasSignInAccount: boolean): string {
+function desiredAccountStatus(user: SessionUser, hasCredentialAccount: boolean): string {
   if (user.emailVerified === false) return 'pending_email_verification';
-  if (hasSignInAccount) return 'active';
+  if (hasCredentialAccount) return 'active';
   return 'pending_password_setup';
 }
 
@@ -88,23 +88,11 @@ async function hasCredentialAccount(db: D1Database, userId: string): Promise<boo
   return Boolean(row?.id);
 }
 
-async function hasSocialSignInAccount(db: D1Database, userId: string): Promise<boolean> {
-  const row = await db.prepare(
-    'SELECT id FROM "account" WHERE "userId" = ?1 AND "providerId" IN (\'google\', \'github\') LIMIT 1',
-  ).bind(userId).first<{ id: string }>();
-  return Boolean(row?.id);
-}
-
-async function hasSignInAccount(db: D1Database, userId: string): Promise<boolean> {
-  if (await hasCredentialAccount(db, userId)) return true;
-  return hasSocialSignInAccount(db, userId);
-}
-
 async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
   const now = new Date().toISOString();
   const tenantId = `personal:${user.id}`;
   const creditId = `credit:${tenantId}`;
-  const accountStatus = desiredAccountStatus(user, await hasSignInAccount(db, user.id));
+  const accountStatus = desiredAccountStatus(user, await hasCredentialAccount(db, user.id));
   const nickname = user.name?.trim() || user.email.split('@')[0] || 'Astera User';
 
   await db.batch([

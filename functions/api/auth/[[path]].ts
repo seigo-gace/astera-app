@@ -44,6 +44,50 @@ function normalizedPath(request: Request): string {
   return new URL(request.url).pathname.replace(/\/+$/, '') || '/';
 }
 
+const OAUTH_CALLBACK_PATHS = new Set([
+  '/api/auth/callback/google',
+  '/api/auth/callback/github',
+]);
+
+function isOAuthCallbackPath(pathname: string): boolean {
+  return OAUTH_CALLBACK_PATHS.has(pathname);
+}
+
+function locationDiagFields(response: Response, requestUrl: string): { location_pathname: string | null; location_error: string | null } {
+  const location = response.headers.get('location');
+  if (!location) return { location_pathname: null, location_error: null };
+  try {
+    const locUrl = new URL(location, requestUrl);
+    return {
+      location_pathname: locUrl.pathname,
+      location_error: locUrl.searchParams.get('error'),
+    };
+  } catch {
+    return { location_pathname: null, location_error: null };
+  }
+}
+
+function logOAuthCallbackDiag(request: Request, pathname: string, phase: 'before' | 'after', response?: Response): void {
+  const url = new URL(request.url);
+  const providerError = url.searchParams.get('error');
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const payload: Record<string, unknown> = {
+    phase,
+    pathname,
+    method: request.method,
+    has_code: url.searchParams.has('code'),
+    has_state: url.searchParams.has('state'),
+    has_provider_error: providerError !== null,
+    provider_error: providerError,
+    cookie_present: cookieHeader.length > 0,
+  };
+  if (phase === 'after' && response) {
+    payload.response_status = response.status;
+    Object.assign(payload, locationDiagFields(response, request.url));
+  }
+  console.log(`ASTERA_OAUTH_CALLBACK_DIAG ${JSON.stringify(payload)}`);
+}
+
 function freshError(status: number, code: string, message: string, correlationId: string): Response {
   return Response.json({
     error: {
@@ -176,7 +220,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const freshnessFailure = await enforceFreshSession(context.request, auth, correlationId);
     if (freshnessFailure) return freshnessFailure;
 
+    if (isOAuthCallbackPath(pathname)) {
+      logOAuthCallbackDiag(context.request, pathname, 'before');
+    }
     const response = await auth.handler(context.request);
+    if (isOAuthCallbackPath(pathname)) {
+      logOAuthCallbackDiag(context.request, pathname, 'after', response);
+    }
     await recordAuthSecurityEvent(context.request, context.env, response, pathname, correlationId, sessionBefore);
     return response;
   } catch (error) {
