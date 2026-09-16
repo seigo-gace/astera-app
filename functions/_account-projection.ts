@@ -75,24 +75,18 @@ export class FunctionHttpError extends Error {
 
 const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 
-function desiredAccountStatus(user: SessionUser, credentialAccountExists: boolean): string {
+function desiredAccountStatus(user: SessionUser): string {
   if (user.emailVerified === false) return 'pending_email_verification';
-  if (!credentialAccountExists) return 'pending_password_setup';
+  // Social-provider login is a valid existing account session by itself.
+  // Password setup is enforced only by the new-user registration continuation.
   return 'active';
-}
-
-async function hasCredentialAccount(db: D1Database, userId: string): Promise<boolean> {
-  const row = await db.prepare(
-    'SELECT id FROM "account" WHERE "userId" = ?1 AND "providerId" = ?2 LIMIT 1',
-  ).bind(userId, 'credential').first<{ id: string }>();
-  return Boolean(row?.id);
 }
 
 async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
   const now = new Date().toISOString();
   const tenantId = `personal:${user.id}`;
   const creditId = `credit:${tenantId}`;
-  const accountStatus = desiredAccountStatus(user, await hasCredentialAccount(db, user.id));
+  const accountStatus = desiredAccountStatus(user);
   const nickname = user.name?.trim() || user.email.split('@')[0] || 'Astera User';
 
   await db.batch([
