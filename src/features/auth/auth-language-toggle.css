@@ -1,8 +1,7 @@
 .auth-language-toggle {
-  position: fixed;
-  top: calc(var(--safe-top) + 14px);
-  right: max(20px, calc((100vw - 960px) / 2), var(--safe-right));
-  z-index: 120;
+  margin-left: auto;
+  position: relative;
+  z-index: 2;
   display: inline-grid;
   grid-template-columns: 1fr 1fr;
   align-items: center;
@@ -11,9 +10,14 @@
   border-radius: 999px;
   background: var(--platform-surface);
   box-shadow: 0 6px 20px var(--platform-shadow-color);
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .auth-language-toggle button {
+  position: relative;
+  z-index: 1;
   min-width: 76px;
   min-height: 36px;
   padding: 0 12px;
@@ -22,6 +26,8 @@
   background: transparent;
   color: var(--platform-muted);
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
   font: inherit;
   font-size: 12px;
   line-height: 1;
@@ -44,18 +50,7 @@
   box-shadow: inset 0 0 0 1px var(--platform-border);
 }
 
-@media (min-width: 761px) and (max-width: 1100px) {
-  .auth-language-toggle {
-    right: max(22px, calc((100vw - 760px) / 2), var(--safe-right));
-  }
-}
-
 @media (max-width: 760px) {
-  .auth-language-toggle {
-    top: calc(var(--safe-top) + 10px);
-    right: max(12px, var(--safe-right));
-  }
-
   .auth-language-toggle button {
     min-width: 62px;
     min-height: 38px;
