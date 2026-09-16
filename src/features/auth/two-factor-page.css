@@ -1,0 +1,325 @@
+html[data-route-path="/auth/2fa"] .platform-public-page {
+  min-height: 100dvh;
+  padding: calc(14px + var(--safe-top)) max(20px, var(--safe-right)) calc(28px + var(--safe-bottom)) max(20px, var(--safe-left));
+}
+
+html[data-route-path="/auth/2fa"] .platform-public-header {
+  width: 100%;
+  max-width: 920px;
+  min-height: 52px;
+}
+
+html[data-route-path="/auth/2fa"] .platform-public-hero {
+  width: min(720px, 100%);
+  max-width: 720px;
+  margin: 28px auto 16px;
+}
+
+html[data-route-path="/auth/2fa"] .platform-public-hero .platform-eyebrow {
+  display: none;
+}
+
+html[data-route-path="/auth/2fa"] .platform-public-hero h1 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 999px;
+  background: var(--platform-bg, var(--bg-primary));
+  color: var(--platform-text, var(--text-primary));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 30px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+html[data-route-path="/auth/2fa"] .platform-public-hero p {
+  max-width: 640px;
+  margin: 10px 0 0;
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+html[data-route-path="/auth/2fa"] .platform-public-content {
+  width: min(720px, 100%);
+  max-width: 720px;
+  min-width: 0;
+}
+
+html[data-route-path="/auth/2fa"] .platform-auth-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 22px;
+  box-sizing: border-box;
+}
+
+.two-factor-page {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.two-factor-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.two-factor-section + .two-factor-section {
+  padding-top: 18px;
+  border-top: 1px solid var(--platform-border, var(--border-color));
+}
+
+.two-factor-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 999px;
+  background: var(--platform-bg, var(--bg-primary));
+  color: var(--platform-text, var(--text-primary));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 28px;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+
+.two-factor-section-copy {
+  margin: 0;
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.two-factor-method-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.two-factor-method {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 14px 15px;
+  box-sizing: border-box;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 12px;
+  background: var(--platform-bg, var(--bg-primary));
+  color: var(--platform-text, var(--text-primary));
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.two-factor-method.is-selected {
+  border-color: var(--platform-text, var(--text-primary));
+}
+
+.two-factor-method:focus-visible {
+  outline: 2px solid var(--platform-text, var(--text-primary));
+  outline-offset: 3px;
+}
+
+.two-factor-method-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.two-factor-method-copy strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.two-factor-method-copy small {
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.two-factor-method-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.two-factor-method.is-selected .two-factor-method-state::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--platform-text, var(--text-primary));
+}
+
+.two-factor-action-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 12px;
+  background: var(--platform-bg, var(--bg-primary));
+}
+
+.two-factor-action-panel .platform-form {
+  margin: 0;
+}
+
+.two-factor-action-panel .platform-field input,
+.two-factor-action-panel .platform-button {
+  min-height: 44px;
+}
+
+.two-factor-email-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.two-factor-email-actions p {
+  margin: 0;
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.two-factor-email-actions .platform-button {
+  white-space: nowrap;
+}
+
+.two-factor-recovery-toggle {
+  width: 100%;
+}
+
+.two-factor-recovery-form {
+  margin-top: 0 !important;
+}
+
+.two-factor-page .platform-form-result {
+  margin: 0;
+}
+
+/* Tablet: 761px - 1100px */
+@media (min-width: 761px) and (max-width: 1100px) {
+  html[data-route-path="/auth/2fa"] .platform-public-page {
+    padding-inline: max(24px, var(--safe-left));
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-public-hero,
+  html[data-route-path="/auth/2fa"] .platform-public-content {
+    width: min(680px, 100%);
+    max-width: 680px;
+  }
+
+  .two-factor-method-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Smartphone: <= 760px */
+@media (max-width: 760px) {
+  html[data-route-path="/auth/2fa"] .platform-public-page {
+    padding: calc(8px + var(--safe-top)) max(12px, var(--safe-right)) calc(18px + var(--safe-bottom)) max(12px, var(--safe-left));
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-public-header {
+    min-height: 48px;
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-public-hero {
+    width: 100%;
+    margin: 12px auto 14px;
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-public-hero h1,
+  .two-factor-pill {
+    min-height: 30px;
+    padding-inline: 12px;
+    font-size: 11px;
+    line-height: 28px;
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-public-hero p,
+  .two-factor-section-copy {
+    font-size: 12px;
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-public-content {
+    width: 100%;
+    max-width: 560px;
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-auth-card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .two-factor-page {
+    gap: 16px;
+  }
+
+  .two-factor-method-grid,
+  .two-factor-email-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .two-factor-method {
+    min-height: 80px;
+  }
+
+  .two-factor-action-panel {
+    padding: 13px;
+  }
+
+  .two-factor-action-panel .platform-field input,
+  .two-factor-action-panel .platform-button,
+  .two-factor-method {
+    min-height: 48px;
+  }
+
+  .two-factor-action-panel .platform-field input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  html[data-route-path="/auth/2fa"] .platform-public-page {
+    padding-inline: max(10px, var(--safe-left));
+  }
+
+  html[data-route-path="/auth/2fa"] .platform-auth-card {
+    padding: 14px 12px;
+  }
+
+  .two-factor-method {
+    grid-template-columns: minmax(0, 1fr) 18px;
+    padding: 13px;
+  }
+}
