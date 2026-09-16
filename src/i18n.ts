@@ -6,9 +6,13 @@ void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
+    // Astera's visible copy lives in the existing Text lists (APP_TEXT,
+    // PLATFORM_TEXT, etc.). Keep one internal marker per supported language so
+    // i18next can resolve `resolvedLanguage` correctly when those external
+    // Text lists switch between Japanese and English.
     resources: {
-      ja: { translation: {} },
-      en: { translation: {} },
+      ja: { translation: { __asteraLanguage: 'ja' } },
+      en: { translation: { __asteraLanguage: 'en' } },
     },
     fallbackLng: 'ja',
     supportedLngs: ['ja', 'en'],
