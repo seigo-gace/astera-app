@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
-import { authClient, authErrorMessage } from '../../platform/auth-client';
+import { authClient, authErrorCode } from '../../platform/auth-client';
+import { authDisplayError } from '../../platform/auth-display-error';
 import { isNativeRuntime, nativeCallback } from '../../platform/external-navigation';
+import { usePlatformText } from '../../platform/platform-text';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
@@ -51,6 +53,7 @@ function continuation(payload: unknown, returnTo: string): string {
 }
 
 export default function LoginPage({ route }: { route: RouteMatch }) {
+  const { text } = usePlatformText();
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
   const nativeExchange = queryValue('exchange');
@@ -61,11 +64,15 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
     void (async () => {
       const payload = await submitForm('/api/auth/native/session-exchange', {
         exchange_token: nativeExchange,
-      }, setState, { success: 'Native Sessionを確立しました。', idempotent: true });
+      }, setState, {
+        success: text('authNativeSessionSuccess'),
+        errorMessage: (error) => authDisplayError(error, text, 'authNativeSessionFailed'),
+        idempotent: true,
+      });
       if (active && payload) safeNavigate(continuation(payload, returnTo));
     })();
     return () => { active = false; };
-  }, [nativeExchange, returnTo]);
+  }, [nativeExchange, returnTo, text]);
 
   const signInEmail = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -75,7 +82,10 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
       password: textValue(data.get('password')),
       rememberMe: true,
       callbackURL: absoluteAppUrl(returnTo),
-    }, setState, { success: 'Loginしました。' });
+    }, setState, {
+      success: text('authLoginSuccess'),
+      errorMessage: (error) => authDisplayError(error, text, 'authLoginFailed'),
+    });
     if (payload) safeNavigate(continuation(payload, returnTo));
   };
 
@@ -84,13 +94,21 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
     try {
       const response = await authClient.signIn.passkey({ autoFill: false });
       if (response.error) {
-        setState({ type: 'error', message: authErrorMessage(response.error, 'Passkey認証に失敗しました。'), code: recordText(asRecord(response.error), ['code'], 'PASSKEY_SIGN_IN_FAILED') });
+        setState({
+          type: 'error',
+          message: authDisplayError(response.error, text, 'authPasskeySignInFailed'),
+          code: authErrorCode(response.error, 'PASSKEY_SIGN_IN_FAILED'),
+        });
         return;
       }
-      setState({ type: 'success', message: 'Passkeyで認証しました。' });
+      setState({ type: 'success', message: text('authPasskeySuccess') });
       safeNavigate(continuation(response.data, returnTo));
     } catch (error) {
-      setState({ type: 'error', message: error instanceof Error ? error.message : 'Passkey認証を開始できませんでした。', code: 'PASSKEY_SIGN_IN_FAILED' });
+      setState({
+        type: 'error',
+        message: authDisplayError(error, text, 'authPasskeyStartFailed'),
+        code: authErrorCode(error, 'PASSKEY_SIGN_IN_FAILED'),
+      });
     }
   };
 
@@ -106,21 +124,28 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
     });
   };
 
+  const registerPath = `/register?return_to=${encodeURIComponent(returnTo)}`;
+  const forgotPasswordPath = `/forgot-password?return_to=${encodeURIComponent(returnTo)}`;
+
   return (
-    <PublicPageFrame route={route} description="Email、Passkey、Google、GitHubからAstera Accountへ安全にLoginします。">
-      <AuthCard footer={<><a href={`/forgot-password?return_to=${encodeURIComponent(returnTo)}`}>Passwordを忘れた場合</a><a href={`/register?return_to=${encodeURIComponent(returnTo)}`}>Accountを作成</a></>}>
+    <PublicPageFrame route={route} description={text('authLoginDescription')}>
+      <AuthCard>
         <form className="platform-form" onSubmit={signInEmail}>
-          <Field label="Email" name="email" type="email" autoComplete="username webauthn" required />
-          <Field label="Password" name="password" type="password" autoComplete="current-password webauthn" required />
-          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>EmailでLogin</button>
+          <Field label={text('authEmail')} name="email" type="email" autoComplete="username webauthn" required />
+          <Field label={text('authPassword')} name="password" type="password" autoComplete="current-password webauthn" required />
+          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authEmailLogin')}</button>
         </form>
-        <div className="platform-divider"><span>または</span></div>
+        <div className="platform-divider"><span>{text('authOr')}</span></div>
         <div className="platform-stack-actions">
-          <button className="platform-button is-primary" type="button" disabled={state.type === 'working'} onClick={() => void signInPasskey()}>PasskeyでLogin</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuth('google')}>Googleで続ける</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuth('github')}>GitHubで続ける</button>
+          <button className="platform-button is-primary" type="button" disabled={state.type === 'working'} onClick={() => void signInPasskey()}>{text('authPasskeyLogin')}</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuth('google')}>{text('authGoogleContinue')}</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuth('github')}>{text('authGithubContinue')}</button>
         </div>
         <FormResult state={state} />
+        <div className="platform-auth-route-actions" aria-label={text('authAccountActionsAria')}>
+          <a className="platform-button" href={forgotPasswordPath}>{text('authForgotPassword')}</a>
+          <a className="platform-button" href={registerPath}>{text('authCreateAccount')}</a>
+        </div>
       </AuthCard>
     </PublicPageFrame>
   );

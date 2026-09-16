@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError, apiRequest, asRecord, recordText, textValue, type JsonObject } from '../api-client';
+import { usePlatformText } from '../platform-text';
 import type { RouteMatch } from '../route-registry';
 import { BusyState, EmptyState, ErrorState, ResponsivePageShell } from '../ResponsivePageShell';
 
@@ -72,8 +73,9 @@ export function SelectField({ label, name, options, value, onChange }: {
 }
 
 export function FormResult({ state }: { state: { type: 'idle' | 'working' | 'success' | 'error'; message?: string; code?: string } }) {
+  const { text } = usePlatformText();
   if (state.type === 'idle') return null;
-  if (state.type === 'working') return <div className="platform-form-result" role="status">送信しています…</div>;
+  if (state.type === 'working') return <div className="platform-form-result" role="status">{text('formSubmitting')}</div>;
   return <div className={`platform-form-result is-${state.type}`} role={state.type === 'error' ? 'alert' : 'status'}><strong>{state.message}</strong>{state.code && <code>{state.code}</code>}</div>;
 }
 
@@ -82,6 +84,7 @@ export type SubmitState = { type: 'idle' | 'working' | 'success' | 'error'; mess
 type SubmitOptions = {
   method?: 'POST' | 'PATCH' | 'DELETE';
   success?: string;
+  errorMessage?: (error: unknown) => string;
   navigateTo?: string;
   idempotent?: boolean;
   idempotencyKey?: string;
@@ -137,7 +140,11 @@ export async function submitForm(endpoint: string, body: JsonObject, setState: (
     if (options.navigateTo) window.setTimeout(() => safeNavigate(options.navigateTo as string), 250);
     return payload;
   } catch (error) {
-    setState({ type: 'error', message: error instanceof Error ? error.message : '処理に失敗しました。', code: error instanceof ApiError ? error.code : 'UNKNOWN_ERROR' });
+    setState({
+      type: 'error',
+      message: options.errorMessage ? options.errorMessage(error) : error instanceof Error ? error.message : '処理に失敗しました。',
+      code: error instanceof ApiError ? error.code : 'UNKNOWN_ERROR',
+    });
     return null;
   } finally {
     if (requestKey && inFlightIdempotentSubmissions.get(requestKey) === request) {

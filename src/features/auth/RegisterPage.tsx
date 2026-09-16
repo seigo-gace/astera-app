@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { queryValue, textValue } from '../../platform/api-client';
+import { authDisplayError } from '../../platform/auth-display-error';
 import { isNativeRuntime, nativeCallback } from '../../platform/external-navigation';
+import { usePlatformText } from '../../platform/platform-text';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
 import { AuthCard, Field, FormResult, safeNavigate, submitForm, type SubmitState } from '../../platform/pages/page-kit';
@@ -37,6 +39,7 @@ function postSocialSignIn(fields: Record<string, string>): void {
 }
 
 export default function RegisterPage({ route }: { route: RouteMatch }) {
+  const { text } = usePlatformText();
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const returnTo = safeReturnPath(queryValue('return_to'), '/app/new');
 
@@ -48,7 +51,7 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
     const confirm = textValue(data.get('password_confirm'));
 
     if (password !== confirm) {
-      setState({ type: 'error', message: 'Passwordが一致しません。', code: 'PASSWORD_MISMATCH' });
+      setState({ type: 'error', message: text('authPasswordMismatch'), code: 'PASSWORD_MISMATCH' });
       return;
     }
 
@@ -58,7 +61,11 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
       name: email,
       password,
       callbackURL: absoluteAppUrl(returnTo),
-    }, setState, { success: '確認Emailを送信しました。', idempotent: true });
+    }, setState, {
+      success: text('authVerificationEmailSent'),
+      errorMessage: (error) => authDisplayError(error, text, 'authRegisterFailed'),
+      idempotent: true,
+    });
 
     if (payload) {
       const params = new URLSearchParams({ email, return_to: returnTo });
@@ -82,22 +89,25 @@ export default function RegisterPage({ route }: { route: RouteMatch }) {
   };
 
   return (
-    <PublicPageFrame route={route} description="Email、Google、GitHubからAstera Accountを作成します。">
-      <AuthCard footer={<a href={loginPath(returnTo)}>既にAccountがある場合</a>}>
+    <PublicPageFrame route={route} description={text('authRegisterDescription')}>
+      <AuthCard>
         <form className="platform-form" onSubmit={signUpEmail}>
-          <Field label="Email" name="email" type="email" autoComplete="email" required />
-          <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-          <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>EmailでAccount登録</button>
+          <Field label={text('authEmail')} name="email" type="email" autoComplete="email" required />
+          <Field label={text('authPasswordRange')} name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          <Field label={text('authPasswordConfirm')} name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{text('authEmailRegister')}</button>
         </form>
 
-        <div className="platform-divider"><span>または</span></div>
+        <div className="platform-divider"><span>{text('authOr')}</span></div>
         <div className="platform-stack-actions">
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuthRegistration('google')}>Googleアカウントで登録</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuthRegistration('github')}>GitHubで登録</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuthRegistration('google')}>{text('authGoogleRegister')}</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuthRegistration('github')}>{text('authGithubRegister')}</button>
         </div>
 
         <FormResult state={state} />
+        <div className="platform-auth-route-actions" aria-label={text('authLoginActionsAria')}>
+          <a className="platform-button" href={loginPath(returnTo)}>{text('authLogin')}</a>
+        </div>
       </AuthCard>
     </PublicPageFrame>
   );
