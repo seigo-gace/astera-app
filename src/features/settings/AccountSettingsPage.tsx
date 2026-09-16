@@ -45,10 +45,12 @@ function accountSummary(payload: unknown): AccountSummary {
 
 export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
   const { language, text } = useAppText();
-  const [account] = useResource('/api/account');
+  const [account, reloadAccount] = useResource('/api/account');
   const [connections, setConnections] = useState<LinkedAccount[]>([]);
   const [connectionLoading, setConnectionLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
   const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(null);
+  const [securitySummaryLoading, setSecuritySummaryLoading] = useState(true);
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const local = language === 'en'
     ? {
@@ -69,11 +71,13 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
       changePassword: 'Change password',
       passwordChanged: 'Password changed. Other signed-in devices were signed out.',
       passwordMismatch: 'The new passwords do not match.',
-      passwordUnavailable: 'The password credential for this account could not be confirmed. Use the registered email to reset it from Account settings.',
+      passwordUnavailable: 'The password credential for this account could not be confirmed. Reset it using the registered email.',
       resetPassword: 'Reset password by email',
       securityDescription: 'Passkeys, two-factor authentication, and signed-in devices.',
       privacyDescription: 'Review privacy and data settings.',
       lastMethod: 'At least one login method must remain connected.',
+      connectionLoadFailed: 'Linked login methods could not be loaded. The connection state is not being treated as disconnected.',
+      retry: 'Retry',
     }
     : {
       loadFailed: 'アカウント情報を取得できませんでした。',
@@ -93,11 +97,13 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
       changePassword: 'Passwordを変更',
       passwordChanged: 'Passwordを変更しました。他のログイン中端末はログアウトしました。',
       passwordMismatch: '新しいPasswordが一致しません。',
-      passwordUnavailable: 'このAccountのPassword情報を確認できません。Accountの登録メールからPasswordを再設定してください。',
+      passwordUnavailable: 'このAccountのPassword情報を確認できません。登録メールを使ってPasswordを再設定してください。',
       resetPassword: '登録メールからPasswordを再設定',
       securityDescription: 'Passkey、2段階認証、ログイン中の端末を管理します。',
       privacyDescription: 'プライバシーとデータの設定を確認します。',
       lastMethod: 'ログイン方法は最低1つ残す必要があります。',
+      connectionLoadFailed: '連携済みLogin方法を取得できませんでした。取得失敗を「未連携」としては表示していません。',
+      retry: '再試行',
     };
 
   const summary = useMemo(
@@ -107,18 +113,26 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
 
   const loadConnections = async () => {
     setConnectionLoading(true);
-    try { setConnections(accountRows(await apiRequest('/api/auth/list-accounts'))); }
-    catch { setConnections([]); }
-    finally { setConnectionLoading(false); }
+    setConnectionError(false);
+    try {
+      setConnections(accountRows(await apiRequest('/api/auth/list-accounts')));
+    } catch {
+      setConnectionError(true);
+    } finally {
+      setConnectionLoading(false);
+    }
   };
 
   const loadSecuritySummary = async () => {
+    setSecuritySummaryLoading(true);
     try {
       const payload = await apiRequest('/api/account/security');
       const source = asRecord(asRecord(payload).security ?? payload);
       setSecuritySummary({ passwordConfigured: source.password_configured === true || source.passwordConfigured === true });
     } catch {
       setSecuritySummary(null);
+    } finally {
+      setSecuritySummaryLoading(false);
     }
   };
 
@@ -138,6 +152,7 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
       if (response.error) throw new Error(authErrorMessage(response.error, 'メールアドレスを変更できませんでした。'));
       form.reset();
       setState({ type: 'success', message: local.emailChangeSent });
+      reloadAccount();
     } catch (error) {
       setState({ type: 'error', message: error instanceof Error ? error.message : 'メールアドレスを変更できませんでした。' });
     }
@@ -231,12 +246,12 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
         <section className="settings-account-section">
           <h2>{local.passwordTitle}</h2>
           <p className="settings-note">{local.passwordDescription}</p>
-          {securitySummary?.passwordConfigured === false ? (
+          {securitySummaryLoading ? <BusyState /> : securitySummary?.passwordConfigured === false ? (
             <div className="settings-account-recovery">
               <p>{local.passwordUnavailable}</p>
               <a className="platform-button" href="/forgot-password?return_to=%2Faccount">{local.resetPassword}</a>
             </div>
-          ) : (
+          ) : securitySummary ? (
             <form className="settings-account-form" onSubmit={changePassword}>
               <label>
                 <span>{local.currentPassword}</span>
@@ -252,12 +267,19 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
               </label>
               <button className="platform-button" type="submit" disabled={state.type === 'working'}>{local.changePassword}</button>
             </form>
+          ) : (
+            <div className="settings-inline-message is-error" role="alert">{local.loadFailed}</div>
           )}
         </section>
 
         <section className="settings-account-section">
           <h2>{text('loginConnections')}</h2>
-          {connectionLoading ? <BusyState /> : (
+          {connectionLoading ? <BusyState /> : connectionError ? (
+            <div className="settings-inline-message is-error" role="alert">
+              <span>{local.connectionLoadFailed}</span>
+              <button className="platform-button" type="button" onClick={() => void loadConnections()}>{local.retry}</button>
+            </div>
+          ) : (
             <div className="settings-account-rows">
               {(['google', 'github'] as const).map((provider) => {
                 const isConnected = connected(provider);
