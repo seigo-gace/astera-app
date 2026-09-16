@@ -226,7 +226,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' }); setBackupCodes([]);
     try {
-      const payload = betterAuthResult(await authClient.twoFactor.enable({ password, issuer: 'Astera', method: 'totp' }), text('securityTwoFactorStartFailed'));
+      const payload = betterAuthResult(await authClient.twoFactor.enable({ password, issuer: 'Astera' }), text('securityTwoFactorStartFailed'));
       const source = asRecord(payload);
       const totpURI = recordText(source, ['totpURI', 'totpUri', 'totp_uri']);
       const codes = asArray(source.backupCodes ?? source.backup_codes).map(String);
