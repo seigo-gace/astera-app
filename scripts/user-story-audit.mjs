@@ -65,6 +65,8 @@ const sourceRequirements = [
   ['functions/_auth.ts', 'updateAge: 60 * 60 * 24'],
   ['functions/_auth.ts', 'freshAge: 60 * 15'],
   ['functions/_account-projection.ts', 'requireFreshAsteraActor'],
+  ['functions/_account-projection.ts', "if (existing?.account_status === 'active') return 'active';"],
+  ['functions/api/account.ts', "if (existing?.account_status === 'active') return 'active';"],
   ['functions/api/billing/checkout-intents.ts', 'requireFreshAsteraActor'],
   ['functions/api/auth/[[path]].ts', 'FRESH_MANAGEMENT_PATHS'],
   ['functions/api/auth/[[path]].ts', "'/api/auth/passkey/add-passkey'"],
@@ -156,6 +158,7 @@ const report = {
   coverage: [
     'authenticated route redirect and exact return context',
     'account state continuation and security hold',
+    'completed account remains active across login, reload, and deployment',
     'single account projection per protected page',
     'authentication return-loop prevention',
     'pricing failure recovery and catalog timeout boundary',
