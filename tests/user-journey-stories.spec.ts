@@ -199,6 +199,104 @@ test('STORY-AUTH-006 pending Password setup is routed before protected content i
   expect(new URL(page.url()).searchParams.get('return_to')).toBe('/app/developer');
 });
 
+test('STORY-AUTH-006 OAuth-only session reads account status but protected APIs stay forbidden', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') {
+      return json(route, activeAccount({ account_status: 'pending_password_setup' }));
+    }
+    if (path === '/api/account/catalog' || path === '/api/credit/balance') {
+      return json(route, {
+        error: {
+          code: 'ACCOUNT_PENDING_PASSWORD_SETUP',
+          message: 'Accountの現在状態ではこの操作を実行できません。',
+        },
+      }, 403);
+    }
+    return defaultApi(route);
+  });
+
+  await page.goto('/app/new');
+  await expect(page).toHaveURL(/\/account\/password\/setup\?/);
+
+  const accountProbe = await page.evaluate(async () => {
+    const response = await fetch('/api/account', { credentials: 'include' });
+    const body = await response.json() as { account?: { account_status?: string } };
+    return { status: response.status, account_status: body.account?.account_status ?? null };
+  });
+  expect(accountProbe.status).toBe(200);
+  expect(accountProbe.account_status).toBe('pending_password_setup');
+
+  const catalogProbe = await page.evaluate(async () => {
+    const response = await fetch('/api/account/catalog', { credentials: 'include' });
+    const body = await response.json() as { error?: { code?: string } };
+    return { status: response.status, code: body.error?.code ?? null };
+  });
+  expect(catalogProbe.status).toBe(403);
+  expect(catalogProbe.code).toBe('ACCOUNT_PENDING_PASSWORD_SETUP');
+});
+
+test('STORY-AUTH-006 password setup activates account before returning to protected app', async ({ page }) => {
+  let accountStatus = 'pending_password_setup';
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') return json(route, activeAccount({ account_status: accountStatus }));
+    if (path === '/api/auth/set-password') {
+      accountStatus = 'active';
+      return json(route, { ok: true });
+    }
+    return defaultApi(route);
+  });
+
+  await page.goto('/account/password/setup?return_to=%2Fapp%2Fnew');
+  await page.locator('input[name="password"]').fill('story-password-123');
+  await page.locator('input[name="password_confirm"]').fill('story-password-123');
+  await page.getByRole('button', { name: /続行|Continue/i }).click();
+  await expect(page).toHaveURL(/\/app\/new$/);
+
+  const accountProbe = await page.evaluate(async () => {
+    const response = await fetch('/api/account', { credentials: 'include' });
+    const body = await response.json() as { account?: { account_status?: string } };
+    return body.account?.account_status ?? null;
+  });
+  expect(accountProbe).toBe('active');
+});
+
+test('STORY-AUTH-006 full provisional flow from new app entry through password setup', async ({ page }) => {
+  let accountStatus = 'pending_password_setup';
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') return json(route, activeAccount({ account_status: accountStatus }));
+    if (path === '/api/auth/set-password') {
+      accountStatus = 'active';
+      return json(route, { ok: true });
+    }
+    return defaultApi(route);
+  });
+
+  await page.goto('/app/new');
+  await expect(page).toHaveURL(/\/account\/password\/setup\?/);
+  expect(new URL(page.url()).searchParams.get('return_to')).toBe('/app/new');
+
+  await page.locator('input[name="password"]').fill('story-password-123');
+  await page.locator('input[name="password_confirm"]').fill('story-password-123');
+  await page.getByRole('button', { name: /続行|Continue/i }).click();
+  await expect(page).toHaveURL(/\/app\/new$/);
+});
+
+test('STORY-AUTH-006 non-active account_status cannot reach protected app content', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') return json(route, activeAccount({ account_status: 'suspended' }));
+    return defaultApi(route);
+  });
+
+  await page.goto('/app/projects');
+  await expect(page).toHaveURL(/\/app\/projects$/);
+  const alert = page.getByRole('alert');
+  await expect(alert).toContainText('ACCOUNT_SUSPENDED');
+});
+
 test('STORY-CHECKOUT-001 checkout keeps the selected plan visible when Login is required', async ({ page }) => {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;

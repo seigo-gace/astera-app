@@ -167,6 +167,32 @@ async function previewActorProjection(env: AsteraFunctionEnv): Promise<AsteraAct
   };
 }
 
+/** Reconcile user_profiles.account_status after auth mutations (e.g. credential creation). */
+export async function refreshAccountProjectionForSession(
+  request: Request,
+  env: AsteraFunctionEnv,
+  sessionHeaders?: Headers,
+): Promise<void> {
+  let session: SessionPayload | null;
+  try {
+    session = await createAuth(env).api.getSession({ headers: sessionHeaders ?? request.headers }) as SessionPayload | null;
+  } catch {
+    return;
+  }
+  const user = session?.user;
+  if (!user?.id || !user.email) return;
+  try {
+    await ensureProjection(env.ASTERA_DB, user);
+  } catch (error) {
+    if (error instanceof FunctionHttpError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    if (/no such table|D1_ERROR/i.test(message)) {
+      throw new FunctionHttpError(503, 'ASTERA_ACCOUNT_SCHEMA_NOT_READY', '認証・Account・Credit用D1 Migrationが適用されていません。', message);
+    }
+    throw new FunctionHttpError(500, 'ACCOUNT_SESSION_PROJECTION_FAILED', 'Account状態を取得できませんでした。', message);
+  }
+}
+
 export async function observeAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
   if (env.E2E_LIVE_PROCESS_PREVIEW_ACTOR === '1') {
     try {

@@ -1,3 +1,4 @@
+import { refreshAccountProjectionForSession } from '../../_account-projection';
 import { createAuth } from '../../_auth';
 import { handleNativeAuthRoutes, type NativeExchangeEnv } from '../../_native-session-exchange';
 import {
@@ -291,6 +292,14 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     }
     if (isOAuthCallbackPath(pathname)) {
       logOAuthCallbackDiag(context.request, pathname, 'after', response);
+    }
+    if (
+      pathname === '/api/auth/set-password'
+      && response.status >= 200
+      && response.status < 300
+    ) {
+      const sessionHeaders = mergeSetCookieHeaders(context.request.headers, response);
+      await refreshAccountProjectionForSession(context.request, context.env, sessionHeaders);
     }
     await recordAuthSecurityEvent(context.request, context.env, response, pathname, correlationId, sessionBefore);
     return response;
