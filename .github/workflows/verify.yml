@@ -19,6 +19,8 @@ jobs:
           node-version: '22.12'
       - name: Install dependencies
         run: npm install --no-fund --no-audit
+      - name: Audit Account and authentication contracts
+        run: npm run auth:account:audit
       - name: Typecheck and build frontend
         run: npm run build
       - name: Bundle Cloudflare Pages Functions
