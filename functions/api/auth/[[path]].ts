@@ -278,9 +278,42 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     let response: Response;
     try {
       if (pathname === '/api/auth/set-password' && context.request.method === 'POST') {
+        let newPassword: string;
+        try {
+          const parsed = await context.request.clone().json() as unknown;
+          const candidate = typeof parsed === 'object' && parsed !== null
+            ? (parsed as Record<string, unknown>).newPassword
+            : undefined;
+          if (typeof candidate !== 'string') {
+            return Response.json({
+              error: {
+                code: 'VALIDATION_ERROR',
+                message: '入力内容を確認してください。',
+                correlation_id: correlationId,
+                retryable: false,
+              },
+            }, {
+              status: 400,
+              headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId },
+            });
+          }
+          newPassword = candidate;
+        } catch {
+          return Response.json({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: '入力内容を確認してください。',
+              correlation_id: correlationId,
+              retryable: false,
+            },
+          }, {
+            status: 400,
+            headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId },
+          });
+        }
         response = await auth.api.setPassword({
           headers: context.request.headers,
-          request: context.request,
+          body: { newPassword },
           asResponse: true,
         }) as Response;
       } else {

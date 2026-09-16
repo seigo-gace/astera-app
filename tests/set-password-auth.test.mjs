@@ -38,7 +38,10 @@ test('createAuth configures minPasswordLength to 6', async () => {
 test('auth pages handler routes POST set-password through auth.api.setPassword', () => {
   const source = readFileSync(`${repoRoot}/functions/api/auth/[[path]].ts`, 'utf8');
   assert.match(source, /pathname === '\/api\/auth\/set-password' && context\.request\.method === 'POST'/);
+  assert.match(source, /context\.request\.clone\(\)\.json\(\)/);
   assert.match(source, /auth\.api\.setPassword\(\{/);
+  assert.match(source, /body:\s*\{\s*newPassword\s*\}/);
   assert.match(source, /asResponse: true/);
   assert.doesNotMatch(source, /auth\.api\.changePassword\(\{/);
+  assert.doesNotMatch(source, /setPassword\([\s\S]*request:\s*context\.request/);
 });
