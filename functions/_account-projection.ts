@@ -76,20 +76,13 @@ export class FunctionHttpError extends Error {
 const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const PROTECTED_ACCOUNT_STATUSES = new Set(['security_hold', 'suspended', 'deletion_scheduled', 'deleted']);
 
-async function hasPasswordCredential(db: D1Database, userId: string): Promise<boolean> {
-  const credential = await db.prepare(
-    'SELECT id FROM "account" WHERE "userId"=?1 AND "providerId"=?2 AND password IS NOT NULL AND length(password) > 0 LIMIT 1',
-  ).bind(userId, 'credential').first<{ id: string }>();
-  return Boolean(credential?.id);
-}
-
-function desiredAccountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
+function desiredAccountStatus(user: SessionUser, existing: UserProfileRow | null): string {
   if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
-  // `active` is the persisted proof that registration already completed.
-  // Do not send a completed account back through registration because a later projection read cannot see a credential row.
   if (existing?.account_status === 'active') return 'active';
   if (user.emailVerified === false) return 'pending_email_verification';
-  return passwordConfigured ? 'active' : 'pending_password_setup';
+  // OAuth / social / passkey accounts are valid Astera accounts without a local credential password.
+  // Password is an optional login method managed from Account settings, not a registration gate.
+  return 'active';
 }
 
 async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
@@ -100,8 +93,7 @@ async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ pr
     `SELECT user_id, tenant_id, nickname, account_status, ui_language, created_at, updated_at
      FROM user_profiles WHERE user_id = ?1 LIMIT 1`,
   ).bind(user.id).first<UserProfileRow>();
-  const passwordConfigured = await hasPasswordCredential(db, user.id);
-  const accountStatus = desiredAccountStatus(user, existingProfile, passwordConfigured);
+  const accountStatus = desiredAccountStatus(user, existingProfile);
   const nickname = user.name?.trim() || user.email.split('@')[0] || 'Astera User';
 
   await db.batch([
