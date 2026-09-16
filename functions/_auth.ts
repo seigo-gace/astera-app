@@ -15,6 +15,8 @@ export type AuthEnv = {
   AUTH_EMAIL_TOKEN?: string;
 };
 
+type AuthEmailTemplate = 'verify-email' | 'reset-password' | 'two-factor';
+
 function required(value: string | undefined, name: string): string {
   const normalized = value?.trim();
   if (!normalized) throw new Error(`${name}_NOT_CONFIGURED`);
@@ -23,7 +25,12 @@ function required(value: string | undefined, name: string): string {
 
 async function sendAuthEmail(
   env: AuthEnv,
-  input: { to: string; template: 'verify-email' | 'reset-password'; url: string },
+  input: {
+    to: string;
+    template: AuthEmailTemplate;
+    variables: Record<string, string>;
+    privateData?: boolean;
+  },
 ): Promise<void> {
   const endpoint = required(env.AUTH_EMAIL_ENDPOINT, 'AUTH_EMAIL_ENDPOINT');
   const token = required(env.AUTH_EMAIL_TOKEN, 'AUTH_EMAIL_TOKEN');
@@ -37,8 +44,8 @@ async function sendAuthEmail(
     body: JSON.stringify({
       to: input.to,
       template: input.template,
-      variables: { action_url: input.url, app_name: 'Astera' },
-      private_data: false,
+      variables: input.variables,
+      private_data: input.privateData === true,
     }),
   });
   if (!response.ok) throw new Error(`AUTH_EMAIL_DELIVERY_FAILED_${response.status}`);
@@ -74,14 +81,22 @@ export function createAuth(env: AuthEnv) {
       maxPasswordLength: 128,
       requireEmailVerification: true,
       sendResetPassword: async ({ user, url }) => {
-        await sendAuthEmail(env, { to: user.email, template: 'reset-password', url });
+        await sendAuthEmail(env, {
+          to: user.email,
+          template: 'reset-password',
+          variables: { action_url: url, app_name: 'Astera' },
+        });
       },
     },
     emailVerification: {
       sendOnSignUp: true,
       autoSignInAfterVerification: false,
       sendVerificationEmail: async ({ user, url }) => {
-        await sendAuthEmail(env, { to: user.email, template: 'verify-email', url });
+        await sendAuthEmail(env, {
+          to: user.email,
+          template: 'verify-email',
+          variables: { action_url: url, app_name: 'Astera' },
+        });
       },
     },
     socialProviders,
@@ -103,6 +118,21 @@ export function createAuth(env: AuthEnv) {
     plugins: [
       twoFactor({
         issuer: 'Astera',
+        otpOptions: {
+          period: 300,
+          async sendOTP({ user, otp }) {
+            await sendAuthEmail(env, {
+              to: user.email,
+              template: 'two-factor',
+              variables: {
+                otp_code: otp,
+                app_name: 'Astera',
+                expiration_minutes: '5',
+              },
+              privateData: true,
+            });
+          },
+        },
       }),
       passkey({
         rpID,
