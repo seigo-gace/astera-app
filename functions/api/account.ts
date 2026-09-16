@@ -59,9 +59,6 @@ function errorResponse(status: number, code: string, message: string, requestId:
 }
 
 const PROTECTED_ACCOUNT_STATUSES = new Set(['security_hold', 'suspended', 'deletion_scheduled', 'deleted']);
-// Password-required registration was first deployed after this point. Profiles created before it
-// are legacy completed accounts and must not be trapped in the later pending-password gate.
-const PASSWORD_REGISTRATION_GATE_DEPLOYED_AT = Date.parse('2026-09-16T08:04:50.000Z');
 
 async function hasPasswordCredential(db: D1Database, userId: string): Promise<boolean> {
   const credential = await db.prepare(
@@ -70,20 +67,11 @@ async function hasPasswordCredential(db: D1Database, userId: string): Promise<bo
   return Boolean(credential?.id);
 }
 
-function legacyCompletedAccount(existing: UserProfileRow | null): boolean {
-  if (!existing || existing.account_status !== 'pending_password_setup') return false;
-  const createdAt = Date.parse(existing.created_at);
-  return Number.isFinite(createdAt) && createdAt < PASSWORD_REGISTRATION_GATE_DEPLOYED_AT;
-}
-
 function accountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
   if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
   // Registration requirements decide whether a new/pending account can become active.
-  // Once the persisted profile is active, normal Login/reload/deploy must never restart registration.
+  // Once registration is complete, active is persistent and Login/reload/deploy must not restart registration.
   if (existing?.account_status === 'active') return 'active';
-  // Repair profiles that were already completed before the password-registration gate existed but
-  // were later rewritten to pending_password_setup by the projection regression.
-  if (legacyCompletedAccount(existing)) return 'active';
   if (user.emailVerified === false) return 'pending_email_verification';
   return passwordConfigured ? 'active' : 'pending_password_setup';
 }
