@@ -1,6 +1,7 @@
 -- Buy-once Astera Storage packs and plan capacity limits.
 -- Canon: 1GB=480 JPY, 10GB=1,980 JPY, 50GB=5,980 JPY; purchases accumulate.
 -- Current plan caps: free=0, basic=10GB, pro=100GB, business=500GB, enterprise=1000GB.
+-- A draft Storage-only fallback catalog is seeded so Storage does not disappear when the commercial catalog has no active version.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS astera_storage_plan_limits (
@@ -10,6 +11,11 @@ CREATE TABLE IF NOT EXISTS astera_storage_plan_limits (
   active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
   PRIMARY KEY (catalog_version, plan_id)
 );
+
+INSERT OR IGNORE INTO catalog_versions
+  (version, checksum, status, published_at, created_at)
+VALUES
+  ('storage-2026-09-17-v1', 'storage-2026-09-17-v1', 'draft', '2026-09-17T00:00:00.000Z', '2026-09-17T00:00:00.000Z');
 
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
 SELECT version, 'free', 0, 1 FROM catalog_versions WHERE status='active';
@@ -21,6 +27,15 @@ INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max
 SELECT version, 'business', 500, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
 SELECT version, 'enterprise', 1000, 1 FROM catalog_versions WHERE status='active';
+
+INSERT OR REPLACE INTO astera_storage_plan_limits
+  (catalog_version, plan_id, max_capacity_gb, active)
+VALUES
+  ('storage-2026-09-17-v1', 'free', 0, 1),
+  ('storage-2026-09-17-v1', 'basic', 10, 1),
+  ('storage-2026-09-17-v1', 'pro', 100, 1),
+  ('storage-2026-09-17-v1', 'business', 500, 1),
+  ('storage-2026-09-17-v1', 'enterprise', 1000, 1);
 
 CREATE TABLE IF NOT EXISTS astera_storage_pack_catalog (
   catalog_version TEXT NOT NULL REFERENCES catalog_versions(version),
@@ -43,6 +58,13 @@ SELECT version, 'storage_10gb', '+10GB', 10, 1980, 1, 20 FROM catalog_versions W
 INSERT OR REPLACE INTO astera_storage_pack_catalog
   (catalog_version, product_id, display_name, capacity_gb, price_jpy, active, display_order)
 SELECT version, 'storage_50gb', '+50GB', 50, 5980, 1, 30 FROM catalog_versions WHERE status='active';
+
+INSERT OR REPLACE INTO astera_storage_pack_catalog
+  (catalog_version, product_id, display_name, capacity_gb, price_jpy, active, display_order)
+VALUES
+  ('storage-2026-09-17-v1', 'storage_1gb', '+1GB', 1, 480, 1, 10),
+  ('storage-2026-09-17-v1', 'storage_10gb', '+10GB', 10, 1980, 1, 20),
+  ('storage-2026-09-17-v1', 'storage_50gb', '+50GB', 50, 5980, 1, 30);
 
 CREATE TABLE IF NOT EXISTS astera_storage_pack_intents (
   id TEXT PRIMARY KEY,
