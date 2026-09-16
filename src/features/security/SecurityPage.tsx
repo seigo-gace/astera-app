@@ -10,6 +10,7 @@ import type { RouteMatch } from '../../platform/route-registry';
 import { securityUiText, type SecurityUiCopy } from './security-ui-text';
 import './security-page.css';
 import './security-methods.css';
+import './security-two-factor-toggle.css';
 
 type PasskeyRecord = {
   id: string;
@@ -123,11 +124,14 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [twoFactorSetupOpen, setTwoFactorSetupOpen] = useState(false);
+  const [twoFactorDisableOpen, setTwoFactorDisableOpen] = useState(false);
+  const [twoFactorPanelEnabled, setTwoFactorPanelEnabled] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState('');
 
   const reload = async () => {
     if (previewWithoutAuth()) {
       setSecurity({ email: '', emailVerified: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
+      setTwoFactorPanelEnabled(false);
       setPasskeys([]); setLoadError(false); setLoading(false); return;
     }
     setLoading(true); setLoadError(false);
@@ -146,11 +150,14 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
           createdAt: recordText(passkey, ['created_at', 'createdAt']), aaguid: recordText(passkey, ['aaguid']),
         } satisfies PasskeyRecord;
       }).filter((item) => item.id);
+      const twoFactorEnabled = source.two_factor_enabled === true || source.twoFactorEnabled === true;
       setSecurity({
         email: recordText(source, ['email']), emailVerified: source.email_verified === true || source.emailVerified === true,
-        twoFactorEnabled: source.two_factor_enabled === true || source.twoFactorEnabled === true,
+        twoFactorEnabled,
         sessionCount: Number(source.session_count ?? source.sessionCount ?? sessions.length) || sessions.length, sessions,
       });
+      setTwoFactorPanelEnabled(twoFactorEnabled);
+      setTwoFactorDisableOpen(false);
       setPasskeys(passkeyItems);
     } catch { setLoadError(true); }
     finally { setLoading(false); }
@@ -211,7 +218,8 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
     const password = String(new FormData(event.currentTarget).get('password') ?? ''); setFeedback({ type: 'working' });
     try {
       betterAuthResult(await authClient.twoFactor.disable({ password }), text('securityTwoFactorDisableFailed'));
-      setEnrollment(null); setBackupCodes([]); setFeedback({ type: 'success', message: text('securityTwoFactorDisabled') }); event.currentTarget.reset(); await reload();
+      setEnrollment(null); setBackupCodes([]); setTwoFactorPanelEnabled(false); setTwoFactorDisableOpen(false);
+      setFeedback({ type: 'success', message: text('securityTwoFactorDisabled') }); event.currentTarget.reset(); await reload();
     } catch (error) { setFeedback({ type: 'error', message: error instanceof Error ? error.message : text('securityTwoFactorDisableFailed') }); }
   };
 
@@ -237,11 +245,30 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
     catch (error) { setFeedback({ type: 'error', message: error instanceof Error ? error.message : local.deviceSignOutFailed }); }
   };
 
+  const changeTwoFactorToggle = (checked: boolean) => {
+    if (checked) {
+      setTwoFactorPanelEnabled(true);
+      setTwoFactorDisableOpen(false);
+      if (!security.twoFactorEnabled) setTwoFactorSetupOpen(true);
+      return;
+    }
+    setTwoFactorPanelEnabled(false);
+    setTwoFactorSetupOpen(false);
+    setEnrollment(null);
+    setBackupCodes([]);
+    if (security.twoFactorEnabled) setTwoFactorDisableOpen(true);
+  };
+
+  const cancelDisableTwoFactor = () => {
+    setTwoFactorDisableOpen(false);
+    setTwoFactorPanelEnabled(true);
+  };
+
   const manualSecret = useMemo(() => enrollment ? totpSecret(enrollment.totpURI) : '', [enrollment]);
   if (loading) return <BusyState label={text('securityLoading')} />;
 
   return (
-    <ResponsivePageShell route={route} eyebrow="" description={local.securityPageDescription}>
+    <ResponsivePageShell route={route} eyebrow="">
       <div className="security-page">
         {loadError && <div className="security-load-error" role="alert"><span>{local.loadFailed}</span><button className="platform-button" type="button" onClick={() => void reload()}>{local.retry}</button></div>}
         {feedback.type !== 'idle' && <div className={`security-feedback is-${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}><strong>{feedback.type === 'working' ? text('securityWorking') : feedback.message}</strong></div>}
@@ -260,43 +287,58 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
         </section>
 
         <section className="security-card">
-          <div className="security-card-head"><div><h2>{text('securityTwoFactor')}</h2><p>{local.twoFactorDescription}</p></div><span className={`security-status${security.twoFactorEnabled ? ' is-enabled' : ''}`}>{security.twoFactorEnabled ? text('securityEnabled') : text('securityDisabled')}</span></div>
-
-          <div className="security-method-list">
-            <div className="security-method-row">
-              <div><strong>{local.emailMethod}</strong><span>{security.email || local.emailNeedsSetup}</span><small>{local.emailMethodDescription}</small></div>
-              <div className="security-method-action">
-                <span className={`security-method-state${security.emailVerified && security.email ? ' is-ready' : ''}`}>{security.emailVerified && security.email ? local.emailReady : local.emailNeedsSetup}</span>
-                {(!security.email || !security.emailVerified) && <a className="platform-button" href="/account">{local.manageEmail}</a>}
-              </div>
-            </div>
-            <div className="security-method-row">
-              <div><strong>{local.authenticatorMethod}</strong><span>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span><small>{local.authenticatorDescription}</small></div>
-              <div className="security-method-action">
-                <span className={`security-method-state${security.twoFactorEnabled ? ' is-ready' : ''}`}>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span>
-                {!security.twoFactorEnabled && !enrollment && !twoFactorSetupOpen && <button className="platform-button is-primary" type="button" onClick={() => setTwoFactorSetupOpen(true)} disabled={feedback.type === 'working' || previewMode}>{local.setupTwoFactor}</button>}
-              </div>
-            </div>
+          <div className="security-card-head">
+            <div><h2>{text('securityTwoFactor')}</h2></div>
+            <label className="security-two-factor-switch">
+              <input type="checkbox" checked={twoFactorPanelEnabled} onChange={(event) => changeTwoFactorToggle(event.currentTarget.checked)} disabled={feedback.type === 'working' || previewMode} aria-label={local.twoFactorToggle} />
+              <span className="security-two-factor-switch-track" aria-hidden="true" />
+              <span className="security-two-factor-switch-state">{twoFactorPanelEnabled ? 'ON' : 'OFF'}</span>
+            </label>
           </div>
 
-          {!security.twoFactorEnabled && !enrollment && twoFactorSetupOpen && (
-            <div className="security-step">
-              <div><h3>{local.confirmIdentity}</h3><p>{local.confirmIdentityDescription}</p></div>
-              <form className="security-form" onSubmit={enableTwoFactor}>
-                <label><span>{text('securityCurrentPassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label>
-                <div className="security-form-actions"><button className="platform-button" type="button" onClick={() => setTwoFactorSetupOpen(false)}>{local.cancel}</button><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityStartTwoFactor')}</button></div>
-              </form>
+          {twoFactorPanelEnabled && <>
+            <div className="security-method-list">
+              <div className="security-method-row">
+                <div><strong>{local.emailMethod}</strong><span>{security.email || local.emailNeedsSetup}</span><small>{local.emailMethodDescription}</small></div>
+                <div className="security-method-action">
+                  <span className={`security-method-state${security.emailVerified && security.email ? ' is-ready' : ''}`}>{security.emailVerified && security.email ? local.emailReady : local.emailNeedsSetup}</span>
+                  {(!security.email || !security.emailVerified) && <a className="platform-button" href="/account">{local.manageEmail}</a>}
+                </div>
+              </div>
+              <div className="security-method-row">
+                <div><strong>{local.authenticatorMethod}</strong><span>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span><small>{local.authenticatorDescription}</small></div>
+                <div className="security-method-action">
+                  <span className={`security-method-state${security.twoFactorEnabled ? ' is-ready' : ''}`}>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span>
+                </div>
+              </div>
             </div>
-          )}
 
-          {enrollment && <div className="security-enrollment"><div className="security-enrollment-qr"><h3>{local.scanTitle}</h3><p>{local.scanDescription}</p><div className="security-qr-frame">{qrDataUrl ? <img src={qrDataUrl} alt={local.scanTitle} /> : <span>{local.qrLoading}</span>}</div>
-            {manualSecret && <details className="security-manual-setup"><summary>{local.manualSetup}</summary><div><span>{local.setupKey}</span><code>{manualSecret}</code><button className="platform-button" type="button" onClick={() => void copyValue(manualSecret, local.keyCopied)}>{local.copyKey}</button></div></details>}
-          </div><div className="security-enrollment-code"><h3>{local.codeTitle}</h3><form className="security-form" onSubmit={verifyTwoFactor}><label><span>{text('securitySixDigitCode')}</span><input className="security-code-input" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,8}" maxLength={8} required disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityVerifyEnable')}</button></form></div></div>}
+            {!security.twoFactorEnabled && !enrollment && twoFactorSetupOpen && (
+              <div className="security-step">
+                <div><h3>{local.confirmIdentity}</h3></div>
+                <form className="security-form" onSubmit={enableTwoFactor}>
+                  <label><span>{text('securityCurrentPassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label>
+                  <div className="security-form-actions"><button className="platform-button" type="button" onClick={() => { setTwoFactorPanelEnabled(false); setTwoFactorSetupOpen(false); }}>{local.cancel}</button><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityStartTwoFactor')}</button></div>
+                </form>
+              </div>
+            )}
 
-          {security.twoFactorEnabled && <details className="security-management-details"><summary>{local.manageTwoFactor}</summary><div className="security-two-factor-actions">
-            <form className="security-form" onSubmit={regenerateBackupCodes}><label><span>{text('securityBackupPassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityRegenerateBackup')}</button></form>
-            <form className="security-form is-danger" onSubmit={disableTwoFactor}><label><span>{text('securityDisablePassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityDisableTwoFactor')}</button></form>
-          </div></details>}
+            {enrollment && <div className="security-enrollment"><div className="security-enrollment-qr"><h3>{local.scanTitle}</h3><p>{local.scanDescription}</p><div className="security-qr-frame">{qrDataUrl ? <img src={qrDataUrl} alt={local.scanTitle} /> : <span>{local.qrLoading}</span>}</div>
+              {manualSecret && <details className="security-manual-setup"><summary>{local.manualSetup}</summary><div><span>{local.setupKey}</span><code>{manualSecret}</code><button className="platform-button" type="button" onClick={() => void copyValue(manualSecret, local.keyCopied)}>{local.copyKey}</button></div></details>}
+            </div><div className="security-enrollment-code"><h3>{local.codeTitle}</h3><form className="security-form" onSubmit={verifyTwoFactor}><label><span>{text('securitySixDigitCode')}</span><input className="security-code-input" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,8}" maxLength={8} required disabled={previewMode} /></label><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityVerifyEnable')}</button></form></div></div>}
+
+            {security.twoFactorEnabled && <details className="security-management-details"><summary>{local.manageTwoFactor}</summary><div className="security-two-factor-actions">
+              <form className="security-form" onSubmit={regenerateBackupCodes}><label><span>{text('securityBackupPassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityRegenerateBackup')}</button></form>
+            </div></details>}
+          </>}
+
+          {twoFactorDisableOpen && <div className="security-step security-two-factor-off-confirm">
+            <div><h3>{local.turnOffTwoFactor}</h3></div>
+            <form className="security-form is-danger" onSubmit={disableTwoFactor}>
+              <label><span>{text('securityCurrentPassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label>
+              <div className="security-form-actions"><button className="platform-button" type="button" onClick={cancelDisableTwoFactor}>{local.cancel}</button><button className="platform-button" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityDisableTwoFactor')}</button></div>
+            </form>
+          </div>}
         </section>
 
         {backupCodes.length > 0 && <section className="security-card security-backup-codes"><div className="security-card-head"><div><h2>{text('securityBackupCodes')}</h2><p>{text('securityBackupCodesDescription')}</p></div><button type="button" className="platform-button" onClick={() => void copyValue(backupCodes.join('\n'), text('securityBackupCopied'))}>{text('securityCopyAll')}</button></div><ol>{backupCodes.map((code) => <li key={code}><code>{code}</code></li>)}</ol><button type="button" className="platform-button" onClick={() => setBackupCodes([])}>{text('securityCloseAfterSave')}</button></section>}
