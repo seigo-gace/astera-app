@@ -26,6 +26,31 @@ jobs:
       - name: Bundle Cloudflare Pages Functions
         run: npm run cloudflare:functions:build
 
+  security-2fa-ui-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run Security and 2FA desktop-tablet-smartphone matrix
+        run: npm run e2e:security-ui
+      - name: Upload Security and 2FA Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-2fa-ui-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
   contracts-contabo:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
