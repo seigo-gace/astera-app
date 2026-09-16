@@ -128,10 +128,8 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       retry: 'Retry',
       passkeyDescription: 'Sign in with your device unlock method such as fingerprint, face, or PIN.',
       addPasskey: 'Add passkey',
-      twoFactorDescription: 'Use a verification code from an authenticator app after signing in with a password.',
+      twoFactorDescription: 'When two-factor authentication is enabled, choose email or an authenticator app for the verification code.',
       setupTwoFactor: 'Set up',
-      providerManaged: 'No Astera password credential is registered for this account. Set an Astera password before enabling Astera two-factor authentication.',
-      setupPassword: 'Set Astera password',
       confirmIdentity: 'Confirm your identity',
       confirmIdentityDescription: 'Enter your current Astera password to continue.',
       cancel: 'Cancel',
@@ -145,9 +143,12 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       codeTitle: 'Enter the 6-digit code',
       manageTwoFactor: 'Manage two-factor authentication',
       signedInDevices: 'Signed-in devices',
-      signedInDevicesDescription: 'Devices with an active Astera session.',
+      signedInDevicesDescription: 'Devices with an active Astera session. Sign out devices you do not recognize.',
       devicesUnavailable: 'No active session information was returned. Reload this page after signing in again.',
       lastUsed: 'Last used',
+      signOutDevice: 'Sign out',
+      deviceSignedOut: 'The selected device has been signed out.',
+      deviceSignOutFailed: 'The selected device could not be signed out.',
       passkeyCreated: 'Registered',
       passkeyStorage: 'Storage',
       passkeyBackup: 'Backup',
@@ -160,10 +161,8 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       retry: '再試行',
       passkeyDescription: '指紋・顔認証・端末のPINなど、端末のロック解除方法でログインできます。',
       addPasskey: 'Passkeyを追加',
-      twoFactorDescription: 'パスワードでログインした後、認証アプリの確認コードを使用します。',
+      twoFactorDescription: '2段階認証を有効にすると、登録済みメールまたは認証アプリの確認コードを選んで認証できます。',
       setupTwoFactor: '設定する',
-      providerManaged: 'このAccountにはAstera用Passwordのcredentialが登録されていません。Astera側の2段階認証を有効にする前にPasswordを設定してください。',
-      setupPassword: 'Astera用パスワードを設定',
       confirmIdentity: '本人確認',
       confirmIdentityDescription: '続行するには現在のAstera用パスワードを入力してください。',
       cancel: 'キャンセル',
@@ -177,9 +176,12 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       codeTitle: '6桁のコードを入力',
       manageTwoFactor: '2段階認証を管理',
       signedInDevices: 'ログイン中の端末',
-      signedInDevicesDescription: '現在Asteraへログインしている端末です。',
+      signedInDevicesDescription: '現在Asteraへログインしている端末です。心当たりのない端末はログアウトできます。',
       devicesUnavailable: '有効なSession情報を取得できませんでした。再Login後にこのPageを再読み込みしてください。',
       lastUsed: '最終利用',
+      signOutDevice: 'ログアウト',
+      deviceSignedOut: '選択した端末をログアウトしました。',
+      deviceSignOutFailed: '選択した端末をログアウトできませんでした。',
       passkeyCreated: '登録日時',
       passkeyStorage: '保存方式',
       passkeyBackup: '同期・Backup',
@@ -358,6 +360,18 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
     }
   };
 
+  const revokeSession = async (sessionId: string) => {
+    if (previewMode) return;
+    setFeedback({ type: 'working' });
+    try {
+      await apiRequest(`/api/account/security/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+      setFeedback({ type: 'success', message: local.deviceSignedOut });
+      await reload();
+    } catch (error) {
+      setFeedback({ type: 'error', message: error instanceof Error ? error.message : local.deviceSignOutFailed });
+    }
+  };
+
   const manualSecret = useMemo(() => enrollment ? totpSecret(enrollment.totpURI) : '', [enrollment]);
 
   if (loading) return <BusyState label={text('securityLoading')} />;
@@ -421,13 +435,6 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
           {!security.twoFactorEnabled && !enrollment && security.passwordConfigured && !twoFactorSetupOpen && (
             <div className="security-card-action">
               <button className="platform-button is-primary" type="button" onClick={() => setTwoFactorSetupOpen(true)} disabled={feedback.type === 'working' || previewMode}>{local.setupTwoFactor}</button>
-            </div>
-          )}
-
-          {!security.twoFactorEnabled && !enrollment && !security.passwordConfigured && (
-            <div className="security-note security-password-setup">
-              <p>{local.providerManaged}</p>
-              <a className="platform-button is-primary" href="/account/password/setup?return_to=%2Faccount%2Fsecurity">{local.setupPassword}</a>
             </div>
           )}
 
@@ -531,8 +538,20 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
             <ul className="security-session-list">
               {security.sessions.map((session) => (
                 <li key={session.id}>
-                  <strong>{sessionLabel(session.userAgent, session.current, language)}</strong>
-                  {session.updatedAt && <span>{local.lastUsed} {formatDate(session.updatedAt, language)}</span>}
+                  <div className="security-session-main">
+                    <strong>{sessionLabel(session.userAgent, session.current, language)}</strong>
+                    {session.updatedAt && <span>{local.lastUsed} {formatDate(session.updatedAt, language)}</span>}
+                  </div>
+                  {!session.current && (
+                    <button
+                      className="platform-button security-session-revoke"
+                      type="button"
+                      onClick={() => void revokeSession(session.id)}
+                      disabled={feedback.type === 'working' || previewMode}
+                    >
+                      {local.signOutDevice}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
