@@ -64,8 +64,15 @@ export async function onRequestPost(context: Context): Promise<Response> {
       return json(502, 'PASSWORD_CREDENTIAL_NOT_CREATED', 'Password設定を確認できませんでした。もう一度お試しください。');
     }
 
+    const now = new Date().toISOString();
+    await context.env.ASTERA_DB.prepare(
+      `UPDATE user_profiles
+       SET account_status = 'active', updated_at = ?2
+       WHERE user_id = ?1 AND account_status = 'pending_password_setup'`,
+    ).bind(userId, now).run();
+
     return Response.json(
-      { ok: true, password_configured: true },
+      { ok: true, password_configured: true, account_status: 'active' },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
