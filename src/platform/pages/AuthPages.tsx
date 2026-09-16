@@ -172,8 +172,8 @@ function RegisterPage({ route }: { route: RouteMatch }) {
       <AuthCard footer={<a href={loginPath(returnTo)}>既にAccountがある場合</a>}>
         <form className="platform-form" onSubmit={onSubmit}>
           <Field label="Email" name="email" type="email" autoComplete="email" required />
-          <Field label="Password（12〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-          <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+          <Field label="Password（6〜128文字）" name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
+          <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
           <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>Account登録</button>
         </form>
         <div className="platform-divider"><span>または</span></div>
@@ -255,8 +255,8 @@ function PasswordRequestPage({ route, reset }: { route: RouteMatch; reset: boole
       <AuthCard footer={<a href={loginPath(returnTo)}>Loginへ戻る</a>}>
         <form className="platform-form" onSubmit={onSubmit}>
           {reset ? <>
-            <Field label="新しいPassword" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-            <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+            <Field label="新しいPassword" name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
+            <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
           </> : <Field label="Email" name="email" type="email" autoComplete="email" required />}
           <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>{reset ? 'Passwordを更新' : '再設定Emailを送信'}</button>
         </form>
@@ -285,8 +285,8 @@ function PasswordSetupPage({ route }: { route: RouteMatch }) {
   return (
     <PublicPageFrame route={route} description="Google／GitHubのPasswordは取得せず、Astera専用Passwordを設定します。">
       <AuthCard><form className="platform-form" onSubmit={onSubmit}>
-        <Field label="Astera用Password" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
-        <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+        <Field label="Astera用Password" name="password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
+        <Field label="Password確認" name="password_confirm" type="password" autoComplete="new-password" required minLength={6} maxLength={128} />
         <button className="platform-button is-primary" type="submit" disabled={state.type === 'working'}>設定して続ける</button>
       </form><FormResult state={state} /></AuthCard>
     </PublicPageFrame>
