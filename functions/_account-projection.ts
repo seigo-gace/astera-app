@@ -74,19 +74,32 @@ export class FunctionHttpError extends Error {
 }
 
 const FRESH_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+const PROTECTED_ACCOUNT_STATUSES = new Set(['security_hold', 'suspended', 'deletion_scheduled', 'deleted']);
 
-function desiredAccountStatus(user: SessionUser): string {
+async function hasPasswordCredential(db: D1Database, userId: string): Promise<boolean> {
+  const credential = await db.prepare(
+    'SELECT id FROM "account" WHERE "userId"=?1 AND "providerId"=?2 AND password IS NOT NULL AND length(password) > 0 LIMIT 1',
+  ).bind(userId, 'credential').first<{ id: string }>();
+  return Boolean(credential?.id);
+}
+
+function desiredAccountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
+  if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
   if (user.emailVerified === false) return 'pending_email_verification';
-  // Social-provider login is a valid existing account session by itself.
-  // Password setup is enforced only by the new-user registration continuation.
-  return 'active';
+  if (existing?.account_status === 'active') return 'active';
+  return passwordConfigured ? 'active' : 'pending_password_setup';
 }
 
 async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
   const now = new Date().toISOString();
   const tenantId = `personal:${user.id}`;
   const creditId = `credit:${tenantId}`;
-  const accountStatus = desiredAccountStatus(user);
+  const existingProfile = await db.prepare(
+    `SELECT user_id, tenant_id, nickname, account_status, ui_language, created_at, updated_at
+     FROM user_profiles WHERE user_id = ?1 LIMIT 1`,
+  ).bind(user.id).first<UserProfileRow>();
+  const passwordConfigured = await hasPasswordCredential(db, user.id);
+  const accountStatus = desiredAccountStatus(user, existingProfile, passwordConfigured);
   const nickname = user.name?.trim() || user.email.split('@')[0] || 'Astera User';
 
   await db.batch([
@@ -101,10 +114,7 @@ async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ pr
        ON CONFLICT(user_id) DO UPDATE SET
          tenant_id = excluded.tenant_id,
          nickname = CASE WHEN user_profiles.nickname = '' THEN excluded.nickname ELSE user_profiles.nickname END,
-         account_status = CASE
-           WHEN user_profiles.account_status IN ('security_hold', 'suspended', 'deletion_scheduled', 'deleted') THEN user_profiles.account_status
-           ELSE excluded.account_status
-         END,
+         account_status = excluded.account_status,
          updated_at = excluded.updated_at`,
     ).bind(user.id, tenantId, nickname, accountStatus, now),
     db.prepare(
