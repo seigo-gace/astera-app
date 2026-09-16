@@ -5,6 +5,7 @@ import { ApiError, apiRequest, asArray, asRecord, recordText } from './api-clien
 import { usePlatformText } from './platform-text';
 import type { RouteMatch } from './route-registry';
 import { SettingsSurface } from '../features/settings/SettingsSurface';
+import { AuthLanguageToggle } from '../features/auth/AuthLanguageToggle';
 
 const APP_NAV = [
   { href: '/app/new', label: 'navNew', key: 'new' },
@@ -428,6 +429,7 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
 export function PublicPageFrame({ route, children, description, actions }: { route: RouteMatch; children: ReactNode; description?: string; actions?: ReactNode }) {
   const { text, routeTitle } = usePlatformText();
   const localizedTitle = routeTitle(route.id, route.title);
+  const authRoute = route.group === 'auth';
   useEffect(() => { document.title = `${localizedTitle} | Astera App`; }, [localizedTitle]);
-  return <main className="platform-public-page"><header className="platform-public-header"><Brand /><nav><a href="/pricing">{text('publicPricing')}</a><a href="/login">{text('publicLogin')}</a><a href="/register">{text('publicRegister')}</a></nav></header><section className="platform-public-hero"><div className="platform-eyebrow">ASTERA APP</div><h1>{localizedTitle}</h1>{description && <p>{description}</p>}{actions && <div className="platform-head-actions">{actions}</div>}</section><div className="platform-public-content">{children}</div></main>;
+  return <main className="platform-public-page"><header className="platform-public-header"><Brand />{authRoute ? <AuthLanguageToggle /> : <nav><a href="/pricing">{text('publicPricing')}</a><a href="/login">{text('publicLogin')}</a><a href="/register">{text('publicRegister')}</a></nav>}</header><section className="platform-public-hero"><div className="platform-eyebrow">ASTERA APP</div><h1>{localizedTitle}</h1>{description && <p>{description}</p>}{actions && <div className="platform-head-actions">{actions}</div>}</section><div className="platform-public-content">{children}</div></main>;
 }
