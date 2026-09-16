@@ -23,7 +23,6 @@ type SessionRecord = { id: string; current: boolean; userAgent: string; updatedA
 type AccountSecurity = {
   email: string;
   emailVerified: boolean;
-  passwordConfigured: boolean;
   twoFactorEnabled: boolean;
   sessionCount: number;
   sessions: SessionRecord[];
@@ -117,7 +116,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const [loading, setLoading] = useState(!previewMode);
   const [loadError, setLoadError] = useState(false);
   const [security, setSecurity] = useState<AccountSecurity>({
-    email: '', emailVerified: false, passwordConfigured: false, twoFactorEnabled: false, sessionCount: 0, sessions: [],
+    email: '', emailVerified: false, twoFactorEnabled: false, sessionCount: 0, sessions: [],
   });
   const [passkeys, setPasskeys] = useState<PasskeyRecord[]>([]);
   const [feedback, setFeedback] = useState<Feedback>({ type: 'idle' });
@@ -136,8 +135,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       authenticatorMethod: 'Authenticator app', authenticatorDescription: 'Register an authenticator by scanning the QR code.',
       authenticatorReady: 'Registered', authenticatorNotReady: 'Not registered', setupTwoFactor: 'Set up authenticator',
       confirmIdentity: 'Confirm your identity', confirmIdentityDescription: 'Enter the Astera password registered with your account to display the authenticator QR code.',
-      accountPasswordProblem: 'The account password credential could not be confirmed. Repair or change it from Account settings; Security does not create a second password.',
-      manageAccountPassword: 'Manage password in Account', cancel: 'Cancel', scanTitle: 'Scan the QR code',
+      cancel: 'Cancel', scanTitle: 'Scan the QR code',
       scanDescription: 'Open your authenticator app and scan this QR code.', qrLoading: 'Creating QR code…',
       manualSetup: 'Can’t scan the QR code?', setupKey: 'Setup key', copyKey: 'Copy key', keyCopied: 'Setup key copied.',
       codeTitle: 'Enter the 6-digit code', manageTwoFactor: 'Manage two-factor authentication',
@@ -156,8 +154,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       authenticatorMethod: '認証アプリ', authenticatorDescription: 'QRコードを読み取って認証アプリを登録します。',
       authenticatorReady: '登録済み', authenticatorNotReady: '未登録', setupTwoFactor: '認証アプリを設定',
       confirmIdentity: '本人確認', confirmIdentityDescription: '認証アプリのQRコードを表示するため、Account登録時のAstera用Passwordを入力してください。',
-      accountPasswordProblem: 'Account登録時のPassword情報を確認できません。Securityで新しいPasswordは作らず、Account設定で修復・変更してください。',
-      manageAccountPassword: 'AccountでPasswordを管理', cancel: 'キャンセル', scanTitle: 'QRコードを読み取る',
+      cancel: 'キャンセル', scanTitle: 'QRコードを読み取る',
       scanDescription: '認証アプリを開き、このQRコードを読み取ってください。', qrLoading: 'QRコードを作成しています…',
       manualSetup: 'QRコードを読み取れない場合', setupKey: 'セットアップキー', copyKey: 'キーをコピー', keyCopied: 'セットアップキーをコピーしました。',
       codeTitle: '6桁のコードを入力', manageTwoFactor: '2段階認証を管理',
@@ -170,7 +167,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
 
   const reload = async () => {
     if (previewWithoutAuth()) {
-      setSecurity({ email: '', emailVerified: false, passwordConfigured: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
+      setSecurity({ email: '', emailVerified: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
       setPasskeys([]); setLoadError(false); setLoading(false); return;
     }
     setLoading(true); setLoadError(false);
@@ -191,7 +188,6 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       }).filter((item) => item.id);
       setSecurity({
         email: recordText(source, ['email']), emailVerified: source.email_verified === true || source.emailVerified === true,
-        passwordConfigured: source.password_configured === true || source.passwordConfigured === true,
         twoFactorEnabled: source.two_factor_enabled === true || source.twoFactorEnabled === true,
         sessionCount: Number(source.session_count ?? source.sessionCount ?? sessions.length) || sessions.length, sessions,
       });
@@ -230,7 +226,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
     const password = String(new FormData(event.currentTarget).get('password') ?? '');
     setFeedback({ type: 'working' }); setBackupCodes([]);
     try {
-      const payload = betterAuthResult(await authClient.twoFactor.enable({ password, issuer: 'Astera' }), text('securityTwoFactorStartFailed'));
+      const payload = betterAuthResult(await authClient.twoFactor.enable({ password, issuer: 'Astera', method: 'totp' }), text('securityTwoFactorStartFailed'));
       const source = asRecord(payload);
       const totpURI = recordText(source, ['totpURI', 'totpUri', 'totp_uri']);
       const codes = asArray(source.backupCodes ?? source.backup_codes).map(String);
@@ -316,21 +312,19 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
             </div>
             <div className="security-method-row">
               <div><strong>{local.authenticatorMethod}</strong><span>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span><small>{local.authenticatorDescription}</small></div>
-              <span className={`security-method-state${security.twoFactorEnabled ? ' is-ready' : ''}`}>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span>
+              <div className="security-method-action">
+                <span className={`security-method-state${security.twoFactorEnabled ? ' is-ready' : ''}`}>{security.twoFactorEnabled ? local.authenticatorReady : local.authenticatorNotReady}</span>
+                {!security.twoFactorEnabled && !enrollment && !twoFactorSetupOpen && <button className="platform-button is-primary" type="button" onClick={() => setTwoFactorSetupOpen(true)} disabled={feedback.type === 'working' || previewMode}>{local.setupTwoFactor}</button>}
+              </div>
             </div>
           </div>
-
-          {!security.twoFactorEnabled && !enrollment && !twoFactorSetupOpen && security.email && security.emailVerified && (
-            <div className="security-card-action"><button className="platform-button is-primary" type="button" onClick={() => setTwoFactorSetupOpen(true)} disabled={feedback.type === 'working' || previewMode}>{local.setupTwoFactor}</button></div>
-          )}
 
           {!security.twoFactorEnabled && !enrollment && twoFactorSetupOpen && (
             <div className="security-step">
               <div><h3>{local.confirmIdentity}</h3><p>{local.confirmIdentityDescription}</p></div>
-              {!security.passwordConfigured && <div className="security-account-warning"><span>{local.accountPasswordProblem}</span><a className="platform-button" href="/account">{local.manageAccountPassword}</a></div>}
               <form className="security-form" onSubmit={enableTwoFactor}>
                 <label><span>{text('securityCurrentPassword')}</span><input name="password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={previewMode} /></label>
-                <div className="security-form-actions"><button className="platform-button" type="button" onClick={() => setTwoFactorSetupOpen(false)}>{local.cancel}</button><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode || !security.passwordConfigured}>{text('securityStartTwoFactor')}</button></div>
+                <div className="security-form-actions"><button className="platform-button" type="button" onClick={() => setTwoFactorSetupOpen(false)}>{local.cancel}</button><button className="platform-button is-primary" type="submit" disabled={feedback.type === 'working' || previewMode}>{text('securityStartTwoFactor')}</button></div>
               </form>
             </div>
           )}
