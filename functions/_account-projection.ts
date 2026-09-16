@@ -167,7 +167,7 @@ async function previewActorProjection(env: AsteraFunctionEnv): Promise<AsteraAct
   };
 }
 
-export async function requireAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
+export async function observeAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
   if (env.E2E_LIVE_PROCESS_PREVIEW_ACTOR === '1') {
     try {
       return await previewActorProjection(env);
@@ -191,9 +191,6 @@ export async function requireAsteraActor(request: Request, env: AsteraFunctionEn
 
   try {
     const { profile, credit } = await ensureProjection(env.ASTERA_DB, user);
-    if (profile.account_status !== 'active') {
-      throw new FunctionHttpError(403, `ACCOUNT_${profile.account_status.toUpperCase()}`, 'Accountの現在状態ではこの操作を実行できません。');
-    }
     return { user, session: session?.session, profile, credit };
   } catch (error) {
     if (error instanceof FunctionHttpError) throw error;
@@ -203,6 +200,14 @@ export async function requireAsteraActor(request: Request, env: AsteraFunctionEn
     }
     throw new FunctionHttpError(500, 'ACCOUNT_SESSION_PROJECTION_FAILED', 'Account状態を取得できませんでした。', message);
   }
+}
+
+export async function requireAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
+  const actor = await observeAsteraActor(request, env);
+  if (actor.profile.account_status !== 'active') {
+    throw new FunctionHttpError(403, `ACCOUNT_${actor.profile.account_status.toUpperCase()}`, 'Accountの現在状態ではこの操作を実行できません。');
+  }
+  return actor;
 }
 
 export async function requireFreshAsteraActor(request: Request, env: AsteraFunctionEnv): Promise<AsteraActorProjection> {
