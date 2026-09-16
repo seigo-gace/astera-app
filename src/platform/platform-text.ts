@@ -29,7 +29,8 @@ export type PlatformTextKey = keyof typeof PLATFORM_TEXT.ja;
 
 export function usePlatformText() {
   const { i18n } = useTranslation();
-  const language = i18n.resolvedLanguage?.toLowerCase().startsWith('en') ? 'en' : 'ja';
+  const activeLanguage = (i18n.language || i18n.resolvedLanguage || 'ja').toLowerCase();
+  const language = activeLanguage.startsWith('en') ? 'en' : 'ja';
   const text = useCallback((key: PlatformTextKey) => PLATFORM_TEXT[language][key], [language]);
   const routeTitle = useCallback((routeId: string, fallback: string) => {
     const titles = ROUTE_TITLES[language] as Record<string, string>;
