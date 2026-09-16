@@ -22,8 +22,7 @@
 }
 
 .plan-credit-storage-metrics span,
-.plan-credit-storage-remaining,
-.plan-credit-storage-pack small {
+.plan-credit-storage-remaining {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
@@ -98,13 +97,13 @@
 }
 
 .plan-credit-storage-pack {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px 12px;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   min-width: 0;
-  min-height: 92px;
-  padding: 16px;
+  min-height: 88px;
+  padding: 18px;
   box-sizing: border-box;
   border: 1px solid var(--border-color);
   border-radius: 14px;
@@ -115,8 +114,27 @@
   cursor: pointer;
 }
 
-.plan-credit-storage-pack:not(:disabled):hover {
-  border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
+.plan-credit-storage-pack h3 {
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.plan-credit-storage-pack .plan-credit-price {
+  flex: 0 0 auto;
+  margin-top: 0;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .plan-credit-storage-pack:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
+    background: color-mix(in srgb, var(--text-primary) 2.5%, var(--bg-primary));
+    box-shadow: 0 9px 24px color-mix(in srgb, var(--text-primary) 9%, transparent);
+  }
 }
 
 .plan-credit-storage-pack:focus-visible {
@@ -125,24 +143,8 @@
 }
 
 .plan-credit-storage-pack:disabled {
-  cursor: not-allowed;
-  opacity: .48;
-}
-
-.plan-credit-storage-pack-size {
-  min-width: 0;
-  font-size: 18px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.plan-credit-storage-pack strong {
-  font-size: 18px;
-  white-space: nowrap;
-}
-
-.plan-credit-storage-pack small {
-  grid-column: 1 / -1;
+  cursor: default;
+  opacity: 1;
 }
 
 @media (max-width: 1023px) {
@@ -178,15 +180,18 @@
     padding: 14px;
   }
 
-  .plan-credit-storage-metrics strong,
-  .plan-credit-storage-pack-size,
-  .plan-credit-storage-pack strong {
+  .plan-credit-storage-metrics strong {
     font-size: 17px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .plan-credit-storage-gauge > span {
+  .plan-credit-storage-gauge > span,
+  .plan-credit-storage-pack {
     transition: none;
+  }
+
+  .plan-credit-storage-pack:hover {
+    transform: none;
   }
 }
