@@ -101,6 +101,8 @@ export async function onRequestGet(context: Context): Promise<Response> {
 
     return Response.json({
       security: {
+        email: actor.user.email,
+        email_verified: actor.user.emailVerified !== false,
         password_configured: Boolean(credential?.password),
         password_updated_at: timeValue(credential?.updatedAt),
         passkey_enabled: passkeys.length > 0,

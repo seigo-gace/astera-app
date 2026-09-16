@@ -1,0 +1,114 @@
+.settings-account-current-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 12px 0;
+}
+
+.settings-account-current-value > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-account-current-value strong {
+  overflow-wrap: anywhere;
+}
+
+.settings-account-current-value span,
+.settings-account-recovery p {
+  color: var(--platform-muted, var(--text-tertiary));
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.settings-account-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-account-form:has(label:nth-of-type(2)) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-account-form:has(label:nth-of-type(2)) > .platform-button {
+  justify-self: start;
+}
+
+.settings-account-form label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.settings-account-form label > span {
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.settings-account-form input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 10px;
+  background: var(--platform-bg, var(--bg-primary));
+  color: var(--platform-text, var(--text-primary));
+  padding: 9px 11px;
+  font: inherit;
+}
+
+.settings-account-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.settings-account-recovery p {
+  margin: 0;
+  min-width: 0;
+}
+
+.settings-account-recovery .platform-button {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .settings-account-form,
+  .settings-account-form:has(label:nth-of-type(2)) {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-account-form > .platform-button,
+  .settings-account-form:has(label:nth-of-type(2)) > .platform-button {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .settings-account-recovery {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-account-recovery .platform-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 460px) {
+  .settings-account-form input {
+    min-height: 48px;
+    font-size: 16px;
+  }
+}

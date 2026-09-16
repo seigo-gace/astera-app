@@ -1,0 +1,121 @@
+.security-method-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.security-method-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 12px;
+  background: var(--platform-bg, var(--bg-primary));
+}
+
+.security-method-row > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.security-method-row strong,
+.security-method-row span,
+.security-method-row small {
+  overflow-wrap: anywhere;
+}
+
+.security-method-row > div:first-child > span,
+.security-method-row small,
+.security-account-warning span {
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.security-method-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.security-method-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 999px;
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.security-method-state.is-ready {
+  color: var(--success, #22c55e);
+  border-color: color-mix(in srgb, var(--success, #22c55e) 42%, var(--platform-border, var(--border-color)));
+}
+
+.security-account-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 10px;
+}
+
+.security-account-warning .platform-button,
+.security-method-action .platform-button {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+.security-session-list li {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.security-session-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.security-session-revoke {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 700px) {
+  .security-method-row,
+  .security-account-warning,
+  .security-session-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .security-method-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .security-method-state {
+    align-self: flex-start;
+  }
+
+  .security-method-action .platform-button,
+  .security-account-warning .platform-button,
+  .security-session-revoke {
+    width: 100%;
+  }
+}

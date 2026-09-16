@@ -87,13 +87,40 @@ jobs:
         id: install
         run: npm install --no-audit
 
-      - name: Apply Account and Storage D1 migrations
+      - name: Apply Account, Storage, and Credit D1 migrations
         id: d1_runtime_migrations
         shell: bash
         run: |
           set -euo pipefail
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0016_storage_buyout_packs.sql
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0017_account_registration_state_repair.sql
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0018_active_credit_formula_v1.sql
+
+      - name: Verify active Credit Policy
+        id: credit_policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT p.version, p.status, p.max_estimate, f.ascii_milli_per_char, f.non_ascii_milli_per_char, f.option_multiplier_milli, f.output_billed FROM credit_policies p JOIN credit_formula_policies f ON f.version = p.version WHERE p.status = 'active';")"
+          RESULT="$result" node <<'NODE'
+          const payload = JSON.parse(process.env.RESULT || '[]');
+          const rows = payload.flatMap((entry) => entry?.results || []);
+          if (rows.length !== 1) throw new Error(`Expected exactly one active Credit Policy, found ${rows.length}`);
+          const row = rows[0];
+          const expected = {
+            version: 'credit-formula-2026-09-16-v1',
+            status: 'active',
+            max_estimate: 1500,
+            ascii_milli_per_char: 1000,
+            non_ascii_milli_per_char: 1500,
+            option_multiplier_milli: 500,
+            output_billed: 0,
+          };
+          for (const [key, value] of Object.entries(expected)) {
+            if (row[key] !== value) throw new Error(`Credit Policy ${key}=${String(row[key])}, expected ${String(value)}`);
+          }
+          console.log(`Verified active Credit Policy ${row.version}`);
+          NODE
 
       - name: Build frontend
         id: frontend_build
@@ -177,6 +204,7 @@ jobs:
           PAGES_CONFIG_OUTCOME: ${{ steps.pages_config.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           D1_RUNTIME_MIGRATIONS_OUTCOME: ${{ steps.d1_runtime_migrations.outcome }}
+          CREDIT_POLICY_OUTCOME: ${{ steps.credit_policy.outcome }}
           FRONTEND_BUILD_OUTCOME: ${{ steps.frontend_build.outcome }}
           DEPLOYMENT_MARKER_OUTCOME: ${{ steps.deployment_marker.outcome }}
           FUNCTIONS_BUILD_OUTCOME: ${{ steps.functions_build.outcome }}
@@ -201,6 +229,7 @@ jobs:
               pages_config: process.env.PAGES_CONFIG_OUTCOME,
               install: process.env.INSTALL_OUTCOME,
               d1_runtime_migrations: process.env.D1_RUNTIME_MIGRATIONS_OUTCOME,
+              credit_policy: process.env.CREDIT_POLICY_OUTCOME,
               frontend_build: process.env.FRONTEND_BUILD_OUTCOME,
               deployment_marker: process.env.DEPLOYMENT_MARKER_OUTCOME,
               functions_build: process.env.FUNCTIONS_BUILD_OUTCOME,

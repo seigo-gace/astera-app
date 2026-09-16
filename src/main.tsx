@@ -11,6 +11,7 @@ import './orientation-stability.css';
 import './platform/auth-responsive.css';
 import './features/developer/developer-layout-correction.css';
 import './features/navigation/plan-credit-storage.css';
+import './features/settings/account-management.css';
 import './features/security/security-session-controls.css';
 import './platform/session-status-overrides.css';
 import { initializeDeviceCompatibility } from './device-compatibility';

@@ -85,10 +85,10 @@ async function hasPasswordCredential(db: D1Database, userId: string): Promise<bo
 
 function desiredAccountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
   if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
-  // `active` is the persisted proof that registration already completed.
-  // Do not send a completed account back through registration because a later projection read cannot see a credential row.
+  // active is the persisted proof that registration completed. Never restart registration on later reads.
   if (existing?.account_status === 'active') return 'active';
   if (user.emailVerified === false) return 'pending_email_verification';
+  // New registrations must finish the Astera password step once. Existing active accounts stay active.
   return passwordConfigured ? 'active' : 'pending_password_setup';
 }
 

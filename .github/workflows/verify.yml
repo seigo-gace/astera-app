@@ -1,12 +1,44 @@
 name: verify
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  frontend-functions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Audit Account and authentication contracts
+        run: npm run auth:account:audit
+      - name: Typecheck and build frontend
+        run: npm run build
+      - name: Bundle Cloudflare Pages Functions
+        run: npm run cloudflare:functions:build
+
+  contracts-contabo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Typecheck Worker contracts and Contabo runtime
+        run: npm run contract:check
+
   build-and-device-matrix:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -17,12 +49,18 @@ jobs:
           node-version: '22.12'
       - name: Install exact direct dependencies and workspaces
         run: npm install --no-fund --no-audit
-      - name: Validate browser scripts
+      - name: Validate current public browser scripts
+        shell: bash
         run: |
-          node --check public/app-interactions.js
-          node --check public/process-user-errors.js
-          node --check public/ui-honesty.js
-          node --check public/guide-ai-runtime.js
+          set -euo pipefail
+          mapfile -d '' scripts < <(find public -maxdepth 1 -type f -name '*.js' -print0 | sort -z)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "No public browser scripts found" >&2
+            exit 1
+          fi
+          for script in "${scripts[@]}"; do
+            node --check "$script"
+          done
       - name: Audit canonical route coverage
         run: npm run route:audit
       - name: Audit responsive behavior
@@ -49,6 +87,18 @@ jobs:
         run: docker build -f contabo/app-api/Dockerfile .
       - name: Generate Notion repository audit report
         run: npm run notion:audit
+      - name: Enforce source readiness gate
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('audit-results/notion-repository-audit.json', 'utf8'));
+          if (report.sourceVerdict !== 'PASS') {
+            console.error(JSON.stringify(report.sourceGaps || [], null, 2));
+            process.exit(1);
+          }
+          console.log('Source readiness: PASS');
+          NODE
       - name: Upload source audit reports
         if: always()
         uses: actions/upload-artifact@v4

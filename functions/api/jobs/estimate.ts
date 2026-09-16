@@ -12,8 +12,10 @@ import {
   normalizeEstimateInput,
   promptFingerprint,
   requestFingerprint,
-  revisedCharacterCount,
+  revisedCreditMetric,
+  type CreditPolicy,
   type EstimateInput,
+  type RevisionCreditMetric,
 } from '../../_job-policy';
 
 type UploadRow = {
@@ -85,7 +87,8 @@ async function revisionBillableCharacters(
   tenantId: string,
   userId: string,
   input: EstimateInput,
-): Promise<number | null> {
+  policy: CreditPolicy,
+): Promise<RevisionCreditMetric | null> {
   if (!input.revision) return null;
   const parent = await context.env.ASTERA_DB.prepare(
     `SELECT j.id, j.state, j.private_mode, e.prompt_sha256
@@ -108,7 +111,7 @@ async function revisionBillableCharacters(
   if (suppliedBaseHash !== parent.prompt_sha256) {
     throw new FunctionHttpError(409, 'REVISION_BASE_PROMPT_MISMATCH', '修整前本文が修整元Jobと一致しません。');
   }
-  return revisedCharacterCount(input.revision.basePrompt, input.prompt);
+  return revisedCreditMetric(input.revision.basePrompt, input.prompt, policy);
 }
 
 export async function onRequestPost(context: PagesContext): Promise<Response> {
@@ -120,17 +123,19 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       loadActiveCreditPolicy(context.env.ASTERA_DB),
       loadUploads(context, actor.profile.tenant_id, actor.user.id, input.fileIds, input.privateMode),
     ]);
+
     const totalFileBytes = uploads.reduce((sum, row) => sum + Number(row.size_bytes), 0);
     if (!Number.isSafeInteger(totalFileBytes) || totalFileBytes < 0) {
       throw new FunctionHttpError(422, 'UPLOAD_SIZE_TOTAL_INVALID', 'File Size合計を計算できません。');
     }
-    const [promptSha256, revisionCharacters] = await Promise.all([
+
+    const [promptSha256, revisionMetric] = await Promise.all([
       promptFingerprint(input.prompt),
-      revisionBillableCharacters(context, actor.profile.tenant_id, actor.user.id, input),
+      revisionBillableCharacters(context, actor.profile.tenant_id, actor.user.id, input, policy),
     ]);
-    const billableCharacters = revisionCharacters ?? [...input.prompt].length;
+    const billableCharacters = revisionMetric?.characters ?? [...input.prompt].length;
     const fingerprint = await requestFingerprint(input, uploads.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
-    const requiredCredits = calculateRequiredCredits(policy, input, totalFileBytes, billableCharacters);
+    const requiredCredits = calculateRequiredCredits(policy, input, revisionMetric?.milliCredits);
     const availableCredits = Number(actor.credit.available_balance);
     const reservedCredits = Number(actor.credit.reserved_balance);
     const usableCredits = Math.max(0, availableCredits - reservedCredits);
@@ -161,7 +166,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       createdAt.toISOString(),
       promptSha256,
       input.revision?.parentJobId ?? null,
-      revisionCharacters,
+      revisionMetric?.characters ?? null,
     ).run();
 
     return Response.json({
