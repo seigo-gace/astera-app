@@ -17,10 +17,6 @@ type AccountSummary = {
   image: string;
 };
 
-type SecuritySummary = {
-  passwordConfigured: boolean;
-};
-
 function accountRows(payload: unknown): LinkedAccount[] {
   return asArray(payload, ['data', 'accounts', 'items']).map((item) => {
     const record = asRecord(item);
@@ -49,8 +45,6 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
   const [connections, setConnections] = useState<LinkedAccount[]>([]);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
-  const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(null);
-  const [securitySummaryLoading, setSecuritySummaryLoading] = useState(true);
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const local = language === 'en'
     ? {
@@ -71,8 +65,6 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
       changePassword: 'Change password',
       passwordChanged: 'Password changed. Other signed-in devices were signed out.',
       passwordMismatch: 'The new passwords do not match.',
-      passwordUnavailable: 'The password credential for this account could not be confirmed. Reset it using the registered email.',
-      resetPassword: 'Reset password by email',
       securityDescription: 'Passkeys, two-factor authentication, and signed-in devices.',
       privacyDescription: 'Review privacy and data settings.',
       lastMethod: 'At least one login method must remain connected.',
@@ -97,8 +89,6 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
       changePassword: 'Passwordを変更',
       passwordChanged: 'Passwordを変更しました。他のログイン中端末はログアウトしました。',
       passwordMismatch: '新しいPasswordが一致しません。',
-      passwordUnavailable: 'このAccountのPassword情報を確認できません。登録メールを使ってPasswordを再設定してください。',
-      resetPassword: '登録メールからPasswordを再設定',
       securityDescription: 'Passkey、2段階認証、ログイン中の端末を管理します。',
       privacyDescription: 'プライバシーとデータの設定を確認します。',
       lastMethod: 'ログイン方法は最低1つ残す必要があります。',
@@ -110,6 +100,7 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
     () => account.status === 'ready' ? accountSummary(account.data) : { displayName: '', email: '', emailVerified: false, image: '' },
     [account],
   );
+  const accountRoute = useMemo<RouteMatch>(() => ({ ...route, id: 'account-pill', title: 'ACCOUNT' }), [route]);
 
   const loadConnections = async () => {
     setConnectionLoading(true);
@@ -123,22 +114,8 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
     }
   };
 
-  const loadSecuritySummary = async () => {
-    setSecuritySummaryLoading(true);
-    try {
-      const payload = await apiRequest('/api/account/security');
-      const source = asRecord(asRecord(payload).security ?? payload);
-      setSecuritySummary({ passwordConfigured: source.password_configured === true || source.passwordConfigured === true });
-    } catch {
-      setSecuritySummary(null);
-    } finally {
-      setSecuritySummaryLoading(false);
-    }
-  };
-
   useEffect(() => {
     void loadConnections();
-    void loadSecuritySummary();
   }, []);
 
   const changeEmail = async (event: FormEvent<HTMLFormElement>) => {
@@ -175,7 +152,6 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
       if (response.error) throw new Error(authErrorMessage(response.error, 'Passwordを変更できませんでした。'));
       form.reset();
       setState({ type: 'success', message: local.passwordChanged });
-      await loadSecuritySummary();
     } catch (error) {
       setState({ type: 'error', message: error instanceof Error ? error.message : 'Passwordを変更できませんでした。' });
     }
@@ -207,7 +183,7 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
   const fallbackInitial = (summary.displayName || summary.email || 'A').trim().slice(0, 1).toUpperCase();
 
   return (
-    <ResponsivePageShell route={route} description={text('accountDescription')}>
+    <ResponsivePageShell route={accountRoute}>
       <div className="settings-account-page">
         <section className="settings-account-profile" aria-label={local.profile}>
           {account.status === 'loading' && <BusyState />}
@@ -246,30 +222,21 @@ export default function AccountSettingsPage({ route }: { route: RouteMatch }) {
         <section className="settings-account-section">
           <h2>{local.passwordTitle}</h2>
           <p className="settings-note">{local.passwordDescription}</p>
-          {securitySummaryLoading ? <BusyState /> : securitySummary?.passwordConfigured === false ? (
-            <div className="settings-account-recovery">
-              <p>{local.passwordUnavailable}</p>
-              <a className="platform-button" href="/forgot-password?return_to=%2Faccount">{local.resetPassword}</a>
-            </div>
-          ) : securitySummary ? (
-            <form className="settings-account-form" onSubmit={changePassword}>
-              <label>
-                <span>{local.currentPassword}</span>
-                <input name="current_password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={state.type === 'working'} />
-              </label>
-              <label>
-                <span>{local.newPassword}</span>
-                <input name="new_password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} disabled={state.type === 'working'} />
-              </label>
-              <label>
-                <span>{local.confirmPassword}</span>
-                <input name="new_password_confirmation" type="password" autoComplete="new-password" required minLength={6} maxLength={128} disabled={state.type === 'working'} />
-              </label>
-              <button className="platform-button" type="submit" disabled={state.type === 'working'}>{local.changePassword}</button>
-            </form>
-          ) : (
-            <div className="settings-inline-message is-error" role="alert">{local.loadFailed}</div>
-          )}
+          <form className="settings-account-form settings-account-password-form" onSubmit={changePassword}>
+            <label>
+              <span>{local.currentPassword}</span>
+              <input name="current_password" type="password" autoComplete="current-password" required minLength={6} maxLength={128} disabled={state.type === 'working'} />
+            </label>
+            <label>
+              <span>{local.newPassword}</span>
+              <input name="new_password" type="password" autoComplete="new-password" required minLength={6} maxLength={128} disabled={state.type === 'working'} />
+            </label>
+            <label>
+              <span>{local.confirmPassword}</span>
+              <input name="new_password_confirmation" type="password" autoComplete="new-password" required minLength={6} maxLength={128} disabled={state.type === 'working'} />
+            </label>
+            <button className="platform-button" type="submit" disabled={state.type === 'working'}>{local.changePassword}</button>
+          </form>
         </section>
 
         <section className="settings-account-section">

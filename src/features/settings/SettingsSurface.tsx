@@ -13,15 +13,10 @@ type SettingsLink = {
 };
 
 export function SettingsSurface({ variant = 'page', onNavigate }: SettingsSurfaceProps) {
-  const { language, text } = useAppText();
-  const optionDescription = language === 'en'
-    ? 'Manage the existing Astera execution options.'
-    : 'Asteraの既存実行オプションを管理します。';
+  const { text } = useAppText();
 
   const links: SettingsLink[] = [
     { href: '/account', title: text('accountTitle'), description: text('accountDescription') },
-    { href: '/account/security', title: text('securityTitle'), description: text('securityDescription') },
-    { href: '/app/settings/options', title: text('navOptions'), description: optionDescription },
     { href: '/app/settings/language', title: text('languageTitle'), description: text('languageDescription') },
     { href: '/app/settings/notifications', title: text('notificationsTitle'), description: text('notificationsDescription') },
     { href: '/app/settings/data-privacy', title: text('privacyTitle'), description: text('privacyDescription') },
