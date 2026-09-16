@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { getAuthenticatorName } from '@better-auth/passkey';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import { useAppText } from '../../app-text';
 import { ApiError, apiRequest, asArray, asRecord, recordText } from '../../platform/api-client';
@@ -8,7 +9,15 @@ import { BusyState, ResponsivePageShell } from '../../platform/ResponsivePageShe
 import type { RouteMatch } from '../../platform/route-registry';
 import './security-page.css';
 
-type PasskeyRecord = { id: string; name: string; deviceType: string; backedUp: boolean; createdAt: string };
+type PasskeyRecord = {
+  id: string;
+  name: string;
+  deviceType: string;
+  backedUp: boolean;
+  transports: string;
+  createdAt: string;
+  aaguid: string;
+};
 type SessionRecord = { id: string; current: boolean; userAgent: string; updatedAt: string };
 type AccountSecurity = { passwordConfigured: boolean; twoFactorEnabled: boolean; sessionCount: number; sessions: SessionRecord[] };
 type Enrollment = { totpURI: string; backupCodes: string[] };
@@ -33,7 +42,7 @@ function formatDate(value: string, language: 'ja' | 'en'): string {
   }).format(date);
 }
 
-function sessionLabel(userAgent: string, current: boolean, language: 'ja' | 'en'): string {
+function deviceAndBrowser(userAgent: string, language: 'ja' | 'en'): string {
   const os = /Android/i.test(userAgent) ? 'Android'
     : /iPhone|iPad/i.test(userAgent) ? 'iPhone / iPad'
       : /Windows/i.test(userAgent) ? 'Windows'
@@ -44,9 +53,55 @@ function sessionLabel(userAgent: string, current: boolean, language: 'ja' | 'en'
       : /Firefox\//i.test(userAgent) ? 'Firefox'
         : /Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent) ? 'Safari'
           : '';
-  const device = browser ? `${os} · ${browser}` : os;
+  return browser ? `${os} · ${browser}` : os;
+}
+
+function sessionLabel(userAgent: string, current: boolean, language: 'ja' | 'en'): string {
+  const device = deviceAndBrowser(userAgent, language);
   if (current) return `${language === 'en' ? 'This device' : 'この端末'} · ${device}`;
   return device;
+}
+
+function defaultPasskeyName(language: 'ja' | 'en'): string {
+  if (typeof navigator === 'undefined') return language === 'en' ? 'This device' : 'この端末';
+  return deviceAndBrowser(navigator.userAgent, language);
+}
+
+function passkeyStorageLabel(deviceType: string, language: 'ja' | 'en'): string {
+  if (deviceType === 'multiDevice') return language === 'en' ? 'Sync-capable passkey' : '同期可能なPasskey';
+  if (deviceType === 'singleDevice') return language === 'en' ? 'Stored on one authenticator' : '1つの認証器に保存';
+  return language === 'en' ? 'Passkey storage' : 'Passkey保存先';
+}
+
+function passkeyTransportLabel(value: string, language: 'ja' | 'en'): string {
+  const raw = value.trim();
+  if (!raw) return language === 'en' ? 'Device authenticator' : '端末の認証器';
+  let values: string[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    values = Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
+  } catch {
+    values = raw.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  const mapped = values.map((item) => {
+    if (item === 'internal') return language === 'en' ? 'Built-in authenticator' : '端末内認証';
+    if (item === 'hybrid') return language === 'en' ? 'Cross-device' : '別端末連携';
+    if (item === 'usb') return 'USB';
+    if (item === 'nfc') return 'NFC';
+    if (item === 'ble') return 'Bluetooth';
+    return item;
+  });
+  return mapped.join(' · ') || (language === 'en' ? 'Device authenticator' : '端末の認証器');
+}
+
+function passkeyDisplayName(passkey: PasskeyRecord, language: 'ja' | 'en'): string {
+  const explicitName = passkey.name.trim();
+  if (explicitName && explicitName.toLowerCase() !== 'passkey') return explicitName;
+  const authenticator = passkey.aaguid ? getAuthenticatorName(passkey.aaguid) : null;
+  if (authenticator) return authenticator;
+  return passkey.deviceType === 'multiDevice'
+    ? language === 'en' ? 'Synced passkey' : '同期Passkey'
+    : language === 'en' ? 'Device passkey' : '端末Passkey';
 }
 
 function totpSecret(uri: string): string {
@@ -59,7 +114,6 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const previewMode = previewWithoutAuth();
   const [loading, setLoading] = useState(!previewMode);
   const [loadError, setLoadError] = useState(false);
-  const [passkeyLoadError, setPasskeyLoadError] = useState(false);
   const [security, setSecurity] = useState<AccountSecurity>({ passwordConfigured: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
   const [passkeys, setPasskeys] = useState<PasskeyRecord[]>([]);
   const [feedback, setFeedback] = useState<Feedback>({ type: 'idle' });
@@ -74,10 +128,9 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       retry: 'Retry',
       passkeyDescription: 'Sign in with your device unlock method such as fingerprint, face, or PIN.',
       addPasskey: 'Add passkey',
-      passkeyLoadFailed: 'Passkeys could not be loaded. Device and two-factor information remain available.',
       twoFactorDescription: 'Use a verification code from an authenticator app after signing in with a password.',
       setupTwoFactor: 'Set up',
-      providerManaged: 'This account is signed in with Google or GitHub. Set an Astera password to use Astera two-factor authentication. Passkeys and signed-in device management are available now.',
+      providerManaged: 'No Astera password credential is registered for this account. Set an Astera password before enabling Astera two-factor authentication.',
       setupPassword: 'Set Astera password',
       confirmIdentity: 'Confirm your identity',
       confirmIdentityDescription: 'Enter your current Astera password to continue.',
@@ -95,17 +148,21 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       signedInDevicesDescription: 'Devices with an active Astera session.',
       devicesUnavailable: 'No active session information was returned. Reload this page after signing in again.',
       lastUsed: 'Last used',
-      passkeyCreated: 'Created',
+      passkeyCreated: 'Registered',
+      passkeyStorage: 'Storage',
+      passkeyBackup: 'Backup',
+      passkeyAuthMethod: 'Authentication',
+      passkeyBackedUp: 'Backed up / synced',
+      passkeyNotBackedUp: 'Not backed up',
     }
     : {
       loadFailed: 'セキュリティ情報を取得できませんでした。',
       retry: '再試行',
       passkeyDescription: '指紋・顔認証・端末のPINなど、端末のロック解除方法でログインできます。',
       addPasskey: 'Passkeyを追加',
-      passkeyLoadFailed: 'Passkey一覧を取得できませんでした。端末情報と2段階認証の表示は継続します。',
       twoFactorDescription: 'パスワードでログインした後、認証アプリの確認コードを使用します。',
       setupTwoFactor: '設定する',
-      providerManaged: 'このAccountはGoogle / GitHubでログインしています。Astera側の2段階認証を利用するにはAstera用パスワードを設定してください。Passkeyとログイン端末管理は現在のまま利用できます。',
+      providerManaged: 'このAccountにはAstera用Passwordのcredentialが登録されていません。Astera側の2段階認証を有効にする前にPasswordを設定してください。',
       setupPassword: 'Astera用パスワードを設定',
       confirmIdentity: '本人確認',
       confirmIdentityDescription: '続行するには現在のAstera用パスワードを入力してください。',
@@ -123,41 +180,28 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       signedInDevicesDescription: '現在Asteraへログインしている端末です。',
       devicesUnavailable: '有効なSession情報を取得できませんでした。再Login後にこのPageを再読み込みしてください。',
       lastUsed: '最終利用',
-      passkeyCreated: '作成',
+      passkeyCreated: '登録日時',
+      passkeyStorage: '保存方式',
+      passkeyBackup: '同期・Backup',
+      passkeyAuthMethod: '認証方式',
+      passkeyBackedUp: 'Backup / 同期済み',
+      passkeyNotBackedUp: '未Backup',
     };
 
-  const normalizePasskeys = useCallback((payload: unknown): PasskeyRecord[] => asArray(payload, ['passkeys', 'items']).map((item) => {
-    const source = asRecord(item);
-    return {
-      id: recordText(source, ['id']),
-      name: recordText(source, ['name'], text('securityPasskeyDefaultName')),
-      deviceType: recordText(source, ['deviceType', 'device_type'], text('securityUnknownDevice')),
-      backedUp: source.backedUp === true || source.backed_up === true,
-      createdAt: recordText(source, ['createdAt', 'created_at']),
-    };
-  }).filter((item) => item.id), [text]);
-
-  const reload = useCallback(async () => {
+  const reload = async () => {
     if (previewWithoutAuth()) {
       setSecurity({ passwordConfigured: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
       setPasskeys([]);
       setLoadError(false);
-      setPasskeyLoadError(false);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setLoadError(false);
-    setPasskeyLoadError(false);
-
-    const [securityResult, passkeyResult] = await Promise.allSettled([
-      apiRequest('/api/account/security'),
-      authClient.passkey.listUserPasskeys(),
-    ]);
-
-    if (securityResult.status === 'fulfilled') {
-      const source = asRecord(asRecord(securityResult.value).security ?? securityResult.value);
+    try {
+      const securityPayload = await apiRequest('/api/account/security');
+      const source = asRecord(asRecord(securityPayload).security ?? securityPayload);
       const sessions = asArray(source.sessions).map((item) => {
         const session = asRecord(item);
         return {
@@ -167,30 +211,34 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
           updatedAt: recordText(session, ['updated_at', 'updatedAt']),
         } satisfies SessionRecord;
       }).filter((item) => item.id);
+      const passkeyItems = asArray(source.passkeys).map((item) => {
+        const passkey = asRecord(item);
+        return {
+          id: recordText(passkey, ['id']),
+          name: recordText(passkey, ['name']),
+          deviceType: recordText(passkey, ['device_type', 'deviceType']),
+          backedUp: passkey.backed_up === true || passkey.backedUp === true,
+          transports: recordText(passkey, ['transports']),
+          createdAt: recordText(passkey, ['created_at', 'createdAt']),
+          aaguid: recordText(passkey, ['aaguid']),
+        } satisfies PasskeyRecord;
+      }).filter((item) => item.id);
+
       setSecurity({
         passwordConfigured: source.password_configured === true || source.passwordConfigured === true,
         twoFactorEnabled: source.two_factor_enabled === true || source.twoFactorEnabled === true,
         sessionCount: Number(source.session_count ?? source.sessionCount ?? sessions.length) || sessions.length,
         sessions,
       });
-    } else {
+      setPasskeys(passkeyItems);
+    } catch {
       setLoadError(true);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (passkeyResult.status === 'fulfilled') {
-      try {
-        setPasskeys(normalizePasskeys(betterAuthResult(passkeyResult.value, text('securityPasskeyListFailed'))));
-      } catch {
-        setPasskeyLoadError(true);
-      }
-    } else {
-      setPasskeyLoadError(true);
-    }
-
-    setLoading(false);
-  }, [normalizePasskeys, text]);
-
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => { void reload(); }, []);
 
   useEffect(() => {
     let active = true;
@@ -208,7 +256,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
     if (previewMode) return;
     setFeedback({ type: 'working' });
     try {
-      betterAuthResult(await authClient.passkey.addPasskey({}), text('securityPasskeyAddFailed'));
+      betterAuthResult(await authClient.passkey.addPasskey({ name: defaultPasskeyName(language) }), text('securityPasskeyAddFailed'));
       setFeedback({ type: 'success', message: text('securityPasskeyAdded') });
       await reload();
     } catch (error) {
@@ -341,21 +389,24 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
           <div className="security-card-action">
             <button className="platform-button is-primary" type="button" onClick={() => void addPasskey()} disabled={feedback.type === 'working' || previewMode}>{local.addPasskey}</button>
           </div>
-          {passkeyLoadError && <p className="security-note">{local.passkeyLoadFailed}</p>}
-          {!passkeyLoadError && (passkeys.length === 0 ? <p className="security-empty">{text('securityNoPasskeys')}</p> : (
-            <ul className="security-list">
+          {passkeys.length === 0 ? <p className="security-empty">{text('securityNoPasskeys')}</p> : (
+            <ul className="security-list security-passkey-list">
               {passkeys.map((passkey) => (
                 <li key={passkey.id}>
-                  <div>
-                    <strong>{passkey.name || text('securityPasskeyDefaultName')}</strong>
-                    <span>{passkey.deviceType}{passkey.backedUp ? ` · ${text('securitySynced')}` : ''}</span>
-                    {passkey.createdAt && <small>{local.passkeyCreated} {formatDate(passkey.createdAt, language)}</small>}
+                  <div className="security-passkey-main">
+                    <strong>{passkeyDisplayName(passkey, language)}</strong>
+                    <div className="security-passkey-meta">
+                      <span><b>{local.passkeyStorage}</b>{passkeyStorageLabel(passkey.deviceType, language)}</span>
+                      <span><b>{local.passkeyBackup}</b>{passkey.backedUp ? local.passkeyBackedUp : local.passkeyNotBackedUp}</span>
+                      <span><b>{local.passkeyAuthMethod}</b>{passkeyTransportLabel(passkey.transports, language)}</span>
+                      {passkey.createdAt && <span><b>{local.passkeyCreated}</b>{formatDate(passkey.createdAt, language)}</span>}
+                    </div>
                   </div>
                   <button className="platform-button" type="button" onClick={() => void deletePasskey(passkey.id)} disabled={feedback.type === 'working' || previewMode}>{text('securityDelete')}</button>
                 </li>
               ))}
             </ul>
-          ))}
+          )}
         </section>
 
         <section className="security-card">
