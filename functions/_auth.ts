@@ -75,6 +75,12 @@ export function createAuth(env: AuthEnv) {
       updateAge: 60 * 60 * 24,
       freshAge: 60 * 15,
     },
+    user: {
+      changeEmail: {
+        enabled: true,
+        updateEmailWithoutVerification: false,
+      },
+    },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 6,
