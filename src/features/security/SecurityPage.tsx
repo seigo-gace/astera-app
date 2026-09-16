@@ -34,18 +34,19 @@ function formatDate(value: string, language: 'ja' | 'en'): string {
 }
 
 function sessionLabel(userAgent: string, current: boolean, language: 'ja' | 'en'): string {
-  if (current) return language === 'en' ? 'This device' : 'この端末';
   const os = /Android/i.test(userAgent) ? 'Android'
     : /iPhone|iPad/i.test(userAgent) ? 'iPhone / iPad'
       : /Windows/i.test(userAgent) ? 'Windows'
         : /Macintosh|Mac OS/i.test(userAgent) ? 'Mac'
-          : language === 'en' ? 'Signed-in device' : 'ログイン端末';
+          : language === 'en' ? 'Device' : '端末';
   const browser = /Edg\//i.test(userAgent) ? 'Edge'
     : /Chrome\//i.test(userAgent) ? 'Chrome'
       : /Firefox\//i.test(userAgent) ? 'Firefox'
         : /Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent) ? 'Safari'
           : '';
-  return browser ? `${os} · ${browser}` : os;
+  const device = browser ? `${os} · ${browser}` : os;
+  if (current) return `${language === 'en' ? 'This device' : 'この端末'} · ${device}`;
+  return device;
 }
 
 function totpSecret(uri: string): string {
@@ -58,6 +59,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
   const previewMode = previewWithoutAuth();
   const [loading, setLoading] = useState(!previewMode);
   const [loadError, setLoadError] = useState(false);
+  const [passkeyLoadError, setPasskeyLoadError] = useState(false);
   const [security, setSecurity] = useState<AccountSecurity>({ passwordConfigured: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
   const [passkeys, setPasskeys] = useState<PasskeyRecord[]>([]);
   const [feedback, setFeedback] = useState<Feedback>({ type: 'idle' });
@@ -72,6 +74,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       retry: 'Retry',
       passkeyDescription: 'Sign in with your device unlock method such as fingerprint, face, or PIN.',
       addPasskey: 'Add passkey',
+      passkeyLoadFailed: 'Passkeys could not be loaded. Device and two-factor information remain available.',
       twoFactorDescription: 'Use a verification code from an authenticator app after signing in with a password.',
       setupTwoFactor: 'Set up',
       providerManaged: 'This account is signed in with Google or GitHub. Set an Astera password to use Astera two-factor authentication. Passkeys and signed-in device management are available now.',
@@ -90,6 +93,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       manageTwoFactor: 'Manage two-factor authentication',
       signedInDevices: 'Signed-in devices',
       signedInDevicesDescription: 'Devices with an active Astera session.',
+      devicesUnavailable: 'No active session information was returned. Reload this page after signing in again.',
       lastUsed: 'Last used',
       passkeyCreated: 'Created',
     }
@@ -98,6 +102,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       retry: '再試行',
       passkeyDescription: '指紋・顔認証・端末のPINなど、端末のロック解除方法でログインできます。',
       addPasskey: 'Passkeyを追加',
+      passkeyLoadFailed: 'Passkey一覧を取得できませんでした。端末情報と2段階認証の表示は継続します。',
       twoFactorDescription: 'パスワードでログインした後、認証アプリの確認コードを使用します。',
       setupTwoFactor: '設定する',
       providerManaged: 'このAccountはGoogle / GitHubでログインしています。Astera側の2段階認証を利用するにはAstera用パスワードを設定してください。Passkeyとログイン端末管理は現在のまま利用できます。',
@@ -116,6 +121,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       manageTwoFactor: '2段階認証を管理',
       signedInDevices: 'ログイン中の端末',
       signedInDevicesDescription: '現在Asteraへログインしている端末です。',
+      devicesUnavailable: '有効なSession情報を取得できませんでした。再Login後にこのPageを再読み込みしてください。',
       lastUsed: '最終利用',
       passkeyCreated: '作成',
     };
@@ -136,17 +142,22 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       setSecurity({ passwordConfigured: false, twoFactorEnabled: false, sessionCount: 0, sessions: [] });
       setPasskeys([]);
       setLoadError(false);
+      setPasskeyLoadError(false);
       setLoading(false);
       return;
     }
+
     setLoading(true);
     setLoadError(false);
-    try {
-      const [securityPayload, passkeyPayload] = await Promise.all([
-        apiRequest('/api/account/security'),
-        authClient.passkey.listUserPasskeys(),
-      ]);
-      const source = asRecord(asRecord(securityPayload).security ?? securityPayload);
+    setPasskeyLoadError(false);
+
+    const [securityResult, passkeyResult] = await Promise.allSettled([
+      apiRequest('/api/account/security'),
+      authClient.passkey.listUserPasskeys(),
+    ]);
+
+    if (securityResult.status === 'fulfilled') {
+      const source = asRecord(asRecord(securityResult.value).security ?? securityResult.value);
       const sessions = asArray(source.sessions).map((item) => {
         const session = asRecord(item);
         return {
@@ -162,12 +173,21 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
         sessionCount: Number(source.session_count ?? source.sessionCount ?? sessions.length) || sessions.length,
         sessions,
       });
-      setPasskeys(normalizePasskeys(betterAuthResult(passkeyPayload, text('securityPasskeyListFailed'))));
-    } catch {
+    } else {
       setLoadError(true);
-    } finally {
-      setLoading(false);
     }
+
+    if (passkeyResult.status === 'fulfilled') {
+      try {
+        setPasskeys(normalizePasskeys(betterAuthResult(passkeyResult.value, text('securityPasskeyListFailed'))));
+      } catch {
+        setPasskeyLoadError(true);
+      }
+    } else {
+      setPasskeyLoadError(true);
+    }
+
+    setLoading(false);
   }, [normalizePasskeys, text]);
 
   useEffect(() => { void reload(); }, [reload]);
@@ -321,7 +341,8 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
           <div className="security-card-action">
             <button className="platform-button is-primary" type="button" onClick={() => void addPasskey()} disabled={feedback.type === 'working' || previewMode}>{local.addPasskey}</button>
           </div>
-          {passkeys.length === 0 ? <p className="security-empty">{text('securityNoPasskeys')}</p> : (
+          {passkeyLoadError && <p className="security-note">{local.passkeyLoadFailed}</p>}
+          {!passkeyLoadError && (passkeys.length === 0 ? <p className="security-empty">{text('securityNoPasskeys')}</p> : (
             <ul className="security-list">
               {passkeys.map((passkey) => (
                 <li key={passkey.id}>
@@ -334,7 +355,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
                 </li>
               ))}
             </ul>
-          )}
+          ))}
         </section>
 
         <section className="security-card">
@@ -455,7 +476,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
             </div>
             <span className="security-status">{security.sessionCount}{text('securityCountSuffix')}</span>
           </div>
-          {security.sessions.length > 0 && (
+          {security.sessions.length > 0 ? (
             <ul className="security-session-list">
               {security.sessions.map((session) => (
                 <li key={session.id}>
@@ -464,7 +485,7 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
                 </li>
               ))}
             </ul>
-          )}
+          ) : !loadError ? <p className="security-empty">{local.devicesUnavailable}</p> : null}
         </section>
       </div>
     </ResponsivePageShell>
