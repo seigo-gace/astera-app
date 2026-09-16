@@ -74,7 +74,8 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       addPasskey: 'Add passkey',
       twoFactorDescription: 'Use a verification code from an authenticator app after signing in with a password.',
       setupTwoFactor: 'Set up',
-      providerManaged: 'This login method does not use an Astera password. Two-step verification for Google or GitHub sign-in is managed by that provider.',
+      providerManaged: 'This account is signed in with Google or GitHub. Set an Astera password to use Astera two-factor authentication. Passkeys and signed-in device management are available now.',
+      setupPassword: 'Set Astera password',
       confirmIdentity: 'Confirm your identity',
       confirmIdentityDescription: 'Enter your current Astera password to continue.',
       cancel: 'Cancel',
@@ -99,7 +100,8 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
       addPasskey: 'Passkeyを追加',
       twoFactorDescription: 'パスワードでログインした後、認証アプリの確認コードを使用します。',
       setupTwoFactor: '設定する',
-      providerManaged: 'このログイン方法ではAstera用パスワードを使用しません。Google / GitHubログインの2段階認証は各サービス側で管理します。',
+      providerManaged: 'このAccountはGoogle / GitHubでログインしています。Astera側の2段階認証を利用するにはAstera用パスワードを設定してください。Passkeyとログイン端末管理は現在のまま利用できます。',
+      setupPassword: 'Astera用パスワードを設定',
       confirmIdentity: '本人確認',
       confirmIdentityDescription: '続行するには現在のAstera用パスワードを入力してください。',
       cancel: 'キャンセル',
@@ -351,7 +353,10 @@ export default function SecurityPage({ route }: { route: RouteMatch }) {
           )}
 
           {!security.twoFactorEnabled && !enrollment && !security.passwordConfigured && (
-            <p className="security-note">{local.providerManaged}</p>
+            <div className="security-note security-password-setup">
+              <p>{local.providerManaged}</p>
+              <a className="platform-button is-primary" href="/account/password/setup?return_to=%2Faccount%2Fsecurity">{local.setupPassword}</a>
+            </div>
           )}
 
           {!security.twoFactorEnabled && !enrollment && security.passwordConfigured && twoFactorSetupOpen && (
