@@ -1,0 +1,75 @@
+/* Authenticated shell/session presentation.
+   Loaded last so route-specific visibility decisions win over generic page-head styles. */
+
+/* /account/security has one compact page label only: SECURITY. */
+html[data-route-path="/account/security"] .platform-page-head .platform-eyebrow,
+html[data-route-path="/account/security"] .platform-page-head h1 {
+  display: none !important;
+}
+
+/* ResponsivePageShell is rendered only after an authenticated session is accepted.
+   Surface that state next to Settings instead of adding another account control. */
+.platform-side-meta .exterior-settings-trigger::after {
+  content: "ログイン中";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 22px;
+  margin-left: auto;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--platform-border, var(--border-color));
+  border-radius: 999px;
+  background: var(--platform-bg, var(--bg-primary));
+  color: var(--platform-muted, var(--text-secondary));
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+/* Keep the compact sidebar icon-only. */
+@media (min-width: 761px) {
+  html .platform-shell.exterior-sidebar-collapsed .platform-side-meta .exterior-settings-trigger::after {
+    display: none !important;
+  }
+}
+
+/* Passwordless/social account security must have a real next action, not a dead note. */
+.security-password-setup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.security-password-setup p {
+  flex: 1 1 420px;
+  min-width: 0;
+  margin: 0;
+}
+
+.security-password-setup .platform-button {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .platform-side-meta .exterior-settings-trigger::after {
+    min-height: 20px;
+    padding-inline: 7px;
+    font-size: 9px;
+  }
+
+  .security-password-setup {
+    align-items: stretch;
+  }
+
+  .security-password-setup .platform-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
