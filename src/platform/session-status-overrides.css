@@ -1,9 +1,8 @@
 /* Authenticated shell/session presentation.
    Loaded last so route-specific visibility decisions win over generic page-head styles. */
 
-/* /account/security has one compact page label only: SECURITY. */
-html[data-route-path="/account/security"] .platform-page-head .platform-eyebrow,
-html[data-route-path="/account/security"] .platform-page-head h1 {
+/* Security content is self-describing. Do not render the generic ACCOUNT/title/description header. */
+html[data-route-path="/account/security"] .platform-page-head {
   display: none !important;
 }
 
