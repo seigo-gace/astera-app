@@ -1,0 +1,49 @@
+name: Auth Language E2E
+
+on:
+  push:
+    branches: [feat/astera-translation]
+    paths:
+      - 'src/features/auth/AuthLanguageToggle.tsx'
+      - 'src/features/auth/auth-language-toggle.css'
+      - 'src/platform/ResponsivePageShell.tsx'
+      - 'src/platform/platform-text.ts'
+      - 'src/app-text.ts'
+      - 'src/i18n.ts'
+      - 'tests/auth-language-toggle.spec.ts'
+      - 'playwright.auth-language.config.ts'
+      - '.github/workflows/auth-language-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VITE_PREVIEW_WITHOUT_AUTH: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Build frontend
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify auth language toggle interaction
+        run: npx playwright test --config=playwright.auth-language.config.ts
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-language-e2e-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
