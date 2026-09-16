@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { asRecord, queryValue, recordText, textValue } from '../../platform/api-client';
 import { authClient, authErrorCode } from '../../platform/auth-client';
 import { authDisplayError } from '../../platform/auth-display-error';
-import { isNativeRuntime, nativeCallback } from '../../platform/external-navigation';
+import { isNativeRuntime, nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 import { usePlatformText } from '../../platform/platform-text';
 import { safeReturnPath, type RouteMatch } from '../../platform/route-registry';
 import { PublicPageFrame } from '../../platform/ResponsivePageShell';
@@ -16,22 +16,6 @@ function nativeOAuthCompleteUrl(returnTo: string): string {
   const endpoint = new URL('/api/auth/native/oauth-complete', window.location.origin);
   endpoint.searchParams.set('return_to', returnTo);
   return endpoint.toString();
-}
-
-function postSocialSignIn(fields: Record<string, string>): void {
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '/api/auth/sign-in/social';
-  form.style.display = 'none';
-  for (const [name, value] of Object.entries(fields)) {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-  }
-  document.body.appendChild(form);
-  form.submit();
 }
 
 function continuation(payload: unknown, returnTo: string): string {
@@ -112,18 +96,38 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
     }
   };
 
-  const startOAuth = (provider: 'google' | 'github') => {
+  const startOAuth = async (provider: 'google' | 'github') => {
     const nativeComplete = nativeOAuthCompleteUrl(returnTo);
     const callbackURL = isNativeRuntime() ? nativeComplete : absoluteAppUrl(returnTo);
-    const fields: Record<string, string> = {
+    const nativeCb = nativeCallback('/login');
+    const payload = await submitForm('/api/auth/sign-in/social', {
       provider,
       callbackURL,
       errorCallbackURL: absoluteAppUrl(`/login?return_to=${encodeURIComponent(returnTo)}`),
       newUserCallbackURL: isNativeRuntime() ? nativeComplete : absoluteAppUrl(`/account/password/setup?return_to=${encodeURIComponent(returnTo)}`),
-    };
-    const nativeCb = nativeCallback('/login');
-    if (nativeCb) fields.native_callback = nativeCb;
-    postSocialSignIn(fields);
+      ...(nativeCb ? { native_callback: nativeCb } : {}),
+      disableRedirect: true,
+    }, setState, {
+      success: provider === 'google' ? text('authGoogleLoginStarting') : text('authGithubLoginStarting'),
+      errorMessage: (error) => authDisplayError(error, text, 'authOAuthStartFailed'),
+      idempotent: true,
+    });
+    if (!payload) return;
+    const redirectUrl = recordText(asRecord(asRecord(payload).data ?? payload), ['url', 'redirect']);
+    if (!redirectUrl) {
+      setState({ type: 'error', message: text('authOAuthRedirectMissing'), code: 'OAUTH_REDIRECT_URL_MISSING' });
+      return;
+    }
+    try {
+      await openExternalUrl(redirectUrl);
+      setState({ type: 'idle' });
+    } catch (error) {
+      setState({
+        type: 'error',
+        message: authDisplayError(error, text, 'authOAuthStartFailed'),
+        code: authErrorCode(error, 'OAUTH_START_FAILED'),
+      });
+    }
   };
 
   const registerPath = `/register?return_to=${encodeURIComponent(returnTo)}`;
@@ -140,8 +144,8 @@ export default function LoginPage({ route }: { route: RouteMatch }) {
         <div className="platform-divider"><span>{text('authOr')}</span></div>
         <div className="platform-stack-actions">
           <button className="platform-button is-primary" type="button" disabled={state.type === 'working'} onClick={() => void signInPasskey()}>{text('authPasskeyLogin')}</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuth('google')}>{text('authGoogleContinue')}</button>
-          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => startOAuth('github')}>{text('authGithubContinue')}</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('google')}>{text('authGoogleContinue')}</button>
+          <button className="platform-button" type="button" disabled={state.type === 'working'} onClick={() => void startOAuth('github')}>{text('authGithubContinue')}</button>
         </div>
         <FormResult state={state} />
         <div className="platform-auth-route-actions" aria-label={text('authAccountActionsAria')}>
