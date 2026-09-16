@@ -87,6 +87,14 @@ jobs:
         id: install
         run: npm install --no-audit
 
+      - name: Apply Account and Storage D1 migrations
+        id: d1_runtime_migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0016_storage_buyout_packs.sql
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0017_account_registration_state_repair.sql
+
       - name: Build frontend
         id: frontend_build
         run: npm run build
@@ -168,6 +176,7 @@ jobs:
           CREDENTIALS_OUTCOME: ${{ steps.credentials.outcome }}
           PAGES_CONFIG_OUTCOME: ${{ steps.pages_config.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          D1_RUNTIME_MIGRATIONS_OUTCOME: ${{ steps.d1_runtime_migrations.outcome }}
           FRONTEND_BUILD_OUTCOME: ${{ steps.frontend_build.outcome }}
           DEPLOYMENT_MARKER_OUTCOME: ${{ steps.deployment_marker.outcome }}
           FUNCTIONS_BUILD_OUTCOME: ${{ steps.functions_build.outcome }}
@@ -191,6 +200,7 @@ jobs:
               credentials: process.env.CREDENTIALS_OUTCOME,
               pages_config: process.env.PAGES_CONFIG_OUTCOME,
               install: process.env.INSTALL_OUTCOME,
+              d1_runtime_migrations: process.env.D1_RUNTIME_MIGRATIONS_OUTCOME,
               frontend_build: process.env.FRONTEND_BUILD_OUTCOME,
               deployment_marker: process.env.DEPLOYMENT_MARKER_OUTCOME,
               functions_build: process.env.FUNCTIONS_BUILD_OUTCOME,
