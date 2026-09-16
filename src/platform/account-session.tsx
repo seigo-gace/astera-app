@@ -8,7 +8,9 @@ export type AccountSessionProjection = {
 };
 
 export function previewWithoutAuth(): boolean {
-  return import.meta.env.VITE_PREVIEW_WITHOUT_AUTH === 'true';
+  // Authentication bypass is a local-development aid only.
+  // Production builds (including Cloudflare staging) must always use the real Account/Session gate.
+  return import.meta.env.DEV && import.meta.env.VITE_PREVIEW_WITHOUT_AUTH === 'true';
 }
 
 export const PREVIEW_ACCOUNT_SESSION: AccountSessionProjection = {
