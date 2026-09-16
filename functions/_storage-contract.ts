@@ -1,4 +1,5 @@
 import { FunctionHttpError, type D1Database } from './_account-projection';
+import { loadStorageCommerceProjection } from './_storage-commerce';
 
 export type StorageContractState = 'active' | 'save_suspended' | 'grace_period' | 'ending';
 
@@ -12,6 +13,9 @@ export type StorageContractProjection = {
   nextChargeAt: string | null;
   graceEndsAt: string | null;
   deletionScheduledAt: string | null;
+  purchasedCapacityGb: number;
+  planMaxCapacityGb: number;
+  overPlanLimit: boolean;
 };
 
 type StorageContractRow = {
@@ -24,11 +28,10 @@ type StorageContractRow = {
 };
 
 const BYTES_PER_GIB = 1024 ** 3;
-const ALLOWED_CAPACITIES = new Set([1, 10, 50, 100, 500, 1000]);
 const ALLOWED_STATES = new Set<StorageContractState>(['active', 'save_suspended', 'grace_period', 'ending']);
 
 function capacityBytes(capacityGb: number): number {
-  if (!Number.isSafeInteger(capacityGb) || !ALLOWED_CAPACITIES.has(capacityGb)) {
+  if (!Number.isSafeInteger(capacityGb) || capacityGb < 0) {
     throw new FunctionHttpError(503, 'ASTERA_STORAGE_CONTRACT_INVALID', 'Astera Storage契約容量が不正です。');
   }
   const bytes = capacityGb * BYTES_PER_GIB;
@@ -40,40 +43,46 @@ function capacityBytes(capacityGb: number): number {
 
 export async function loadStorageContractProjection(db: D1Database, tenantId: string): Promise<StorageContractProjection> {
   try {
-    const row = await db.prepare(
-      `SELECT capacity_gb, state, catalog_version, next_charge_at, grace_ends_at, deletion_scheduled_at
-       FROM astera_storage_contracts
-       WHERE tenant_id = ?1
-       LIMIT 1`,
-    ).bind(tenantId).first<StorageContractRow>();
+    const [legacy, commerce] = await Promise.all([
+      db.prepare(
+        `SELECT capacity_gb, state, catalog_version, next_charge_at, grace_ends_at, deletion_scheduled_at
+         FROM astera_storage_contracts
+         WHERE tenant_id = ?1
+         LIMIT 1`,
+      ).bind(tenantId).first<StorageContractRow>(),
+      loadStorageCommerceProjection(db, tenantId),
+    ]);
 
-    if (!row) {
-      return {
-        entitled: false,
-        capacityGb: null,
-        capacityBytes: 0,
-        state: 'inactive',
-        writeAllowed: false,
-        catalogVersion: null,
-        nextChargeAt: null,
-        graceEndsAt: null,
-        deletionScheduledAt: null,
-      };
-    }
-    if (!ALLOWED_STATES.has(row.state)) {
+    if (legacy && !ALLOWED_STATES.has(legacy.state)) {
       throw new FunctionHttpError(503, 'ASTERA_STORAGE_CONTRACT_INVALID', 'Astera Storage契約状態が不正です。');
     }
 
+    const totalCapacityGb = commerce.currentCapacityGb;
+    const planMaxCapacityGb = commerce.planMaxCapacityGb;
+    const overPlanLimit = totalCapacityGb > planMaxCapacityGb;
+    const entitled = totalCapacityGb > 0 && planMaxCapacityGb > 0;
+    const effectiveCapacityGb = entitled ? Math.min(totalCapacityGb, planMaxCapacityGb) : 0;
+    const legacyState = legacy?.state ?? 'active';
+    const state: StorageContractState | 'inactive' = !entitled
+      ? 'inactive'
+      : overPlanLimit
+        ? 'save_suspended'
+        : legacyState;
+    const writeAllowed = entitled && !overPlanLimit && state === 'active';
+
     return {
-      entitled: true,
-      capacityGb: Number(row.capacity_gb),
-      capacityBytes: capacityBytes(Number(row.capacity_gb)),
-      state: row.state,
-      writeAllowed: row.state === 'active',
-      catalogVersion: row.catalog_version,
-      nextChargeAt: row.next_charge_at,
-      graceEndsAt: row.grace_ends_at,
-      deletionScheduledAt: row.deletion_scheduled_at,
+      entitled,
+      capacityGb: entitled ? effectiveCapacityGb : null,
+      capacityBytes: capacityBytes(effectiveCapacityGb),
+      state,
+      writeAllowed,
+      catalogVersion: commerce.catalogVersion,
+      nextChargeAt: legacy?.next_charge_at ?? null,
+      graceEndsAt: legacy?.grace_ends_at ?? null,
+      deletionScheduledAt: legacy?.deletion_scheduled_at ?? null,
+      purchasedCapacityGb: totalCapacityGb,
+      planMaxCapacityGb,
+      overPlanLimit,
     };
   } catch (error) {
     if (error instanceof FunctionHttpError) throw error;
