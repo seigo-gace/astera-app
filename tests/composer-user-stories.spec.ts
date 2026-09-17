@@ -81,11 +81,6 @@ async function openComposer(page: Page): Promise<void> {
   await expect(page.getByLabel('Astera入力')).toBeVisible();
 }
 
-async function executeConfirmed(page: Page): Promise<void> {
-  await expect(page.getByRole('dialog', { name: '実行前確認' })).toBeVisible();
-  await page.getByRole('button', { name: 'Creditを予約して実行' }).click();
-}
-
 test.beforeEach(async ({}, testInfo: TestInfo) => {
   test.skip(!STORY_PROJECTS.has(testInfo.project.name), 'Composer stories use one Chromium and one WebKit touch representative.');
 });
@@ -103,28 +98,28 @@ test('STORY-COMPOSER-001 Enter creates a line break and never estimates', async 
   expect(counters.jobs).toBe(0);
 });
 
-test('STORY-COMPOSER-002 Ctrl+Enter estimates, confirms, then creates one job with eight sections', async ({ page }) => {
+test('STORY-COMPOSER-002 Ctrl+Enter estimates and creates one job directly with eight sections', async ({ page }) => {
   const counters = { estimates: 0, jobs: 0 };
   await installRuntime(page, { counters });
   await openComposer(page);
   await page.getByLabel('Astera入力').fill('ユーザー目線で検証する');
   await page.getByLabel('Astera入力').press('Control+Enter');
-  expect(counters.estimates).toBe(1);
-  expect(counters.jobs).toBe(0);
-  await executeConfirmed(page);
   await expect(page.locator('.native-result-section')).toHaveCount(8);
+  expect(counters.estimates).toBe(1);
   expect(counters.jobs).toBe(1);
+  await expect(page.getByRole('dialog', { name: '実行前確認' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Creditを予約して実行' })).toHaveCount(0);
 });
 
-test('STORY-COMPOSER-003 rapid duplicate run clicks create one estimate', async ({ page }) => {
+test('STORY-COMPOSER-003 rapid duplicate run clicks create one estimate and one job', async ({ page }) => {
   const counters = { estimates: 0, jobs: 0 };
   await installRuntime(page, { counters, estimateDelay: 180 });
   await openComposer(page);
   await page.getByLabel('Astera入力').fill('二重送信を防止する');
-  await page.getByLabel('予定Creditを確認').evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
-  await expect(page.getByRole('dialog', { name: '実行前確認' })).toBeVisible();
+  await page.getByLabel('実行').evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
   expect(counters.estimates).toBe(1);
-  expect(counters.jobs).toBe(0);
+  expect(counters.jobs).toBe(1);
 });
 
 test('STORY-COMPOSER-004 incomplete Result fails closed and preserves input', async ({ page }) => {
@@ -133,7 +128,6 @@ test('STORY-COMPOSER-004 incomplete Result fails closed and preserves input', as
   const textarea = page.getByLabel('Astera入力');
   await textarea.fill('固定8項目が必要');
   await textarea.press('Control+Enter');
-  await executeConfirmed(page);
   await expect(page.locator('.native-error')).toContainText('ASTERA_RESPONSE_SECTIONS_INCOMPLETE');
   await expect(page.locator('.native-result-section')).toHaveCount(0);
   await expect(textarea).toHaveValue('固定8項目が必要');
@@ -154,7 +148,7 @@ test('STORY-COMPOSER-006 empty and whitespace-only input cannot run', async ({ p
   await installRuntime(page, { counters });
   await openComposer(page);
   const textarea = page.getByLabel('Astera入力');
-  const run = page.getByLabel('予定Creditを確認');
+  const run = page.getByLabel('実行');
   await expect(run).toBeDisabled();
   await textarea.fill('   ');
   await expect(run).toBeDisabled();
@@ -174,7 +168,7 @@ test('STORY-COMPOSER-007 composer keeps only plus as a persistent option entry a
   await expect(page.locator('.native-selected-chips')).toHaveCount(0);
 
   await page.getByLabel('Astera入力').press('/');
-  const addDialog = page.getByRole('dialog', { name: '追加・実行Option' });
+  const addDialog = page.getByRole('dialog', { name: '追加' });
   await expect(addDialog).toBeVisible();
   await expect(addDialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
   await expect(addDialog.getByText('Agent Mode', { exact: true })).toBeVisible();
@@ -183,24 +177,23 @@ test('STORY-COMPOSER-007 composer keeps only plus as a persistent option entry a
   await expect(page.getByLabel('Astera入力')).toHaveValue('');
 });
 
-test('STORY-COMPOSER-008 successful user posts are collapsed into an accessible accordion', async ({ page }) => {
+test('STORY-COMPOSER-008 successful user posts stay visible as a right-side chat bubble', async ({ page }) => {
   await installRuntime(page);
   await openComposer(page);
-  await page.getByLabel('Astera入力').fill('長い投稿内容を結果画面で折りたたむ');
+  await page.getByLabel('Astera入力').fill('投稿内容をそのまま表示する');
   await page.getByLabel('Astera入力').press('Control+Enter');
-  await executeConfirmed(page);
-  const trigger = page.locator('.native-user-message-trigger');
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-  await trigger.click();
-  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.locator('.native-user-message > p')).toContainText('長い投稿内容を結果画面で折りたたむ');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await expect(page.locator('.native-user-message > p')).toHaveText('投稿内容をそのまま表示する');
+  await expect(page.locator('.native-user-message-trigger')).toHaveCount(0);
+  await expect(page.getByText('投稿内容を表示', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('投稿内容を閉じる', { exact: true })).toHaveCount(0);
 });
 
 test('STORY-COMPOSER-009 plus and at both reflect the same three sidebar preference candidates', async ({ page }) => {
   await installRuntime(page, { preferences: { translation: true, agent_mode: false, document: true, storage_transfer: true } });
   await openComposer(page);
   await page.getByLabel('Fileと実行Optionを追加').click();
-  let dialog = page.getByRole('dialog', { name: '追加・実行Option' });
+  let dialog = page.getByRole('dialog', { name: '追加' });
   await expect(dialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
   await expect(dialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
   await expect(dialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
@@ -226,7 +219,7 @@ test('STORY-COMPOSER-010 sidebar option toggle persists and updates composer can
   await expect.poll(() => preferencePatches.some((patch) => patch.agent_mode === false)).toBe(true);
 
   await page.getByLabel('Fileと実行Optionを追加').click();
-  const addDialog = page.getByRole('dialog', { name: '追加・実行Option' });
+  const addDialog = page.getByRole('dialog', { name: '追加' });
   await expect(addDialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
   await expect(addDialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
   await expect(addDialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
