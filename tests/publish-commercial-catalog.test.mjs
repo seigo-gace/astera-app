@@ -37,3 +37,10 @@ test('cleanup removes only unreferenced draft versions', () => {
   assert.match(publisherSource, /published_at IS NULL/);
   assert.match(publisherSource, /DELETE FROM catalog_versions/);
 });
+
+test('catalog activate uses D1 REST batch on remote (no BEGIN in wrangler --command)', () => {
+  assert.match(publisherSource, /async function d1RestBatch/);
+  assert.match(publisherSource, /await d1RestBatch\(\[retireSql, activateSql\]\)/);
+  assert.doesNotMatch(publisherSource, /BEGIN TRANSACTION;/);
+  assert.doesNotMatch(publisherSource, /COMMIT;/);
+});

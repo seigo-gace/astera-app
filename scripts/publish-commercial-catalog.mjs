@@ -408,17 +408,69 @@ function computeChecksum(snapshot) {
   return createHash('sha256').update(JSON.stringify(buildChecksumPayload(snapshot))).digest('hex');
 }
 
-function activateCatalogSingleTransaction(version, checksum) {
+function countActiveCatalogVersions() {
+  const rows = d1Json(`SELECT COUNT(*) AS c FROM catalog_versions WHERE status='active'`);
+  return Number(rows[0]?.c ?? 0);
+}
+
+async function d1RestBatch(statements) {
+  const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+  const apiToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+  if (!accountId || !apiToken) {
+    throw new Error('D1 REST batch requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN');
+  }
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${expectedDatabaseId}/query`;
+  const body = { batch: statements.map((sql) => ({ sql })) };
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`D1 REST batch fetch failed: ${message}`);
+  }
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`D1 REST batch non-JSON response (${response.status}): ${text.slice(0, 500)}`);
+  }
+  if (!response.ok || payload?.success === false) {
+    const errors = Array.isArray(payload?.errors) ? payload.errors.map((e) => e?.message || JSON.stringify(e)).join('; ') : text.slice(0, 500);
+    throw new Error(`D1 REST batch failed (${response.status}): ${errors}`);
+  }
+  return payload;
+}
+
+async function activateCatalogSingleTransaction(version, checksum) {
   const publishedAt = new Date().toISOString();
-  const sql = `
-    BEGIN TRANSACTION;
-    UPDATE catalog_versions SET status='retired' WHERE status='active';
+  const activeBefore = countActiveCatalogVersions();
+  const retireSql = `UPDATE catalog_versions SET status='retired' WHERE status='active'`;
+  const activateSql = `
     UPDATE catalog_versions
       SET checksum=${sqlQuote(checksum)}, published_at=${sqlQuote(publishedAt)}, status='active'
-      WHERE version=${sqlQuote(version)};
-    COMMIT;
+      WHERE version=${sqlQuote(version)}
   `.replace(/\s+/g, ' ').trim();
-  runWrangler(['--command', sql]);
+
+  if (remote) {
+    await d1RestBatch([retireSql, activateSql]);
+  } else {
+    runWrangler(['--command', retireSql]);
+    runWrangler(['--command', activateSql]);
+  }
+
+  const activeAfter = countActiveCatalogVersions();
+  if (activeAfter !== 1) {
+    throw new Error(`one_active_catalog invariant failed (active_before=${activeBefore}, active_after=${activeAfter})`);
+  }
+  console.log(JSON.stringify({ activate: 'd1_rest_batch', active_before: activeBefore, active_after: activeAfter }));
 }
 
 function countDrafts() {
@@ -468,7 +520,7 @@ async function main() {
     return;
   }
 
-  activateCatalogSingleTransaction(version, checksum);
+  await activateCatalogSingleTransaction(version, checksum);
 
   const activeCount = d1Json(`SELECT COUNT(*) AS c FROM catalog_versions WHERE status='active'`);
   if (Number(activeCount[0]?.c) !== 1) throw new Error('one_active_catalog invariant failed');

@@ -98,11 +98,12 @@ test('catalog activation does not require provider variation ids in app publishe
   assert.doesNotThrow(() => assertExactCatalogSnapshot(withoutProviderIds));
 });
 
-test('active immutable: publisher uses single transaction retire+activate', () => {
+test('active immutable: publisher uses atomic retire+activate without wrangler BEGIN', () => {
   const source = readFileSync(new URL('../scripts/publish-commercial-catalog.mjs', import.meta.url), 'utf8');
-  assert.match(source, /BEGIN TRANSACTION;/);
+  assert.match(source, /d1RestBatch/);
   assert.match(source, /UPDATE catalog_versions SET status='retired' WHERE status='active'/);
-  assert.doesNotMatch(source, /WHERE catalog_versions.status = 'active'/);
+  assert.doesNotMatch(source, /runWrangler\(\['--command', sql\]\)/);
+  assert.doesNotMatch(source, /BEGIN TRANSACTION;/);
 });
 
 test('publisher resume requires draft with NULL published_at', () => {
