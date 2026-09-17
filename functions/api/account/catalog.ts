@@ -1,6 +1,6 @@
 import { functionErrorResponse, requestCorrelationId, requireAsteraActor, type AsteraFunctionEnv } from '../../_account-projection';
 import { loadActiveCatalog, loadTenantSubscription } from '../../_catalog';
-import { ensureMonthlyIncludedGrantForTenant } from '../../_credit-grants';
+import { callBillingEnsureGrants } from '../../_billing-ensure-grants';
 
 type PagesContext = { request: Request; env: AsteraFunctionEnv };
 
@@ -8,11 +8,7 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
     const actor = await requireAsteraActor(context.request, context.env);
-    await ensureMonthlyIncludedGrantForTenant(
-      context.env.ASTERA_DB,
-      actor.profile.tenant_id,
-      actor.credit.id,
-    ).catch(() => undefined);
+    await callBillingEnsureGrants(context.env, context.request, actor, requestId).catch(() => undefined);
     const refreshedCredit = await context.env.ASTERA_DB.prepare(
       `SELECT id, tenant_id, available_balance, reserved_balance, version, updated_at
        FROM credit_accounts WHERE tenant_id = ?1 LIMIT 1`,

@@ -1,5 +1,5 @@
 import { createAuth, type AuthEnv } from './_auth';
-import { ensureFreeTenantWelcomeGrants } from './_credit-grants';
+import { callBillingEnsureGrants } from './_billing-ensure-grants';
 
 export type D1Result<T> = { results?: T[]; success?: boolean; error?: string; meta?: Record<string, unknown> };
 export type D1PreparedStatement = {
@@ -93,7 +93,12 @@ function desiredAccountStatus(user: SessionUser, existing: UserProfileRow | null
   return passwordConfigured ? 'active' : 'pending_password_setup';
 }
 
-async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
+async function ensureProjection(
+  db: D1Database,
+  user: SessionUser,
+  env: AsteraFunctionEnv,
+  request: Request,
+): Promise<{ profile: UserProfileRow; credit: CreditRow }> {
   const now = new Date().toISOString();
   const tenantId = `personal:${user.id}`;
   const creditId = `credit:${tenantId}`;
@@ -140,14 +145,14 @@ async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ pr
 
   if (!existingProfile) {
     try {
-      await ensureFreeTenantWelcomeGrants(db, tenantId, credit.id);
+      await callBillingEnsureGrants(env, request, { user, session: undefined, profile, credit }, crypto.randomUUID());
       const refreshed = await db.prepare(
         `SELECT id, tenant_id, available_balance, reserved_balance, version, updated_at
          FROM credit_accounts WHERE tenant_id = ?1 LIMIT 1`,
       ).bind(tenantId).first<CreditRow>();
       if (refreshed) return { profile, credit: refreshed };
     } catch {
-      // Catalog may be unpublished during bootstrap; grants retry on later account reads.
+      // Billing service or catalog may be unavailable during bootstrap.
     }
   }
 
@@ -165,7 +170,7 @@ export async function requireAsteraActor(request: Request, env: AsteraFunctionEn
   if (!user?.id || !user.email) throw new FunctionHttpError(401, 'SESSION_REQUIRED', 'Loginが必要です。');
 
   try {
-    const { profile, credit } = await ensureProjection(env.ASTERA_DB, user);
+    const { profile, credit } = await ensureProjection(env.ASTERA_DB, user, env, request);
     if (profile.account_status !== 'active') {
       throw new FunctionHttpError(403, `ACCOUNT_${profile.account_status.toUpperCase()}`, 'Accountの現在状態ではこの操作を実行できません。');
     }

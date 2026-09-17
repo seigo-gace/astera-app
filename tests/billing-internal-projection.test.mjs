@@ -1,47 +1,19 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const catalogSource = readFileSync(new URL('../functions/_catalog.ts', import.meta.url), 'utf8');
-const internalBillingSource = readFileSync(new URL('../functions/_internal-billing-projection.ts', import.meta.url), 'utf8');
-const creditGrantsSource = readFileSync(new URL('../functions/_credit-grants.ts', import.meta.url), 'utf8');
+const proxySource = readFileSync(new URL('../functions/_billing-service-proxy.ts', import.meta.url), 'utf8');
+const ensureGrantsSource = readFileSync(new URL('../functions/_billing-ensure-grants.ts', import.meta.url), 'utf8');
 
 test('catalog loader does not expose square_* provider fields', () => {
   assert.doesNotMatch(catalogSource, /square_plan_variation_id/);
   assert.doesNotMatch(catalogSource, /square_catalog_object_id/);
 });
 
-test('internal billing auth failure uses 401 BILLING_APP_UNAUTHORIZED', () => {
-  assert.match(internalBillingSource, /BILLING_APP_UNAUTHORIZED/);
-  assert.match(internalBillingSource, /FunctionHttpError\(401/);
-  assert.match(internalBillingSource, /get\('Authorization'\)/);
-  assert.match(internalBillingSource, /Bearer\\s/);
-  assert.match(internalBillingSource, /BILLING_APP_SECRET/);
-});
-
-test('internal billing rejects unknown JSON fields with 400', () => {
-  assert.match(internalBillingSource, /UNKNOWN_FIELD/);
-  assert.match(internalBillingSource, /FunctionHttpError\(400/);
-});
-
-test('internal billing requires idempotency_key in schema validation', () => {
-  assert.match(internalBillingSource, /requiredString\(parsed, 'idempotency_key'\)/);
-  assert.match(internalBillingSource, /SCHEMA_VALIDATION_FAILED/);
-});
-
-test('internal billing event projection replays by idempotency_key', () => {
-  assert.match(internalBillingSource, /duplicate:\s*true/);
-  assert.match(internalBillingSource, /billing_event_projections WHERE idempotency_key/);
-});
-
-test('credit grants avoid double grant via ledger idempotency_key', () => {
-  assert.match(creditGrantsSource, /applyCreditGrant/);
-  assert.match(creditGrantsSource, /credit_ledger WHERE idempotency_key/);
-  assert.match(internalBillingSource, /applyCreditGrant/);
-  assert.match(internalBillingSource, /billing_internal_idempotency/);
-});
-
-test('internal billing routes are under /api/internal/billing', () => {
+test('internal billing projection files removed from public app', () => {
+  assert.equal(existsSync(new URL('../functions/_internal-billing-projection.ts', import.meta.url)), false);
+  assert.equal(existsSync(new URL('../functions/_credit-grants.ts', import.meta.url)), false);
   for (const route of [
     '../functions/api/internal/billing/projections/events.ts',
     '../functions/api/internal/billing/projections/subscriptions.ts',
@@ -49,7 +21,13 @@ test('internal billing routes are under /api/internal/billing', () => {
     '../functions/api/internal/billing/grants/storage.ts',
     '../functions/api/internal/billing/intents/status.ts',
   ]) {
-    const source = readFileSync(new URL(route, import.meta.url), 'utf8');
-    assert.match(source, /handleInternalBillingPost/);
+    assert.equal(existsSync(new URL(route, import.meta.url)), false);
   }
+});
+
+test('public app uses billing proxy for ensure-grants', () => {
+  assert.match(ensureGrantsSource, /proxyBillingRequest/);
+  assert.match(ensureGrantsSource, /\/api\/billing\/ensure-grants/);
+  assert.match(proxySource, /BILLING_SERVICE_URL/);
+  assert.match(proxySource, /BILLING_APP_SECRET/);
 });
