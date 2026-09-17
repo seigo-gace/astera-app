@@ -9,6 +9,23 @@ function grantPeriodUtc(date = new Date()): string {
   return `${year}-${month}`;
 }
 
+export async function applyCreditGrant(
+  db: D1Database,
+  creditAccountId: string,
+  amount: number,
+  referenceType: string,
+  referenceId: string,
+  idempotencyKey: string,
+  fingerprint: string,
+): Promise<'granted' | 'duplicate' | 'invalid'> {
+  const existing = await db.prepare(
+    `SELECT transaction_id FROM credit_ledger WHERE idempotency_key = ?1 LIMIT 1`,
+  ).bind(idempotencyKey).first<{ transaction_id: string }>();
+  if (existing?.transaction_id) return 'duplicate';
+  const applied = await postGrant(db, creditAccountId, amount, referenceType, referenceId, idempotencyKey, fingerprint);
+  return applied ? 'granted' : 'duplicate';
+}
+
 async function postGrant(
   db: D1Database,
   creditAccountId: string,

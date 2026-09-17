@@ -183,6 +183,10 @@ function ensureCommercialSchema() {
     console.log('Applying square billing projection schema (0019)...');
     runWrangler(['--file=migrations/d1/0019_square_billing_projections.sql']);
   }
+  if (!tableExists('billing_event_projections')) {
+    console.log('Applying provider-neutral billing projection schema (0020)...');
+    runWrangler(['--file=migrations/d1/0020_billing_provider_projections.sql']);
+  }
   if (tableExists('tenant_subscriptions') && !columnExists('tenant_subscriptions', 'billing_cycle')) {
     runWrangler(['--command', `
       ALTER TABLE tenant_subscriptions

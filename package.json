@@ -40,7 +40,7 @@
     "android:run": "npm run mobile:sync && cap run android",
     "ios:open": "npm run mobile:sync && cap open ios",
     "ios:run": "npm run mobile:sync && cap run ios",
-    "test:unit": "node --experimental-strip-types --test tests/commercial-catalog-canonical.test.mjs tests/storage-checkout-capacity.test.mjs tests/publish-commercial-catalog.test.mjs tests/billing-webhook-stub.test.mjs",
+    "test:unit": "node --experimental-strip-types --test tests/commercial-catalog-canonical.test.mjs tests/storage-checkout-capacity.test.mjs tests/publish-commercial-catalog.test.mjs tests/billing-webhook-stub.test.mjs tests/billing-internal-projection.test.mjs",
     "cloudflare:functions:build": "wrangler pages functions build functions --outdir=.wrangler/functions-build",
     "cloudflare:dev": "npm run build && wrangler pages dev dist"
   },

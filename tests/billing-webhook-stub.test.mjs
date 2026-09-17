@@ -1,21 +1,17 @@
 import assert from 'node:assert/strict';
+import { accessSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const directSquareRoute = readFileSync(
-  new URL('../functions/api/billing/webhooks/square.ts', import.meta.url),
-  'utf8',
-);
+const squareWebhookPath = new URL('../functions/api/billing/webhooks/square.ts', import.meta.url);
 
 const billingProxy = readFileSync(
   new URL('../functions/_billing-service-proxy.ts', import.meta.url),
   'utf8',
 );
 
-test('direct Square billing webhook endpoint returns 410', () => {
-  assert.match(directSquareRoute, /status:\s*410/);
-  assert.match(directSquareRoute, /SQUARE_DIRECT_WEBHOOK_RETIRED/);
-  assert.match(directSquareRoute, /webhook-gateway/);
+test('direct Square billing webhook route file is removed', () => {
+  assert.throws(() => accessSync(squareWebhookPath), /ENOENT|not found/i);
 });
 
 test('billing proxy uses env BILLING_SERVICE_URL only', () => {
