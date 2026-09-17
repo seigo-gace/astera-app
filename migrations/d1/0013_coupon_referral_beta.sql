@@ -1,7 +1,7 @@
 PRAGMA foreign_keys = ON;
 
 -- User-facing App projection for Admini-owned reward definitions.
--- Survey/feedback bodies are intentionally NOT stored in App D1.
+-- Survey/feedback bodies and submission history are intentionally NOT stored in App D1.
 
 CREATE TABLE IF NOT EXISTS reward_package_projection (
   id TEXT PRIMARY KEY,
@@ -85,6 +85,25 @@ CREATE TABLE IF NOT EXISTS reward_entitlements (
 
 CREATE INDEX IF NOT EXISTS reward_entitlement_subject_idx
   ON reward_entitlements(tenant_id, user_id, status, expires_at);
+
+CREATE TABLE IF NOT EXISTS reward_credit_schedules (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  remaining_grants INTEGER NOT NULL CHECK (remaining_grants >= 0),
+  cadence_months INTEGER NOT NULL DEFAULT 1 CHECK (cadence_months > 0),
+  next_grant_at TEXT,
+  status TEXT NOT NULL CHECK (status IN ('active','completed','paused','revoked','reconcile_required')),
+  reference_type TEXT NOT NULL,
+  reference_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(reference_type, reference_id)
+);
+
+CREATE INDEX IF NOT EXISTS reward_credit_schedule_due_idx
+  ON reward_credit_schedules(status, next_grant_at);
 
 CREATE TABLE IF NOT EXISTS referral_policy_projection (
   id TEXT PRIMARY KEY CHECK (id = 'active'),
@@ -189,14 +208,3 @@ CREATE TABLE IF NOT EXISTS beta_feature_usage_receipts (
 
 CREATE INDEX IF NOT EXISTS beta_usage_subject_month_idx
   ON beta_feature_usage_receipts(user_id, target_month, feature_id);
-
--- Only an opaque Admini receipt is retained to unblock the forced overlay in the current session.
--- It is not a survey/feedback body, answer history, or duplicated submission record.
-CREATE TABLE IF NOT EXISTS beta_survey_unlock_receipts (
-  receipt_id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  target_month TEXT NOT NULL,
-  accepted_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  UNIQUE(user_id, target_month)
-);
