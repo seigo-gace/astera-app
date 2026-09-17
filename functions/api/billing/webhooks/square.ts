@@ -4,6 +4,7 @@ import {
   requestCorrelationId,
   type AsteraFunctionEnv,
 } from "../../../_account-projection";
+import { grantMonthlyIncludedFromSquareEvent } from "../../../_credit-grants";
 import { handleStoragePaymentIfMatched } from "../../../_storage-square";
 import { verifySquareWebhook, type SquareEnv } from "../../../_square";
 
@@ -323,6 +324,7 @@ async function handleInvoicePaymentEvent(
       `UPDATE billing_events SET billing_intent_id=?1, processing_status='processed', processed_at=?2 WHERE provider_event_id=?3`,
     ).bind(intent.id, now, eventId),
   ]);
+  await grantMonthlyIncludedFromSquareEvent(env.ASTERA_DB, intent.tenant_id, eventId).catch(() => false);
   return "processed";
 }
 

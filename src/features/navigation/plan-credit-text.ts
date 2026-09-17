@@ -1,3 +1,141 @@
+import {
+  COMMERCIAL_CATALOG_CANONICAL,
+  CREDIT_PRODUCTS,
+  PLAN_ANNUAL_JPY,
+  PLAN_INCLUDED_CREDITS,
+  PLAN_MONTHLY_JPY,
+  STORAGE_PACKS,
+  annualMonthlyEquivalent,
+  formatCreditsAmount,
+  formatYenAnnual,
+  formatYenMonthly,
+  formatYenPack,
+} from '../../platform/commercial-catalog-canonical';
+
+const freeIncluded = PLAN_INCLUDED_CREDITS.free ?? 10000;
+const freeBonus = COMMERCIAL_CATALOG_CANONICAL.plans.find((plan) => plan.plan_id === 'free')?.free_signup_bonus_credits ?? 10000;
+
+function paidPlanCreditValue(planId: string, locale: 'ja-JP' | 'en-US'): string {
+  return formatCreditsAmount(PLAN_INCLUDED_CREDITS[planId] ?? 0, locale);
+}
+
+function buildCredits(locale: 'ja' | 'en') {
+  const numberLocale = locale === 'ja' ? 'ja-JP' : 'en-US';
+  return CREDIT_PRODUCTS.map((product) => ({
+    name: product.display_name,
+    price: formatYenPack(product.amount, locale),
+    creditValue: formatCreditsAmount(product.credits, numberLocale),
+  }));
+}
+
+function buildStorage(locale: 'ja' | 'en') {
+  const plus = locale === 'ja' ? '＋' : '+';
+  return STORAGE_PACKS.map((pack) => ({
+    name: pack.display_name.replace('+', plus),
+    price: formatYenPack(pack.price_jpy, locale),
+  }));
+}
+
+function buildPaidPlans(locale: 'ja' | 'en') {
+  const numberLocale = locale === 'ja' ? 'ja-JP' : 'en-US';
+  const paidIds = ['basic', 'pro', 'business', 'enterprise'] as const;
+  const featureMap = {
+    ja: {
+      basic: [
+        '基本機能',
+        '高精度翻訳',
+        '書類作成',
+        'Private Mode',
+        '外部Storage転送',
+        'Astera Storage',
+      ],
+      pro: [
+        '基本機能',
+        '高精度翻訳',
+        '書類作成',
+        'Private Mode',
+        '外部Storage転送',
+        'Astera Storage',
+        'Astera公式／個別書類テンプレート',
+        'API',
+      ],
+      business: [
+        '基本機能',
+        '高精度翻訳',
+        '書類作成',
+        'Private Mode',
+        '外部Storage転送',
+        'Astera Storage',
+        'Astera公式／個別書類テンプレート',
+        'API',
+      ],
+      enterprise: [
+        '基本機能',
+        '高精度翻訳',
+        '書類作成',
+        'Private Mode',
+        '外部Storage転送',
+        'Astera Storage',
+        'Astera公式／個別書類テンプレート',
+        'API',
+      ],
+    },
+    en: {
+      basic: [
+        'Core features',
+        'High-accuracy translation',
+        'Document creation',
+        'Private Mode',
+        'External storage transfer',
+        'Astera Storage',
+      ],
+      pro: [
+        'Core features',
+        'High-accuracy translation',
+        'Document creation',
+        'Private Mode',
+        'External storage transfer',
+        'Astera Storage',
+        'Astera official / custom document templates',
+        'API',
+      ],
+      business: [
+        'Core features',
+        'High-accuracy translation',
+        'Document creation',
+        'Private Mode',
+        'External storage transfer',
+        'Astera Storage',
+        'Astera official / custom document templates',
+        'API',
+      ],
+      enterprise: [
+        'Core features',
+        'High-accuracy translation',
+        'Document creation',
+        'Private Mode',
+        'External storage transfer',
+        'Astera Storage',
+        'Astera official / custom document templates',
+        'API',
+      ],
+    },
+  } as const;
+
+  return paidIds.map((planId) => {
+    const meta = COMMERCIAL_CATALOG_CANONICAL.plans.find((plan) => plan.plan_id === planId);
+    return {
+      id: planId,
+      name: meta?.display_name ?? planId,
+      monthlyPrice: formatYenMonthly(PLAN_MONTHLY_JPY[planId] ?? 0, locale),
+      annualPrice: formatYenAnnual(PLAN_ANNUAL_JPY[planId] ?? 0, locale),
+      annualMonthlyEquivalent: annualMonthlyEquivalent(planId, locale),
+      creditValue: paidPlanCreditValue(planId, numberLocale),
+      features: [...featureMap[locale][planId]],
+    };
+  });
+}
+
 export const PLAN_CREDIT_TEXT = {
   ja: {
     pageTitle: 'プラン / クレジット',
@@ -18,9 +156,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'free',
         name: 'Free',
-        monthlyPrice: '¥0 / 月',
-        annualPrice: '¥0 / 年',
-        creditValue: '初回 20,000 © / 以後 10,000 ©',
+        monthlyPrice: formatYenMonthly(0, 'ja'),
+        annualPrice: formatYenAnnual(0, 'ja'),
+        creditValue: `初回 ${formatCreditsAmount(freeIncluded + freeBonus, 'ja-JP')} / 以後 ${formatCreditsAmount(freeIncluded, 'ja-JP')}`,
         basicFeature: {
           label: '基本機能',
           columns: [
@@ -34,90 +172,10 @@ export const PLAN_CREDIT_TEXT = {
           ],
         },
       },
-      {
-        id: 'basic',
-        name: 'Basic',
-        monthlyPrice: '¥980 / 月',
-        annualPrice: '¥9,800 / 年',
-        annualMonthlyEquivalent: '約 ¥817 / 月',
-        creditValue: '180,000 ©',
-        features: [
-          '基本機能',
-          '高精度翻訳',
-          '書類作成',
-          'Private Mode',
-          '外部Storage転送',
-          'Astera Storage',
-        ],
-      },
-      {
-        id: 'pro',
-        name: 'Pro',
-        monthlyPrice: '¥2,980 / 月',
-        annualPrice: '¥29,800 / 年',
-        annualMonthlyEquivalent: '約 ¥2,483 / 月',
-        creditValue: '640,000 ©',
-        features: [
-          '基本機能',
-          '高精度翻訳',
-          '書類作成',
-          'Private Mode',
-          '外部Storage転送',
-          'Astera Storage',
-          'Astera公式／個別書類テンプレート',
-          'API',
-        ],
-      },
-      {
-        id: 'business',
-        name: 'Business',
-        monthlyPrice: '¥9,980 / 月',
-        annualPrice: '¥99,800 / 年',
-        annualMonthlyEquivalent: '約 ¥8,317 / 月',
-        creditValue: '2,200,000 ©',
-        features: [
-          '基本機能',
-          '高精度翻訳',
-          '書類作成',
-          'Private Mode',
-          '外部Storage転送',
-          'Astera Storage',
-          'Astera公式／個別書類テンプレート',
-          'API',
-        ],
-      },
-      {
-        id: 'enterprise',
-        name: 'Enterprise',
-        monthlyPrice: '¥29,800 / 月',
-        annualPrice: '¥298,000 / 年',
-        annualMonthlyEquivalent: '約 ¥24,833 / 月',
-        creditValue: '6,600,000 ©',
-        features: [
-          '基本機能',
-          '高精度翻訳',
-          '書類作成',
-          'Private Mode',
-          '外部Storage転送',
-          'Astera Storage',
-          'Astera公式／個別書類テンプレート',
-          'API',
-        ],
-      },
+      ...buildPaidPlans('ja'),
     ],
-    credits: [
-      { name: '©500pack', price: '¥500', creditValue: '75,000 ©' },
-      { name: '©1000pack', price: '¥1,000', creditValue: '155,000 ©' },
-      { name: '©3000pack', price: '¥3,000', creditValue: '480,000 ©' },
-      { name: '©5000pack', price: '¥5,000', creditValue: '815,000 ©' },
-      { name: '©10000pack', price: '¥10,000', creditValue: '1,650,000 ©' },
-      { name: '©30000pack', price: '¥30,000', creditValue: '5,000,000 ©' },
-    ],
-    storage: [
-      { name: '＋1GB', price: '¥480' },
-      { name: '＋10GB', price: '¥1,980' },
-      { name: '＋50GB', price: '¥5,980' },
-    ],
+    credits: buildCredits('ja'),
+    storage: buildStorage('ja'),
   },
   en: {
     pageTitle: 'Plan / Credit',
@@ -138,9 +196,9 @@ export const PLAN_CREDIT_TEXT = {
       {
         id: 'free',
         name: 'Free',
-        monthlyPrice: '¥0 / month',
-        annualPrice: '¥0 / year',
-        creditValue: '20,000 © first month / 10,000 © after',
+        monthlyPrice: formatYenMonthly(0, 'en'),
+        annualPrice: formatYenAnnual(0, 'en'),
+        creditValue: `${formatCreditsAmount(freeIncluded + freeBonus, 'en-US')} first month / ${formatCreditsAmount(freeIncluded, 'en-US')} after`,
         basicFeature: {
           label: 'Core features',
           columns: [
@@ -154,89 +212,9 @@ export const PLAN_CREDIT_TEXT = {
           ],
         },
       },
-      {
-        id: 'basic',
-        name: 'Basic',
-        monthlyPrice: '¥980 / month',
-        annualPrice: '¥9,800 / year',
-        annualMonthlyEquivalent: 'About ¥817 / month',
-        creditValue: '180,000 ©',
-        features: [
-          'Core features',
-          'High-accuracy translation',
-          'Document creation',
-          'Private Mode',
-          'External storage transfer',
-          'Astera Storage',
-        ],
-      },
-      {
-        id: 'pro',
-        name: 'Pro',
-        monthlyPrice: '¥2,980 / month',
-        annualPrice: '¥29,800 / year',
-        annualMonthlyEquivalent: 'About ¥2,483 / month',
-        creditValue: '640,000 ©',
-        features: [
-          'Core features',
-          'High-accuracy translation',
-          'Document creation',
-          'Private Mode',
-          'External storage transfer',
-          'Astera Storage',
-          'Astera official / custom document templates',
-          'API',
-        ],
-      },
-      {
-        id: 'business',
-        name: 'Business',
-        monthlyPrice: '¥9,980 / month',
-        annualPrice: '¥99,800 / year',
-        annualMonthlyEquivalent: 'About ¥8,317 / month',
-        creditValue: '2,200,000 ©',
-        features: [
-          'Core features',
-          'High-accuracy translation',
-          'Document creation',
-          'Private Mode',
-          'External storage transfer',
-          'Astera Storage',
-          'Astera official / custom document templates',
-          'API',
-        ],
-      },
-      {
-        id: 'enterprise',
-        name: 'Enterprise',
-        monthlyPrice: '¥29,800 / month',
-        annualPrice: '¥298,000 / year',
-        annualMonthlyEquivalent: 'About ¥24,833 / month',
-        creditValue: '6,600,000 ©',
-        features: [
-          'Core features',
-          'High-accuracy translation',
-          'Document creation',
-          'Private Mode',
-          'External storage transfer',
-          'Astera Storage',
-          'Astera official / custom document templates',
-          'API',
-        ],
-      },
+      ...buildPaidPlans('en'),
     ],
-    credits: [
-      { name: '©500pack', price: '¥500', creditValue: '75,000 ©' },
-      { name: '©1000pack', price: '¥1,000', creditValue: '155,000 ©' },
-      { name: '©3000pack', price: '¥3,000', creditValue: '480,000 ©' },
-      { name: '©5000pack', price: '¥5,000', creditValue: '815,000 ©' },
-      { name: '©10000pack', price: '¥10,000', creditValue: '1,650,000 ©' },
-      { name: '©30000pack', price: '¥30,000', creditValue: '5,000,000 ©' },
-    ],
-    storage: [
-      { name: '+1GB', price: '¥480' },
-      { name: '+10GB', price: '¥1,980' },
-      { name: '+50GB', price: '¥5,980' },
-    ],
+    credits: buildCredits('en'),
+    storage: buildStorage('en'),
   },
 } as const;

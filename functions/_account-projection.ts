@@ -1,4 +1,5 @@
 import { createAuth, type AuthEnv } from './_auth';
+import { ensureFreeTenantWelcomeGrants } from './_credit-grants';
 
 export type D1Result<T> = { results?: T[]; success?: boolean; error?: string; meta?: Record<string, unknown> };
 export type D1PreparedStatement = {
@@ -136,6 +137,20 @@ async function ensureProjection(db: D1Database, user: SessionUser): Promise<{ pr
   ).bind(tenantId).first<CreditRow>();
 
   if (!profile || !credit) throw new FunctionHttpError(503, 'ASTERA_ACCOUNT_SCHEMA_NOT_READY', 'Account／Credit Projectionを作成できませんでした。');
+
+  if (!existingProfile) {
+    try {
+      await ensureFreeTenantWelcomeGrants(db, tenantId, credit.id);
+      const refreshed = await db.prepare(
+        `SELECT id, tenant_id, available_balance, reserved_balance, version, updated_at
+         FROM credit_accounts WHERE tenant_id = ?1 LIMIT 1`,
+      ).bind(tenantId).first<CreditRow>();
+      if (refreshed) return { profile, credit: refreshed };
+    } catch {
+      // Catalog may be unpublished during bootstrap; grants retry on later account reads.
+    }
+  }
+
   return { profile, credit };
 }
 

@@ -91,7 +91,7 @@ export async function loadStorageCommerceProjection(db: D1Database, tenantId: st
         displayName: row.display_name,
         capacityGb,
         priceJpy,
-        canPurchase: planMaxCapacityGb > 0 && capacityGb <= remainingCapacityGb,
+        canPurchase: planId !== 'free' && planMaxCapacityGb > 0 && capacityGb <= remainingCapacityGb,
       };
     });
 

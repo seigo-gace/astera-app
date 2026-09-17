@@ -69,7 +69,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     }
 
     const commerce = await loadStorageCommerceProjection(context.env.ASTERA_DB, actor.profile.tenant_id);
-    if (commerce.planMaxCapacityGb <= 0) {
+    if (commerce.planId === 'free' || commerce.planMaxCapacityGb <= 0) {
       throw new FunctionHttpError(403, 'STORAGE_PLAN_NOT_ELIGIBLE', '現在のPlanではAstera Storageを購入できません。');
     }
     const product = await loadStoragePackProduct(context.env.ASTERA_DB, commerce.catalogVersion, productId);

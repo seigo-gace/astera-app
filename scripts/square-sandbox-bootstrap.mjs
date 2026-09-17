@@ -1,27 +1,27 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import { PLAN_ANNUAL_JPY, PLAN_MONTHLY_JPY } from './commercial-catalog-canonical.mjs';
 
 const API_BASE = 'https://connect.squareupsandbox.com';
 const SQUARE_VERSION = '2026-08-19';
 const PLAN_NAME = 'AsteraTest Plans';
-const token = (process.env.SQUARE_ACCESS_TOKEN || process.env.ASTERAKEY || '').trim();
 
-if (!token) {
-  console.error('SQUARE_ACCESS_TOKEN or ASTERAKEY is required.');
-  process.exit(1);
-}
-
-const variants = [
-  { planId: 'basic', cycle: 'monthly', name: 'Astera Basic Monthly', cadence: 'MONTHLY', amount: 980 },
-  { planId: 'basic', cycle: 'annual', name: 'Astera Basic Annual', cadence: 'ANNUAL', amount: 9800 },
-  { planId: 'pro', cycle: 'monthly', name: 'Astera Pro Monthly', cadence: 'MONTHLY', amount: 2980 },
-  { planId: 'pro', cycle: 'annual', name: 'Astera Pro Annual', cadence: 'ANNUAL', amount: 29800 },
-  { planId: 'business', cycle: 'monthly', name: 'Astera Business Monthly', cadence: 'MONTHLY', amount: 9980 },
-  { planId: 'business', cycle: 'annual', name: 'Astera Business Annual', cadence: 'ANNUAL', amount: 99800 },
-  { planId: 'enterprise', cycle: 'monthly', name: 'Astera Enterprise Monthly', cadence: 'MONTHLY', amount: 29800 },
-  { planId: 'enterprise', cycle: 'annual', name: 'Astera Enterprise Annual', cadence: 'ANNUAL', amount: 298000 },
+const PAID_SPECS = [
+  { planId: 'basic', cycle: 'monthly', name: 'Astera Basic Monthly', cadence: 'MONTHLY', amount: PLAN_MONTHLY_JPY.basic },
+  { planId: 'basic', cycle: 'annual', name: 'Astera Basic Annual', cadence: 'ANNUAL', amount: PLAN_ANNUAL_JPY.basic },
+  { planId: 'pro', cycle: 'monthly', name: 'Astera Pro Monthly', cadence: 'MONTHLY', amount: PLAN_MONTHLY_JPY.pro },
+  { planId: 'pro', cycle: 'annual', name: 'Astera Pro Annual', cadence: 'ANNUAL', amount: PLAN_ANNUAL_JPY.pro },
+  { planId: 'business', cycle: 'monthly', name: 'Astera Business Monthly', cadence: 'MONTHLY', amount: PLAN_MONTHLY_JPY.business },
+  { planId: 'business', cycle: 'annual', name: 'Astera Business Annual', cadence: 'ANNUAL', amount: PLAN_ANNUAL_JPY.business },
+  { planId: 'enterprise', cycle: 'monthly', name: 'Astera Enterprise Monthly', cadence: 'MONTHLY', amount: PLAN_MONTHLY_JPY.enterprise },
+  { planId: 'enterprise', cycle: 'annual', name: 'Astera Enterprise Annual', cadence: 'ANNUAL', amount: PLAN_ANNUAL_JPY.enterprise },
 ];
 
-async function square(path, init = {}) {
+function resolveToken(explicitToken) {
+  return (explicitToken || process.env.SQUARE_ACCESS_TOKEN || process.env.ASTERAKEY || '').trim();
+}
+
+async function square(token, path, init = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -41,21 +41,21 @@ async function square(path, init = {}) {
   return body;
 }
 
-async function listObjects(type) {
+async function listObjects(token, type) {
   const result = [];
   let cursor = '';
   do {
     const query = new URLSearchParams({ types: type });
     if (cursor) query.set('cursor', cursor);
-    const body = await square(`/v2/catalog/list?${query.toString()}`);
+    const body = await square(token, `/v2/catalog/list?${query.toString()}`);
     if (Array.isArray(body?.objects)) result.push(...body.objects);
     cursor = typeof body?.cursor === 'string' ? body.cursor : '';
   } while (cursor);
   return result;
 }
 
-async function upsert(object) {
-  const body = await square('/v2/catalog/object', {
+async function upsert(token, object) {
+  const body = await square(token, '/v2/catalog/object', {
     method: 'POST',
     body: JSON.stringify({ idempotency_key: crypto.randomUUID(), object }),
   });
@@ -71,24 +71,35 @@ function variationName(object) {
   return object?.subscription_plan_variation_data?.name || '';
 }
 
-function sqlQuote(value) {
+export function sqlQuote(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-async function activeLocationId() {
-  const body = await square('/v2/locations');
+async function activeLocationId(token) {
+  const body = await square(token, '/v2/locations');
   const locations = Array.isArray(body?.locations) ? body.locations : [];
   const active = locations.find((location) => location?.status === 'ACTIVE') || locations[0];
   if (!active?.id) throw new Error('Square Sandbox location was not found.');
   return active.id;
 }
 
-async function main() {
-  const locationId = await activeLocationId();
-  const plans = await listObjects('SUBSCRIPTION_PLAN');
+/**
+ * Ensures 8 paid Square subscription plan variations exist in sandbox.
+ * @returns {Promise<Record<string, { plan_id: string, billing_cycle: string, square_plan_variation_id: string, amount_jpy: number }>>}
+ */
+export async function ensureSquarePaidPlanVariants(tokenInput) {
+  const token = resolveToken(tokenInput);
+  if (!token) {
+    const error = new Error('SQUARE_ACCESS_TOKEN or ASTERAKEY is required.');
+    error.code = 'SQUARE_TOKEN_MISSING';
+    throw error;
+  }
+
+  const locationId = await activeLocationId(token);
+  const plans = await listObjects(token, 'SUBSCRIPTION_PLAN');
   let plan = plans.find((object) => planName(object) === PLAN_NAME);
   if (!plan) {
-    plan = await upsert({
+    plan = await upsert(token, {
       type: 'SUBSCRIPTION_PLAN',
       id: '#astera-test-plan',
       present_at_all_locations: true,
@@ -96,16 +107,17 @@ async function main() {
     });
   }
 
-  const existingVariations = await listObjects('SUBSCRIPTION_PLAN_VARIATION');
+  const existingVariations = await listObjects(token, 'SUBSCRIPTION_PLAN_VARIATION');
+  /** @type {Record<string, { plan_id: string, billing_cycle: string, square_plan_variation_id: string, amount_jpy: number, cadence: string }>} */
   const mapping = {};
 
-  for (const spec of variants) {
+  for (const spec of PAID_SPECS) {
     let variation = existingVariations.find((object) =>
       object?.subscription_plan_variation_data?.subscription_plan_id === plan.id
       && variationName(object) === spec.name);
 
     if (!variation) {
-      variation = await upsert({
+      variation = await upsert(token, {
         type: 'SUBSCRIPTION_PLAN_VARIATION',
         id: `#astera-${spec.planId}-${spec.cycle}`,
         present_at_all_locations: true,
@@ -133,11 +145,16 @@ async function main() {
     };
   }
 
+  return { locationId, subscriptionPlanId: plan.id, mapping };
+}
+
+async function main() {
+  const { locationId, subscriptionPlanId, mapping } = await ensureSquarePaidPlanVariants();
   mkdirSync('audit-results', { recursive: true });
   const output = {
     environment: 'sandbox',
     location_id: locationId,
-    subscription_plan_id: plan.id,
+    subscription_plan_id: subscriptionPlanId,
     subscription_plan_name: PLAN_NAME,
     generated_at: new Date().toISOString(),
     variants: mapping,
@@ -161,8 +178,11 @@ async function main() {
   console.log(`PASS AsteraTest Square Sandbox billing variants=${Object.keys(mapping).length}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  if (error?.details?.errors) console.error(JSON.stringify({ errors: error.details.errors }));
-  process.exit(1);
-});
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    if (error?.details?.errors) console.error(JSON.stringify({ errors: error.details.errors }));
+    process.exit(1);
+  });
+}
