@@ -177,16 +177,31 @@ test('STORY-COMPOSER-007 composer keeps only plus as a persistent option entry a
   await expect(page.getByLabel('Astera入力')).toHaveValue('');
 });
 
-test('STORY-COMPOSER-008 successful user posts stay visible as a right-side chat bubble', async ({ page }) => {
+test('STORY-COMPOSER-008 chat presentation follows the ChatGPT conversation model', async ({ page }) => {
   await installRuntime(page);
   await openComposer(page);
   await page.getByLabel('Astera入力').fill('投稿内容をそのまま表示する');
   await page.getByLabel('Astera入力').press('Control+Enter');
   await expect(page.locator('.native-result-section')).toHaveCount(8);
-  await expect(page.locator('.native-user-message > p')).toHaveText('投稿内容をそのまま表示する');
+
+  const userMessage = page.locator('.native-user-message');
+  const response = page.locator('.native-response');
+  await expect(userMessage.locator('> p')).toHaveText('投稿内容をそのまま表示する');
   await expect(page.locator('.native-user-message-trigger')).toHaveCount(0);
   await expect(page.getByText('投稿内容を表示', { exact: true })).toHaveCount(0);
   await expect(page.getByText('投稿内容を閉じる', { exact: true })).toHaveCount(0);
+
+  expect(await userMessage.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe('0px');
+  expect(await response.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe('0px');
+  await expect(page.locator('.native-response > header strong')).toBeHidden();
+  await expect(page.locator('.native-result-heading > span').first()).toBeHidden();
+  await expect(page.locator('.native-result-heading > button').first()).toBeHidden();
+
+  const userBox = await userMessage.boundingBox();
+  const timelineBox = await page.locator('.native-timeline-inner').boundingBox();
+  expect(userBox).not.toBeNull();
+  expect(timelineBox).not.toBeNull();
+  expect((userBox?.x ?? 0) + (userBox?.width ?? 0)).toBeGreaterThan((timelineBox?.x ?? 0) + (timelineBox?.width ?? 0) * 0.7);
 });
 
 test('STORY-COMPOSER-009 plus and at both reflect the same three sidebar preference candidates', async ({ page }) => {
