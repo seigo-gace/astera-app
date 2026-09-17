@@ -39,7 +39,6 @@ test('STORY-RESULT-001 canonical eight-key section objects are rendered in fixed
   const textarea = page.getByLabel('Astera入力');
   await textarea.fill('正規Contractの8項目Objectを表示する');
   await textarea.press('Control+Enter');
-  await page.getByRole('button', { name: 'Creditを予約して実行' }).click();
 
   const rendered = page.locator('.native-result-section');
   await expect(rendered).toHaveCount(8);
@@ -47,4 +46,5 @@ test('STORY-RESULT-001 canonical eight-key section objects are rendered in fixed
     await expect(rendered.nth(index)).toContainText(`正規項目 ${index + 1}`);
     await expect(rendered.nth(index)).toContainText(`正規Result本文 ${index + 1}`);
   }
+  await expect(page.getByRole('dialog', { name: '実行前確認' })).toHaveCount(0);
 });
