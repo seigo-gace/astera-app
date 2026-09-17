@@ -105,6 +105,12 @@ test('active immutable: publisher uses single transaction retire+activate', () =
   assert.doesNotMatch(source, /WHERE catalog_versions.status = 'active'/);
 });
 
+test('publisher resume requires draft with NULL published_at', () => {
+  const source = readFileSync(new URL('../scripts/publish-commercial-catalog.mjs', import.meta.url), 'utf8');
+  assert.match(source, /status !== 'draft'/);
+  assert.match(source, /published_at is not NULL/i);
+});
+
 test('checksum changes when business value changes', () => {
   const base = buildChecksumPayload(snapshotFromCanonical(true));
   const mutated = buildChecksumPayload({

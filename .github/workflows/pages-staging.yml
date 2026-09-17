@@ -154,7 +154,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/publish-commercial-catalog.mjs --remote
+          # BLOCKED: GitHub Square Access Token secret missing (repo secrets: ASTERAKEY, CLOUDFLAREACCOUNTAPI only).
+          # Do not reference secrets.SQUARE_* here; SQUARE_ACCESS_TOKEN must come from a dedicated GitHub secret when added.
+          node scripts/publish-commercial-catalog.mjs --remote --cleanup-failed-drafts --resume-version=astera-commercial-2026-09-17-draft-20260917013944
 
       - name: Verify published commercial catalog
         id: catalog_verify
