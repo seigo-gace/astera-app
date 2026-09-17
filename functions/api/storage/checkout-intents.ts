@@ -2,7 +2,7 @@ import {
   FunctionHttpError,
   functionErrorResponse,
   requestCorrelationId,
-  requireFreshAsteraActor,
+  requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
 import { loadStorageCommerceProjection, loadStoragePackProduct } from '../../_storage-commerce';
@@ -39,7 +39,7 @@ function idempotencyKey(request: Request): string {
 export async function onRequestPost(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
-    const actor = await requireFreshAsteraActor(context.request, context.env);
+    const actor = await requireAsteraActor(context.request, context.env);
     const key = idempotencyKey(context.request);
     const body = await context.request.json().catch(() => null) as Body | null;
     const productId = text(body?.product_id);
