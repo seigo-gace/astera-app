@@ -18,7 +18,7 @@ type PurposeKey = 'auto' | 'review' | 'compare' | 'verify' | 'improve' | 'resear
 type ExecutionOptionKey = 'translation' | 'agent-mode' | 'document' | 'external-storage-transfer';
 type CurrentExecutionOptionKey = Exclude<ExecutionOptionKey, 'document'>;
 type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pending' | 'credited' | 'resume_available' | 'resume_blocked';
-type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'confirmation' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
+type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
 type AgentMode = 'low' | 'medium' | 'high';
 type PickerKind = 'add' | 'context' | null;
@@ -239,7 +239,6 @@ function phaseLabel(phase: ComposerPhase): string {
     draft: '入力待ち',
     uploading: 'File Upload中',
     estimating: 'Credit確認中',
-    confirmation: '実行前確認',
     submitting: 'Job作成中',
     queued: '実行待ち',
     running: 'Astera実行中',
@@ -282,6 +281,7 @@ function catalogItem(value: unknown, kind: 'project' | 'template' | 'storage'): 
 
 export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [prompt, setPrompt] = useState('');
+  const [submittedPrompt, setSubmittedPrompt] = useState('');
   const [purpose, setPurpose] = useState<PurposeKey>('auto');
   const [selectedOptions, setSelectedOptions] = useState<ExecutionOptionKey[]>([]);
   const [targetLanguage, setTargetLanguage] = useState(defaultLanguage());
@@ -292,16 +292,14 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [privateMode] = useState(true);
   const [projectId, setProjectId] = useState('');
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [estimate, setEstimate] = useState<JobEstimate | null>(null);
   const [phase, setPhase] = useState<ComposerPhase>('draft');
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState('');
   const [currentJobId, setCurrentJobId] = useState('');
   const [resultSections, setResultSections] = useState<ResultSection[]>([]);
-  const [promptExpanded, setPromptExpanded] = useState(false);
   const [picker, setPicker] = useState<PickerKind>(null);
   const [projects, setProjects] = useState<CatalogItem[]>([]);
-  const [templates, setTemplates] = useState<CatalogItem[]>([]);
+  const [, setTemplates] = useState<CatalogItem[]>([]);
   const [destinations, setDestinations] = useState<CatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [optionVisibility, setOptionVisibility] = useState<Record<CurrentExecutionOptionKey, boolean>>({
@@ -312,7 +310,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [revisionBaseline, setRevisionBaseline] = useState<RevisionBaseline | null>(null);
   const executionLock = useRef(false);
   const pollController = useRef<AbortController | null>(null);
-  const estimateFingerprint = useRef('');
   const privateOutputTimer = useRef<number | null>(null);
   const dragIndex = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -371,10 +368,9 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       privateOutputTimer.current = null;
       setResultSections([]);
       setPrompt('');
+      setSubmittedPrompt('');
       setCurrentJobId('');
       setRevisionBaseline(null);
-      setPromptExpanded(false);
-      setEstimate(null);
       setPhase('draft');
       setNotice('Private Mode Outputの60分TTLが終了したため、この端末Memoryから破棄しました。');
     }, PRIVATE_OUTPUT_TTL_MS);
@@ -402,22 +398,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
         revision_base_prompt: revisionBaseline.prompt,
       }
     : {}, [privateMode, revisionBaseline]);
-
-  const requestFingerprint = useMemo(() => JSON.stringify({
-    prompt,
-    purpose,
-    options: executionOptions,
-    fileIds: readyFileIds,
-    privateMode,
-    projectId,
-    revision: revisionBaseline?.jobId ?? '',
-  }), [executionOptions, privateMode, projectId, prompt, purpose, readyFileIds, revisionBaseline?.jobId]);
-
-  useEffect(() => {
-    setEstimate(null);
-    estimateFingerprint.current = '';
-    if (!['submitting', 'queued', 'running', 'assembling_result'].includes(phase)) setPhase('draft');
-  }, [requestFingerprint]);
 
   const validate = useCallback((): ApiError | null => {
     if (!prompt.trim()) return new ApiError('実行する本文を入力してください。', 422, 'ASTERA_INPUT_REQUIRED');
@@ -550,46 +530,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     void loadCatalogs();
   };
 
-  const estimateJob = useCallback(async () => {
-    if (executionLock.current) return;
-    clearPrivateOutputTimer();
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
-      setPhase('failed');
-      return;
-    }
-    executionLock.current = true;
-    setError(null);
-    setNotice('');
-    setPhase('estimating');
-    try {
-      const payload = await apiRequest('/api/jobs/estimate', {
-        method: 'POST',
-        body: {
-          prompt: prompt.trim(),
-          purpose,
-          options: executionOptions,
-          file_ids: readyFileIds,
-          private_mode: privateMode,
-          project_id: projectId || null,
-          ...revisionPayload,
-        },
-        idempotent: true,
-      });
-      const nextEstimate = extractEstimate(payload);
-      setEstimate(nextEstimate);
-      estimateFingerprint.current = requestFingerprint;
-      setPhase('confirmation');
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : '見積りに失敗しました。'));
-      setPhase('failed');
-    } finally {
-      executionLock.current = false;
-    }
-  }, [clearPrivateOutputTimer, executionOptions, privateMode, projectId, prompt, purpose, readyFileIds, requestFingerprint, revisionPayload, validate]);
-
-  const pollJob = useCallback(async (id: string, submittedPrompt: string) => {
+  const pollJob = useCallback(async (id: string, submittedText: string) => {
     pollController.current?.abort();
     const controller = new AbortController();
     pollController.current = controller;
@@ -602,7 +543,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       else if (state === 'assembling_result' || state === 'assembling') setPhase('assembling_result');
       else if (state === 'completed' || state === 'complete') {
         setResultSections(normalizeResult(payload));
-        setRevisionBaseline({ jobId: id, prompt: submittedPrompt, privateMode });
+        setRevisionBaseline({ jobId: id, prompt: submittedText, privateMode });
         setPhase('completed');
         setNotice(privateMode
           ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
@@ -621,44 +562,65 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     throw new ApiError('Job状態の確認期限を超えました。Historyから状態を再確認してください。', 504, 'JOB_POLL_TIMEOUT');
   }, [armPrivateOutputExpiry, privateMode]);
 
-  const submitJob = useCallback(async () => {
-    if (executionLock.current || !estimate) return;
-    if (estimateFingerprint.current !== requestFingerprint) {
-      setEstimate(null);
-      setError(new ApiError('入力条件が変わったため、もう一度予定Creditを確認してください。', 409, 'ESTIMATE_STALE'));
+  const runJob = useCallback(async () => {
+    if (executionLock.current) return;
+    clearPrivateOutputTimer();
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
       setPhase('failed');
-      return;
-    }
-    if (new Date(estimate.expiresAt).getTime() <= Date.now()) {
-      setEstimate(null);
-      setError(new ApiError('見積りの有効期限が切れました。もう一度確認してください。', 409, 'ESTIMATE_EXPIRED'));
-      setPhase('failed');
-      return;
-    }
-    if (estimate.creditState === 'insufficient' || estimate.availableCredits < estimate.requiredCredits) {
-      setPhase('confirmation');
       return;
     }
 
     executionLock.current = true;
     setError(null);
     setNotice('');
-    setPhase('submitting');
-    const requestId = crypto.randomUUID();
-    const submittedPrompt = prompt.trim();
+    const submittedText = prompt.trim();
+    setSubmittedPrompt(submittedText);
+    setPhase('estimating');
+
     try {
-      const payload = await apiRequest('/api/jobs', {
+      const estimatePayload = await apiRequest('/api/jobs/estimate', {
         method: 'POST',
-        idempotencyKey: requestId,
         body: {
-          request_id: requestId,
-          prompt: submittedPrompt,
+          prompt: submittedText,
           purpose,
           options: executionOptions,
           file_ids: readyFileIds,
           private_mode: privateMode,
           project_id: projectId || null,
-          estimate_id: estimate.estimateId,
+          ...revisionPayload,
+        },
+        idempotent: true,
+      });
+      const currentEstimate = extractEstimate(estimatePayload);
+
+      if (currentEstimate.creditState === 'insufficient' || currentEstimate.availableCredits < currentEstimate.requiredCredits) {
+        throw new ApiError(
+          `Creditが不足しています。必要 ${currentEstimate.requiredCredits.toLocaleString()} / 利用可能 ${currentEstimate.availableCredits.toLocaleString()}`,
+          409,
+          'CREDIT_INSUFFICIENT_FOR_ESTIMATE',
+          estimatePayload,
+        );
+      }
+      if (new Date(currentEstimate.expiresAt).getTime() <= Date.now()) {
+        throw new ApiError('見積りの有効期限が切れました。もう一度実行してください。', 409, 'ESTIMATE_EXPIRED', estimatePayload);
+      }
+
+      setPhase('submitting');
+      const requestId = crypto.randomUUID();
+      const payload = await apiRequest('/api/jobs', {
+        method: 'POST',
+        idempotencyKey: requestId,
+        body: {
+          request_id: requestId,
+          prompt: submittedText,
+          purpose,
+          options: executionOptions,
+          file_ids: readyFileIds,
+          private_mode: privateMode,
+          project_id: projectId || null,
+          estimate_id: currentEstimate.estimateId,
           ...revisionPayload,
         },
       });
@@ -668,7 +630,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       const immediateState = jobState(payload);
       if (immediateState === 'completed' || immediateState === 'complete') {
         setResultSections(normalizeResult(payload));
-        setRevisionBaseline({ jobId: id, prompt: submittedPrompt, privateMode });
+        setRevisionBaseline({ jobId: id, prompt: submittedText, privateMode });
         setPhase('completed');
         setNotice(privateMode
           ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
@@ -677,7 +639,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
         return;
       }
       setPhase('queued');
-      await pollJob(id, submittedPrompt);
+      await pollJob(id, submittedText);
     } catch (caught) {
       const jobError = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : 'Jobを開始できませんでした。');
       setError(jobError);
@@ -685,7 +647,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     } finally {
       executionLock.current = false;
     }
-  }, [armPrivateOutputExpiry, estimate, executionOptions, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, requestFingerprint, revisionPayload]);
+  }, [armPrivateOutputExpiry, clearPrivateOutputTimer, executionOptions, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, revisionPayload, validate]);
 
   const cancelJob = async () => {
     if (!currentJobId) return;
@@ -704,11 +666,11 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     pollController.current?.abort();
     clearPrivateOutputTimer();
     setPrompt('');
+    setSubmittedPrompt('');
     setDocumentTemplateId('');
     setDocumentTemplateSource('personal');
     setProjectId('');
     setFiles([]);
-    setEstimate(null);
     setResultSections([]);
     setCurrentJobId('');
     setRevisionBaseline(null);
@@ -732,12 +694,11 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     }
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
       event.preventDefault();
-      void estimateJob();
+      void runJob();
     }
   };
 
   const activeWork = ['uploading', 'estimating', 'submitting', 'queued', 'running', 'assembling_result'].includes(phase);
-  const preview = prompt.replace(/\s+/g, ' ').trim().slice(0, 96);
   const selectedProject = projects.find((item) => item.id === projectId);
   const visibleOptionKeys = CURRENT_OPTION_KEYS.filter((key) => optionVisibility[key]);
   const messageChips = [
@@ -859,24 +820,21 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       <div className="native-composer-workspace" data-native-composer="true" onDragOver={(event) => event.preventDefault()} onDrop={onDropFiles}>
         <section className="native-timeline" aria-live="polite">
           <div className="native-timeline-inner">
-            {resultSections.length === 0 && !activeWork && !error && (
+            {!submittedPrompt && resultSections.length === 0 && !activeWork && !error && (
               <div className="native-empty-state">
                 <h1>何を判断材料にしますか？</h1>
                 <p>本文を入力し、必要な時だけ <strong>/</strong>・<strong>＋</strong>・<strong>@</strong> を使います。</p>
               </div>
             )}
 
-            {(resultSections.length > 0 || activeWork || error) && (
+            {(submittedPrompt || resultSections.length > 0 || activeWork || error) && (
               <article className="native-turn">
-                <section className="native-user-message">
-                  <button type="button" className="native-user-message-trigger" aria-expanded={promptExpanded} onClick={() => setPromptExpanded((value) => !value)}>
-                    <span>{promptExpanded ? '投稿内容を閉じる' : '投稿内容を表示'}</span>
-                    {!promptExpanded && <small>{preview}{prompt.length > 96 ? '…' : ''}</small>}
-                    <b aria-hidden="true">{promptExpanded ? '⌃' : '⌄'}</b>
-                  </button>
-                  {promptExpanded && <p>{prompt}</p>}
-                  {messageChips.length > 0 && <div className="native-message-chips">{messageChips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
-                </section>
+                {submittedPrompt && (
+                  <section className="native-user-message" aria-label="ユーザー投稿">
+                    <p style={{ padding: '12px 16px 14px', whiteSpace: 'pre-wrap', lineHeight: 1.65 }}>{submittedPrompt}</p>
+                    {messageChips.length > 0 && <div className="native-message-chips">{messageChips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
+                  </section>
+                )}
 
                 {activeWork && (
                   <section className="native-processing" role="status">
@@ -975,44 +933,13 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
               </div>
               <div className="native-right-tools">
                 {resultSections.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer}>新規</button>}
-                <button type="button" className="native-run-button" aria-label="予定Creditを確認" onClick={() => void estimateJob()} disabled={activeWork || !prompt.trim()}>↑</button>
+                <button type="button" className="native-run-button" aria-label="実行" onClick={() => void runJob()} disabled={activeWork || !prompt.trim()}>↑</button>
               </div>
             </div>
             <input ref={fileInputRef} type="file" multiple hidden onChange={onFilesSelected} />
           </div>
-          <div className="native-composer-hint"><span>Enter＝改行 / Ctrl・⌘＋Enter＝実行前確認</span><span>{[...prompt].length.toLocaleString()} / {MAX_INPUT_CHARACTERS.toLocaleString()}</span></div>
+          <div className="native-composer-hint"><span>Enter＝改行 / Ctrl・⌘＋Enter＝実行</span><span>{[...prompt].length.toLocaleString()} / {MAX_INPUT_CHARACTERS.toLocaleString()}</span></div>
         </section>
-
-        {estimate && phase === 'confirmation' && (
-          <div className="native-sheet-backdrop" role="presentation" onMouseDown={(event) => {
-            if (event.target === event.currentTarget) { setEstimate(null); setPhase('draft'); }
-          }}>
-            <section className={`native-confirm-sheet is-${estimate.creditState}`} role="dialog" aria-modal="true" aria-labelledby="native-confirm-title">
-              <header><div><small>{estimate.creditState.toUpperCase()}</small><h2 id="native-confirm-title">実行前確認</h2></div><button type="button" onClick={() => { setEstimate(null); setPhase('draft'); }}>×</button></header>
-              <dl>
-                <div><dt>今回の予定Credit</dt><dd>{estimate.requiredCredits.toLocaleString()}</dd></div>
-                <div><dt>利用可能Credit</dt><dd>{estimate.availableCredits.toLocaleString()}</dd></div>
-                <div><dt>予約中Credit</dt><dd>{estimate.reservedCredits.toLocaleString()}</dd></div>
-                <div><dt>実行後見込</dt><dd>{Math.max(0, estimate.availableCredits - estimate.requiredCredits).toLocaleString()}</dd></div>
-                {estimate.estimatedRemainingRuns !== undefined && <div><dt>概算残り実行回数</dt><dd>{estimate.estimatedRemainingRuns.toLocaleString()}</dd></div>}
-                {estimate.billingMode === 'revision' && estimate.billableCharacters !== undefined && <div><dt>修整Credit対象文字数</dt><dd>{estimate.billableCharacters.toLocaleString()}</dd></div>}
-              </dl>
-              {(estimate.creditState === 'low' || estimate.creditState === 'critical') && <p className="native-credit-warning">Credit残高が少なくなっています。</p>}
-              {estimate.creditState === 'insufficient' || estimate.availableCredits < estimate.requiredCredits ? (
-                <div className="native-sheet-actions">
-                  <p>Credit不足のためJobは開始しません。入力内容は保持しています。</p>
-                  <a href={`/account/credit?return_to=${encodeURIComponent(window.location.pathname)}`}>Creditを追加</a>
-                  <button type="button" onClick={() => { setEstimate(null); setPhase('draft'); }}>内容を修正</button>
-                </div>
-              ) : (
-                <div className="native-sheet-actions">
-                  <button type="button" className="is-primary" onClick={() => void submitJob()} disabled={activeWork}>Creditを予約して実行</button>
-                  <button type="button" onClick={() => { setEstimate(null); setPhase('draft'); }}>戻る</button>
-                </div>
-              )}
-            </section>
-          </div>
-        )}
 
         {pickerBody}
       </div>
