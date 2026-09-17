@@ -823,7 +823,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
             {!submittedPrompt && resultSections.length === 0 && !activeWork && !error && (
               <div className="native-empty-state">
                 <h1>何を判断材料にしますか？</h1>
-                <p>本文を入力し、必要な時だけ <strong>/</strong>・<strong>＋</strong>・<strong>@</strong> を使います。</p>
               </div>
             )}
 
