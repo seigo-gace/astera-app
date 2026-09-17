@@ -1,5 +1,7 @@
 import { requestCorrelationId } from '../../../_account-projection';
 
+// Direct Square ingress is retired; use webhook-gateway → astera-billing ingress.
+
 type PagesContext = { request: Request };
 
 export function onRequest(context: PagesContext): Promise<Response> {

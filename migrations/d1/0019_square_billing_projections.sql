@@ -1,4 +1,5 @@
--- Minimal Square webhook projections (no PII).
+-- Projection rows are written by astera-billing (app retains schema for existing staging D1).
+-- Minimal provider webhook projections (no PII).
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS square_billing_projections (

@@ -154,8 +154,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # BLOCKED: GitHub Square Access Token secret missing (repo secrets: ASTERAKEY, CLOUDFLAREACCOUNTAPI only).
-          # Do not reference secrets.SQUARE_* here; SQUARE_ACCESS_TOKEN must come from a dedicated GitHub secret when added.
           node scripts/publish-commercial-catalog.mjs --remote --cleanup-failed-drafts --resume-version=astera-commercial-2026-09-17-draft-20260917013944
 
       - name: Verify published commercial catalog
@@ -163,7 +161,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          result="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT (SELECT COUNT(*) FROM catalog_versions WHERE status='active') AS active_count, (SELECT checksum FROM catalog_versions WHERE status='active' LIMIT 1) AS checksum, (SELECT published_at FROM catalog_versions WHERE status='active' LIMIT 1) AS published_at, (SELECT COUNT(*) FROM plan_catalog_entries WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS plan_entries, (SELECT COUNT(*) FROM plan_billing_variants WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS billing_variants, (SELECT COUNT(*) FROM credit_products WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS credit_products, (SELECT COUNT(*) FROM astera_storage_plan_limits WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS storage_limits, (SELECT COUNT(*) FROM astera_storage_pack_catalog WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS storage_packs, (SELECT COUNT(*) FROM plan_billing_variants WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1) AND plan_id <> 'free' AND square_plan_variation_id IS NOT NULL) AS square_paid_mappings;")"
+          result="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT (SELECT COUNT(*) FROM catalog_versions WHERE status='active') AS active_count, (SELECT checksum FROM catalog_versions WHERE status='active' LIMIT 1) AS checksum, (SELECT published_at FROM catalog_versions WHERE status='active' LIMIT 1) AS published_at, (SELECT COUNT(*) FROM plan_catalog_entries WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS plan_entries, (SELECT COUNT(*) FROM plan_billing_variants WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS billing_variants, (SELECT COUNT(*) FROM credit_products WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS credit_products, (SELECT COUNT(*) FROM astera_storage_plan_limits WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS storage_limits, (SELECT COUNT(*) FROM astera_storage_pack_catalog WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS storage_packs;")"
           RESULT="$result" node <<'NODE'
           const payload = JSON.parse(process.env.RESULT || '[]');
           const row = payload.flatMap((entry) => entry?.results || [])[0] || {};
@@ -175,7 +173,6 @@ jobs:
           if (Number(row.credit_products) !== 6) throw new Error(`credit_products=${row.credit_products}, expected 6`);
           if (Number(row.storage_limits) !== 5) throw new Error(`storage limits=${row.storage_limits}`);
           if (Number(row.storage_packs) !== 3) throw new Error(`storage packs=${row.storage_packs}`);
-          if (Number(row.square_paid_mappings) !== 8) throw new Error(`square paid mappings=${row.square_paid_mappings}, expected 8`);
           console.log('Verified active commercial catalog projection');
           NODE
           limits="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT plan_id, max_capacity_gb FROM astera_storage_plan_limits WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1) ORDER BY plan_id ASC;")"

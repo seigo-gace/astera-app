@@ -22,7 +22,7 @@ export type CloudflareFunctionContext = {
   mcpPolicy?: DeterministicJapaneseMcpConnectionPolicy;
 };
 
-export type VerifiedSquareCreditEvent = {
+export type VerifiedBillingCreditEvent = {
   providerEventId: string;
   signatureVerified: true;
   catalogVersion: string;
@@ -33,7 +33,7 @@ export const cloudflareFunctionsReadiness = {
   status: 'contract_source_only',
   deployed: false,
   d1MigrationApplied: false,
-  squareWebhookVerified: false,
+  billingWebhookVerified: false,
   authProviderConnected: false,
 } as const;
 

@@ -13,12 +13,13 @@ import {
   STORAGE_PLAN_MAX_GB,
   newDraftCatalogVersion,
 } from './commercial-catalog-canonical.mjs';
-import { ensureSquarePaidPlanVariants, sqlQuote } from './square-sandbox-bootstrap.mjs';
+function sqlQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
 
 const remote = process.argv.includes('--remote');
 const databaseName = (process.env.D1_DATABASE_NAME || STAGING_D1.database_name).trim();
 const expectedDatabaseId = (process.env.D1_DATABASE_ID || STAGING_D1.database_id).trim();
-const skipSquare = process.argv.includes('--skip-square');
 const dryRun = process.argv.includes('--dry-run');
 const cleanupFailedDrafts = process.argv.includes('--cleanup-failed-drafts');
 
@@ -377,35 +378,6 @@ function upsertStorage(version) {
   }
 }
 
-async function applySquareMappings(version) {
-  if (skipSquare) {
-    console.warn('Skipping Square sandbox mapping (--skip-square). Activation will be BLOCKED without 8 paid IDs.');
-    return { blocked: true, reason: 'skip-square' };
-  }
-  const token = process.env.SQUARE_ACCESS_TOKEN?.trim();
-  if (!token) {
-    console.warn('BLOCKED: SQUARE_ACCESS_TOKEN missing in process env.');
-    return { blocked: true, reason: 'SQUARE_ACCESS_TOKEN_MISSING' };
-  }
-  try {
-    const { mapping } = await ensureSquarePaidPlanVariants(token);
-    for (const item of Object.values(mapping)) {
-      runWrangler(['--command', `
-        UPDATE plan_billing_variants
-        SET square_plan_variation_id=${sqlQuote(item.square_plan_variation_id)}
-        WHERE catalog_version=${sqlQuote(version)}
-          AND plan_id=${sqlQuote(item.plan_id)}
-          AND billing_cycle=${sqlQuote(item.billing_cycle)};
-      `.replace(/\s+/g, ' ').trim()]);
-    }
-    return { blocked: false, mapping };
-  } catch (error) {
-    const code = error?.code || 'SQUARE_BOOTSTRAP_FAILED';
-    console.warn(`BLOCKED: Square mapping unavailable (${code}).`);
-    return { blocked: true, reason: code };
-  }
-}
-
 function fetchCatalogRows(version) {
   const plans = d1Json(`
     SELECT plan_id, display_name, currency, recurring_amount, recurring_interval, included_credits, entitlement_ids, recommended, active
@@ -463,13 +435,7 @@ async function main() {
     console.log(JSON.stringify({ ok: true, cleanup_removed: removed }));
   }
 
-  const publishIntent = Boolean(
-    resumeVersion
-    || remote
-    || dryRun
-    || skipSquare
-    || process.argv.includes('--skip-square'),
-  );
+  const publishIntent = Boolean(resumeVersion || remote || dryRun);
   if (cleanupFailedDrafts && !publishIntent) {
     return;
   }
@@ -491,21 +457,8 @@ async function main() {
   upsertCreditProducts(version);
   upsertStorage(version);
 
-  const square = await applySquareMappings(version);
+  // Paid plan provider mapping (8 variation IDs) is owned by astera-billing, not this publisher.
   const snapshot = fetchCatalogRows(version);
-
-  if (square.blocked) {
-    console.log(JSON.stringify({
-      ok: false,
-      blocked: true,
-      reason: square.reason,
-      catalog_version: version,
-      resume: resumeUsed,
-      draft_count: Number(countDrafts()[0]?.c ?? 0),
-      message: 'Activation blocked: 8 paid Square plan variation IDs required.',
-    }));
-    process.exit(square.blocked && !dryRun ? 2 : 0);
-  }
 
   assertExactCatalogSnapshot(snapshot);
   const checksum = computeChecksum(snapshot);
@@ -531,7 +484,6 @@ async function main() {
     credit_products: snapshot.credits.length,
     storage_limits: snapshot.limits.length,
     storage_packs: snapshot.packs.length,
-    square_paid_mappings: snapshot.variants.filter((row) => row.plan_id !== 'free' && row.square_plan_variation_id).length,
   }));
 }
 

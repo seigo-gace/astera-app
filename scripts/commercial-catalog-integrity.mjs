@@ -64,11 +64,6 @@ export function assertExactCatalogSnapshot(snapshot) {
 
   const paidVariants = snapshot.variants.filter((item) => PAID_PLAN_IDS.includes(item.plan_id));
   if (paidVariants.length !== 8) errors.push(`paid variants=${paidVariants.length}, expected 8`);
-  for (const variant of paidVariants) {
-    if (!variant.square_plan_variation_id) {
-      errors.push(`missing square_plan_variation_id for ${variant.plan_id}:${variant.billing_cycle}`);
-    }
-  }
 
   if (errors.length > 0) {
     throw new Error(`Catalog integrity failed: ${errors.join('; ')}`);

@@ -1,8 +1,6 @@
 import type { D1Database } from './_account-projection';
 import { loadActiveCatalog, loadTenantSubscription, type BillingCycle } from './_catalog';
 
-type CreditAccountRow = { id: string; tenant_id: string };
-
 const LIVE_PLAN_STATES = new Set(['active', 'paused', 'grace', 'cancel_pending']);
 
 function grantPeriodUtc(date = new Date()): string {
@@ -102,7 +100,7 @@ export async function ensureMonthlyIncludedGrantForTenant(
     event_id: options.eventId ?? null,
   });
   const idempotencyKey = options.eventId
-    ? `square:${options.eventId}:monthly-included`
+    ? `billing:${options.eventId}:monthly-included`
     : `lazy:${referenceId}`;
 
   if (planId === 'free') {
@@ -124,14 +122,3 @@ export async function ensureMonthlyIncludedGrantForTenant(
   return postGrant(db, creditAccountId, included, referenceType, referenceId, idempotencyKey, fingerprint);
 }
 
-export async function grantMonthlyIncludedFromSquareEvent(
-  db: D1Database,
-  tenantId: string,
-  eventId: string,
-): Promise<boolean> {
-  const credit = await db.prepare(
-    `SELECT id FROM credit_accounts WHERE tenant_id = ?1 LIMIT 1`,
-  ).bind(tenantId).first<CreditAccountRow>();
-  if (!credit?.id) return false;
-  return ensureMonthlyIncludedGrantForTenant(db, tenantId, credit.id, { eventId });
-}

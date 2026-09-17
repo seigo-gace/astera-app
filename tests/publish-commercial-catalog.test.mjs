@@ -25,10 +25,10 @@ test('publisher retries transient wrangler failures only', () => {
   assert.doesNotMatch(publisherSource, /retry.*canonical mismatch/i);
 });
 
-test('publisher blocks activation without process env SQUARE_ACCESS_TOKEN', () => {
-  assert.match(publisherSource, /process\.env\.SQUARE_ACCESS_TOKEN/);
-  assert.match(publisherSource, /SQUARE_ACCESS_TOKEN_MISSING/);
-  assert.match(publisherSource, /process\.exit\(square\.blocked && !dryRun \? 2 : 0\)/);
+test('publisher delegates paid plan provider mapping to astera-billing', () => {
+  assert.match(publisherSource, /astera-billing/);
+  assert.doesNotMatch(publisherSource, /SQUARE_ACCESS_TOKEN/);
+  assert.doesNotMatch(publisherSource, /ensureSquarePaidPlanVariants/);
 });
 
 test('cleanup removes only unreferenced draft versions', () => {

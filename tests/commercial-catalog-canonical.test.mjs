@@ -87,15 +87,15 @@ test('Commercial Catalog exact-value: 6 credit products', () => {
 });
 
 test('Commercial Catalog exact-value: 9 billing variants in integrity snapshot', () => {
-  const snapshot = snapshotFromCanonical(true);
+  const snapshot = snapshotFromCanonical(false);
   assert.equal(snapshot.plans.length, 5);
   assert.equal(snapshot.variants.length, 9);
   assert.doesNotThrow(() => assertExactCatalogSnapshot(snapshot));
 });
 
-test('8 Square mappings required before activation', () => {
-  const blocked = snapshotFromCanonical(false);
-  assert.throws(() => assertExactCatalogSnapshot(blocked), /missing square_plan_variation_id/);
+test('catalog activation does not require provider variation ids in app publisher', () => {
+  const withoutProviderIds = snapshotFromCanonical(false);
+  assert.doesNotThrow(() => assertExactCatalogSnapshot(withoutProviderIds));
 });
 
 test('active immutable: publisher uses single transaction retire+activate', () => {

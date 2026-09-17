@@ -72,7 +72,7 @@ const sourceRequirements = [
   ['functions/api/auth/[[path]].ts', "'/api/auth/two-factor/enable'"],
   ['migrations/d1/0017_account_registration_state_repair.sql', "account_status = 'pending_password_setup'"],
   ['functions/api/storage/checkout-intents.ts', 'STORAGE_PLAN_CAPACITY_EXCEEDED'],
-  ['functions/_storage-square.ts', 'astera_storage_pack_purchases'],
+  ['functions/api/storage/checkout-intents.ts', 'astera_storage_pack_intents'],
   ['functions/api/account/security/sessions/[session].ts', 'CURRENT_SESSION_REVOKE_REJECTED'],
   ['src/features/navigation/UtilityPages.tsx', '/api/storage/catalog'],
   ['src/features/navigation/UtilityPages.tsx', '/api/storage/checkout-intents'],
