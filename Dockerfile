@@ -1,10 +1,10 @@
 # Stage 1: build frontend assets
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 
 ARG VITE_ASTERA_API_BASE
 ARG VITE_ASTERA_HP_URL

@@ -1,0 +1,549 @@
+#!/usr/bin/env node
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { assertExactCatalogSnapshot, buildChecksumPayload } from './commercial-catalog-integrity.mjs';
+import {
+  COMMERCIAL_CATALOG_PLANS,
+  CREDIT_PRODUCTS_CANON,
+  PLAN_ANNUAL_JPY,
+  PLAN_INCLUDED_CREDITS_CANON,
+  PLAN_MONTHLY_JPY,
+  STAGING_D1,
+  STORAGE_PACKS,
+  STORAGE_PLAN_MAX_GB,
+  newDraftCatalogVersion,
+} from './commercial-catalog-canonical.mjs';
+function sqlQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+const remote = process.argv.includes('--remote');
+const databaseName = (process.env.D1_DATABASE_NAME || STAGING_D1.database_name).trim();
+const expectedDatabaseId = (process.env.D1_DATABASE_ID || STAGING_D1.database_id).trim();
+const dryRun = process.argv.includes('--dry-run');
+const cleanupFailedDrafts = process.argv.includes('--cleanup-failed-drafts');
+
+function argValue(name) {
+  const prefix = `${name}=`;
+  const hit = process.argv.find((entry) => entry.startsWith(prefix));
+  return hit ? hit.slice(prefix.length).trim() : null;
+}
+
+const resumeVersion = argValue('--resume-version');
+
+if (databaseName !== STAGING_D1.database_name) {
+  console.error(`Refusing D1 database_name=${databaseName}; only ${STAGING_D1.database_name} is allowed.`);
+  process.exit(1);
+}
+if (/production|isolated|193ccf30/i.test(databaseName) || /193ccf30/.test(expectedDatabaseId)) {
+  console.error('Refusing production or isolated D1 target.');
+  process.exit(1);
+}
+
+function wranglerArgs(extra) {
+  const base = ['d1', 'execute', databaseName];
+  if (remote) base.push('--remote');
+  return [...base, ...extra];
+}
+
+function isTransientWranglerFailure(out) {
+  return /fetch failed|ECONNRESET|ETIMEDOUT|network|502|503|504|\b500\b/i.test(out);
+}
+
+function sleep(ms) {
+  spawnSync('sleep', [`${Math.max(1, Math.ceil(ms / 1000))}`]);
+}
+
+function runWranglerOnce(extra, { allowFailure = false } = {}) {
+  const result = spawnSync('npx', ['wrangler', ...wranglerArgs(extra)], {
+    encoding: 'utf8',
+    env: { ...process.env, WRANGLER_CACHE_DIR: process.env.WRANGLER_CACHE_DIR || '/tmp/wrangler-cache-admin1' },
+  });
+  const out = `${result.stdout || ''}${result.stderr || ''}`;
+  if (result.status !== 0 && !allowFailure) {
+    console.error(out);
+    throw new Error(`wrangler d1 execute failed (${extra.join(' ')})`);
+  }
+  return { status: result.status, out };
+}
+
+function runWrangler(extra, options = {}) {
+  const maxAttempts = options.maxAttempts ?? 5;
+  let lastOut = '';
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = runWranglerOnce(extra, options);
+      return result;
+    } catch (error) {
+      lastOut = error instanceof Error ? error.message : String(error);
+      const combined = `${lastOut}`;
+      if (!isTransientWranglerFailure(combined) || attempt === maxAttempts) {
+        throw error;
+      }
+      const backoffMs = Math.min(8000, 400 * 2 ** (attempt - 1));
+      console.warn(`Transient D1 failure (attempt ${attempt}/${maxAttempts}); retrying in ${backoffMs}ms`);
+      sleep(backoffMs);
+    }
+  }
+  throw new Error(lastOut || 'wrangler d1 execute failed');
+}
+
+function d1Json(command) {
+  const { out } = runWrangler(['--json', '--command', command]);
+  let payload;
+  try {
+    payload = JSON.parse(out);
+  } catch {
+    throw new Error(`D1 JSON parse failed: ${out.slice(0, 500)}`);
+  }
+  const rows = [];
+  for (const entry of payload) {
+    if (Array.isArray(entry?.results)) rows.push(...entry.results);
+  }
+  return rows;
+}
+
+function verifyDatabaseId() {
+  const listed = spawnSync('npx', ['wrangler', 'd1', 'list', '--json'], {
+    encoding: 'utf8',
+    env: { ...process.env, WRANGLER_CACHE_DIR: process.env.WRANGLER_CACHE_DIR || '/tmp/wrangler-cache-admin1' },
+  });
+  if (listed.status !== 0) {
+    console.error(listed.stderr || listed.stdout);
+    process.exit(1);
+  }
+  let databases;
+  try {
+    databases = JSON.parse(listed.stdout || '[]');
+  } catch {
+    console.error('wrangler d1 list returned non-JSON output');
+    process.exit(1);
+  }
+  const match = databases.find((row) => row?.name === databaseName);
+  if (!match || match.uuid !== expectedDatabaseId) {
+    console.error(`D1 binding mismatch: expected name=${databaseName} id=${expectedDatabaseId}, got ${JSON.stringify(match)}`);
+    process.exit(1);
+  }
+  console.log(`Verified D1 target name=${databaseName} id=${expectedDatabaseId}`);
+}
+
+function verifyD1Connectivity() {
+  if (!remote) return;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    d1Json('SELECT 1 AS ok');
+    console.log(`D1 connectivity probe ${attempt}/3 ok`);
+  }
+}
+
+function tableExists(table) {
+  const rows = d1Json(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name=${sqlQuote(table)} LIMIT 1`,
+  );
+  return rows.length > 0;
+}
+
+function columnExists(table, column) {
+  const rows = d1Json(`PRAGMA table_info(${table})`);
+  return rows.some((row) => row.name === column);
+}
+
+function ensureCommercialSchema() {
+  if (!tableExists('catalog_versions')) {
+    throw new Error('catalog_versions table missing; apply base D1 migrations before publish.');
+  }
+  if (!tableExists('plan_catalog_entries')) {
+    console.log('Applying commercial catalog schema (0003 tables)...');
+    runWrangler(['--file=migrations/d1/0003_commercial_catalog_square.sql']);
+  }
+  if (!tableExists('plan_billing_variants')) {
+    console.log('Creating plan_billing_variants (0013 equivalent)...');
+    runWrangler(['--command', `
+      CREATE TABLE IF NOT EXISTS plan_billing_variants (
+        catalog_version TEXT NOT NULL,
+        plan_id TEXT NOT NULL,
+        billing_cycle TEXT NOT NULL CHECK (billing_cycle IN ('monthly', 'annual')),
+        recurring_amount INTEGER NOT NULL CHECK (recurring_amount >= 0),
+        recurring_interval TEXT NOT NULL CHECK (recurring_interval IN ('month', 'year')),
+        included_credits INTEGER NOT NULL CHECK (included_credits >= 0),
+        square_plan_variation_id TEXT,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (catalog_version, plan_id, billing_cycle),
+        FOREIGN KEY (catalog_version, plan_id) REFERENCES plan_catalog_entries(catalog_version, plan_id)
+      );
+      CREATE INDEX IF NOT EXISTS plan_billing_variants_active
+        ON plan_billing_variants(catalog_version, active, plan_id, billing_cycle);
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+  if (!tableExists('astera_storage_plan_limits') || !tableExists('astera_storage_pack_catalog')) {
+    console.log('Applying storage buyout pack schema (0016)...');
+    runWrangler(['--file=migrations/d1/0016_storage_buyout_packs.sql']);
+  }
+  if (!tableExists('square_billing_projections')) {
+    console.log('Applying square billing projection schema (0019)...');
+    runWrangler(['--file=migrations/d1/0019_square_billing_projections.sql']);
+  }
+  if (!tableExists('billing_event_projections')) {
+    console.log('Applying provider-neutral billing projection schema (0020)...');
+    runWrangler(['--file=migrations/d1/0020_billing_provider_projections.sql']);
+  }
+  if (tableExists('tenant_subscriptions') && !columnExists('tenant_subscriptions', 'billing_cycle')) {
+    runWrangler(['--command', `
+      ALTER TABLE tenant_subscriptions
+        ADD COLUMN billing_cycle TEXT NOT NULL DEFAULT 'monthly'
+        CHECK (billing_cycle IN ('monthly', 'annual'));
+    `.replace(/\s+/g, ' ').trim()], { allowFailure: true });
+  }
+  if (tableExists('billing_intents') && !columnExists('billing_intents', 'billing_cycle')) {
+    runWrangler(['--command', `
+      ALTER TABLE billing_intents
+        ADD COLUMN billing_cycle TEXT
+        CHECK (billing_cycle IS NULL OR billing_cycle IN ('monthly', 'annual'));
+    `.replace(/\s+/g, ' ').trim()], { allowFailure: true });
+  }
+}
+
+function isVersionReferenced(version) {
+  const checks = [
+    `SELECT 1 AS c FROM tenant_subscriptions WHERE catalog_version=${sqlQuote(version)} LIMIT 1`,
+    `SELECT 1 AS c FROM billing_intents WHERE catalog_version=${sqlQuote(version)} LIMIT 1`,
+  ];
+  for (const query of checks) {
+    const rows = d1Json(query);
+    if (rows.length > 0) return true;
+  }
+  return false;
+}
+
+function assertResumeEligible(version) {
+  const rows = d1Json(`
+    SELECT version, status, published_at
+    FROM catalog_versions
+    WHERE version=${sqlQuote(version)}
+    LIMIT 1
+  `);
+  const row = rows[0];
+  if (!row) throw new Error(`Resume version not found: ${version}`);
+  if (row.status !== 'draft') throw new Error(`Resume refused: status=${row.status}, expected draft`);
+  if (row.published_at) throw new Error('Resume refused: published_at is not NULL');
+  if (isVersionReferenced(version)) throw new Error('Resume refused: version is referenced by business rows');
+}
+
+function deleteDraftVersion(version) {
+  const tables = [
+    'astera_storage_pack_catalog',
+    'astera_storage_plan_limits',
+    'credit_products',
+    'plan_billing_variants',
+    'plan_catalog_entries',
+  ];
+  for (const table of tables) {
+    runWrangler(['--command', `DELETE FROM ${table} WHERE catalog_version=${sqlQuote(version)};`]);
+  }
+  runWrangler(['--command', `
+    DELETE FROM catalog_versions
+    WHERE version=${sqlQuote(version)}
+      AND status='draft'
+      AND published_at IS NULL;
+  `.replace(/\s+/g, ' ').trim()]);
+}
+
+function cleanupFailedDraftVersions(excludeVersion = null) {
+  const drafts = d1Json(`SELECT version FROM catalog_versions WHERE status='draft' AND published_at IS NULL`);
+  const removed = [];
+  for (const row of drafts) {
+    const version = row.version;
+    if (!version || version === excludeVersion) continue;
+    if (isVersionReferenced(version)) {
+      console.log(`Cleanup skip referenced draft ${version}`);
+      continue;
+    }
+    deleteDraftVersion(version);
+    removed.push(version);
+    console.log(`Cleaned failed draft ${version}`);
+  }
+  return removed;
+}
+
+function insertDraftVersion(version) {
+  const now = new Date().toISOString();
+  runWrangler(['--command', `
+    INSERT INTO catalog_versions (version, checksum, status, published_at, created_at)
+    VALUES (${sqlQuote(version)}, ${sqlQuote(`draft-${version}`)}, 'draft', NULL, ${sqlQuote(now)})
+    ON CONFLICT(version) DO UPDATE SET
+      status='draft',
+      published_at=NULL
+    WHERE catalog_versions.status='draft' AND catalog_versions.published_at IS NULL;
+  `.replace(/\s+/g, ' ').trim()]);
+}
+
+function upsertPlans(version) {
+  const now = new Date().toISOString();
+  for (const plan of COMMERCIAL_CATALOG_PLANS) {
+    const monthly = PLAN_MONTHLY_JPY[plan.plan_id] ?? 0;
+    const interval = plan.recurring_interval === 'none' ? 'none' : 'month';
+    const entitlements = JSON.stringify(plan.entitlement_ids);
+    runWrangler(['--command', `
+      INSERT INTO plan_catalog_entries
+        (catalog_version, plan_id, display_name, description, currency, recurring_amount, recurring_interval,
+         included_credits, entitlement_ids, recommended, display_order, active, square_plan_variation_id, created_at)
+      VALUES (${sqlQuote(version)}, ${sqlQuote(plan.plan_id)}, ${sqlQuote(plan.display_name)}, ${sqlQuote(plan.description)}, 'JPY',
+              ${monthly}, ${sqlQuote(interval)}, ${plan.included_credits}, ${sqlQuote(entitlements)},
+              ${plan.recommended ? 1 : 0}, ${plan.display_order}, 1, NULL, ${sqlQuote(now)})
+      ON CONFLICT(catalog_version, plan_id) DO UPDATE SET
+        display_name=excluded.display_name,
+        description=excluded.description,
+        currency=excluded.currency,
+        recurring_amount=excluded.recurring_amount,
+        recurring_interval=excluded.recurring_interval,
+        included_credits=excluded.included_credits,
+        entitlement_ids=excluded.entitlement_ids,
+        recommended=excluded.recommended,
+        display_order=excluded.display_order,
+        active=excluded.active;
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+}
+
+function upsertBillingVariants(version) {
+  const now = new Date().toISOString();
+  for (const plan of COMMERCIAL_CATALOG_PLANS) {
+    const monthly = PLAN_MONTHLY_JPY[plan.plan_id] ?? 0;
+    runWrangler(['--command', `
+      INSERT INTO plan_billing_variants
+        (catalog_version, plan_id, billing_cycle, recurring_amount, recurring_interval, included_credits,
+         square_plan_variation_id, active, created_at)
+      VALUES (${sqlQuote(version)}, ${sqlQuote(plan.plan_id)}, 'monthly', ${monthly}, 'month', ${plan.included_credits}, NULL, 1, ${sqlQuote(now)})
+      ON CONFLICT(catalog_version, plan_id, billing_cycle) DO UPDATE SET
+        recurring_amount=excluded.recurring_amount,
+        recurring_interval=excluded.recurring_interval,
+        included_credits=excluded.included_credits,
+        active=excluded.active;
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+  for (const planId of ['basic', 'pro', 'business', 'enterprise']) {
+    const included = PLAN_INCLUDED_CREDITS_CANON[planId];
+    const annual = PLAN_ANNUAL_JPY[planId];
+    runWrangler(['--command', `
+      INSERT INTO plan_billing_variants
+        (catalog_version, plan_id, billing_cycle, recurring_amount, recurring_interval, included_credits,
+         square_plan_variation_id, active, created_at)
+      VALUES (${sqlQuote(version)}, ${sqlQuote(planId)}, 'annual', ${annual}, 'year', ${included}, NULL, 1, ${sqlQuote(now)})
+      ON CONFLICT(catalog_version, plan_id, billing_cycle) DO UPDATE SET
+        recurring_amount=excluded.recurring_amount,
+        recurring_interval=excluded.recurring_interval,
+        included_credits=excluded.included_credits,
+        active=excluded.active;
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+}
+
+function upsertCreditProducts(version) {
+  const now = new Date().toISOString();
+  for (const product of CREDIT_PRODUCTS_CANON) {
+    runWrangler(['--command', `
+      INSERT INTO credit_products
+        (catalog_version, product_id, display_name, description, currency, amount, credits, display_order, active, square_catalog_object_id, created_at)
+      VALUES (${sqlQuote(version)}, ${sqlQuote(product.product_id)}, ${sqlQuote(product.display_name)}, '', 'JPY',
+              ${product.amount}, ${product.credits}, ${product.display_order ?? 0}, 1, NULL, ${sqlQuote(now)})
+      ON CONFLICT(catalog_version, product_id) DO UPDATE SET
+        display_name=excluded.display_name,
+        amount=excluded.amount,
+        credits=excluded.credits,
+        display_order=excluded.display_order,
+        active=excluded.active;
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+}
+
+function upsertStorage(version) {
+  for (const [planId, maxGb] of Object.entries(STORAGE_PLAN_MAX_GB)) {
+    runWrangler(['--command', `
+      INSERT INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
+      VALUES (${sqlQuote(version)}, ${sqlQuote(planId)}, ${maxGb}, 1)
+      ON CONFLICT(catalog_version, plan_id) DO UPDATE SET
+        max_capacity_gb=excluded.max_capacity_gb,
+        active=excluded.active;
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+  for (const pack of STORAGE_PACKS) {
+    runWrangler(['--command', `
+      INSERT INTO astera_storage_pack_catalog
+        (catalog_version, product_id, display_name, capacity_gb, price_jpy, active, display_order)
+      VALUES (${sqlQuote(version)}, ${sqlQuote(pack.product_id)}, ${sqlQuote(pack.display_name)}, ${pack.capacity_gb},
+              ${pack.price_jpy}, 1, ${pack.display_order})
+      ON CONFLICT(catalog_version, product_id) DO UPDATE SET
+        display_name=excluded.display_name,
+        capacity_gb=excluded.capacity_gb,
+        price_jpy=excluded.price_jpy,
+        active=excluded.active,
+        display_order=excluded.display_order;
+    `.replace(/\s+/g, ' ').trim()]);
+  }
+}
+
+function fetchCatalogRows(version) {
+  const plans = d1Json(`
+    SELECT plan_id, display_name, currency, recurring_amount, recurring_interval, included_credits, entitlement_ids, recommended, active
+    FROM plan_catalog_entries WHERE catalog_version=${sqlQuote(version)} AND active=1 ORDER BY plan_id ASC
+  `);
+  const variants = d1Json(`
+    SELECT plan_id, billing_cycle, recurring_amount, recurring_interval, included_credits, square_plan_variation_id, active
+    FROM plan_billing_variants WHERE catalog_version=${sqlQuote(version)} AND active=1
+    ORDER BY plan_id ASC, billing_cycle ASC
+  `);
+  const credits = d1Json(`
+    SELECT product_id, display_name, currency, amount, credits, active
+    FROM credit_products WHERE catalog_version=${sqlQuote(version)} AND active=1 ORDER BY product_id ASC
+  `);
+  const limits = d1Json(`
+    SELECT plan_id, max_capacity_gb, active FROM astera_storage_plan_limits
+    WHERE catalog_version=${sqlQuote(version)} AND active=1 ORDER BY plan_id ASC
+  `);
+  const packs = d1Json(`
+    SELECT product_id, display_name, capacity_gb, price_jpy, active, display_order
+    FROM astera_storage_pack_catalog WHERE catalog_version=${sqlQuote(version)} AND active=1
+    ORDER BY display_order ASC, product_id ASC
+  `);
+  return { plans, variants, credits, limits, packs };
+}
+
+function computeChecksum(snapshot) {
+  return createHash('sha256').update(JSON.stringify(buildChecksumPayload(snapshot))).digest('hex');
+}
+
+function countActiveCatalogVersions() {
+  const rows = d1Json(`SELECT COUNT(*) AS c FROM catalog_versions WHERE status='active'`);
+  return Number(rows[0]?.c ?? 0);
+}
+
+async function d1RestBatch(statements) {
+  const accountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+  const apiToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+  if (!accountId || !apiToken) {
+    throw new Error('D1 REST batch requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN');
+  }
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${expectedDatabaseId}/query`;
+  const body = { batch: statements.map((sql) => ({ sql })) };
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`D1 REST batch fetch failed: ${message}`);
+  }
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`D1 REST batch non-JSON response (${response.status}): ${text.slice(0, 500)}`);
+  }
+  if (!response.ok || payload?.success === false) {
+    const errors = Array.isArray(payload?.errors) ? payload.errors.map((e) => e?.message || JSON.stringify(e)).join('; ') : text.slice(0, 500);
+    throw new Error(`D1 REST batch failed (${response.status}): ${errors}`);
+  }
+  return payload;
+}
+
+async function activateCatalogSingleTransaction(version, checksum) {
+  const publishedAt = new Date().toISOString();
+  const activeBefore = countActiveCatalogVersions();
+  const retireSql = `UPDATE catalog_versions SET status='retired' WHERE status='active'`;
+  const activateSql = `
+    UPDATE catalog_versions
+      SET checksum=${sqlQuote(checksum)}, published_at=${sqlQuote(publishedAt)}, status='active'
+      WHERE version=${sqlQuote(version)}
+  `.replace(/\s+/g, ' ').trim();
+
+  if (remote) {
+    await d1RestBatch([retireSql, activateSql]);
+  } else {
+    runWrangler(['--command', retireSql]);
+    runWrangler(['--command', activateSql]);
+  }
+
+  const activeAfter = countActiveCatalogVersions();
+  if (activeAfter !== 1) {
+    throw new Error(`one_active_catalog invariant failed (active_before=${activeBefore}, active_after=${activeAfter})`);
+  }
+  console.log(JSON.stringify({ activate: 'd1_rest_batch', active_before: activeBefore, active_after: activeAfter }));
+}
+
+function countDrafts() {
+  return d1Json(`SELECT COUNT(*) AS c FROM catalog_versions WHERE status='draft' AND published_at IS NULL`);
+}
+
+async function main() {
+  verifyDatabaseId();
+  ensureCommercialSchema();
+  verifyD1Connectivity();
+
+  if (cleanupFailedDrafts) {
+    const removed = cleanupFailedDraftVersions(resumeVersion);
+    console.log(JSON.stringify({ ok: true, cleanup_removed: removed }));
+  }
+
+  const publishIntent = Boolean(resumeVersion || remote || dryRun);
+  if (cleanupFailedDrafts && !publishIntent) {
+    return;
+  }
+
+  let version = resumeVersion;
+  let resumeUsed = false;
+  if (version) {
+    assertResumeEligible(version);
+    resumeUsed = true;
+    console.log(`Resuming draft catalog version=${version}`);
+  } else {
+    version = newDraftCatalogVersion();
+    console.log(`Creating new draft catalog version=${version}`);
+    insertDraftVersion(version);
+  }
+
+  upsertPlans(version);
+  upsertBillingVariants(version);
+  upsertCreditProducts(version);
+  upsertStorage(version);
+
+  // Paid plan provider mapping (8 variation IDs) is owned by astera-billing, not this publisher.
+  const snapshot = fetchCatalogRows(version);
+
+  assertExactCatalogSnapshot(snapshot);
+  const checksum = computeChecksum(snapshot);
+
+  if (dryRun) {
+    console.log(JSON.stringify({ ok: true, dry_run: true, catalog_version: version, checksum, resume: resumeUsed }));
+    return;
+  }
+
+  await activateCatalogSingleTransaction(version, checksum);
+
+  const activeCount = d1Json(`SELECT COUNT(*) AS c FROM catalog_versions WHERE status='active'`);
+  if (Number(activeCount[0]?.c) !== 1) throw new Error('one_active_catalog invariant failed');
+
+  console.log(JSON.stringify({
+    ok: true,
+    catalog_version: version,
+    checksum,
+    resume: resumeUsed,
+    draft_count: Number(countDrafts()[0]?.c ?? 0),
+    plan_count: snapshot.plans.length,
+    variant_count: snapshot.variants.length,
+    credit_products: snapshot.credits.length,
+    storage_limits: snapshot.limits.length,
+    storage_packs: snapshot.packs.length,
+  }));
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});

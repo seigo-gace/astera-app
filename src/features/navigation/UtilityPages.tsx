@@ -5,7 +5,10 @@ import { apiRequest, asRecord, recordText } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { PLAN_CREDIT_TEXT } from './plan-credit-text';
+import { storageFromPayload, type StoragePack, type StorageProjection } from './storage-projection';
 import './plan-credit-page.css';
+
+export { storageFromPayload };
 
 type BillingCycle = 'monthly' | 'annual';
 
@@ -34,27 +37,6 @@ type SubscriptionProjection = {
   planId: string;
   billingCycle: BillingCycle;
   hasLiveSubscription: boolean;
-};
-
-type StoragePack = {
-  productId: string;
-  displayName: string;
-  capacityGb: number;
-  priceJpy: number;
-  canPurchase: boolean;
-};
-
-type StorageProjection = {
-  planId: string;
-  planMaxCapacityGb: number;
-  currentCapacityGb: number;
-  remainingPurchaseCapacityGb: number;
-  usedBytes: number;
-  remainingBytes: number;
-  state: string;
-  writeAllowed: boolean;
-  overPlanLimit: boolean;
-  packs: StoragePack[];
 };
 
 type StorageLoadState =
@@ -96,40 +78,6 @@ function subscriptionFromPayload(payload: unknown): SubscriptionProjection {
     planId,
     billingCycle,
     hasLiveSubscription: Boolean(providerSubscriptionId) && !['none', 'cancelled', 'failed'].includes(status),
-  };
-}
-
-function numeric(record: Record<string, unknown>, keys: string[], fallback = 0): number {
-  for (const key of keys) {
-    const value = record[key];
-    const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN;
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
-function storageFromPayload(payload: unknown): StorageProjection {
-  const root = asRecord(payload);
-  const usage = asRecord(root.usage);
-  const packsRaw = Array.isArray(root.packs) ? root.packs : [];
-  const packs = packsRaw.map(asRecord).map((pack) => ({
-    productId: recordText(pack, ['product_id', 'productId']),
-    displayName: recordText(pack, ['display_name', 'displayName'], 'Storage'),
-    capacityGb: numeric(pack, ['capacity_gb', 'capacityGb']),
-    priceJpy: numeric(pack, ['price_jpy', 'priceJpy']),
-    canPurchase: pack.can_purchase === true || pack.canPurchase === true,
-  })).filter((pack) => pack.productId && pack.capacityGb > 0 && pack.priceJpy > 0);
-  return {
-    planId: normalizePlanId(recordText(root, ['plan_id', 'planId'], 'free')),
-    planMaxCapacityGb: numeric(root, ['plan_max_capacity_gb', 'planMaxCapacityGb']),
-    currentCapacityGb: numeric(root, ['current_capacity_gb', 'currentCapacityGb']),
-    remainingPurchaseCapacityGb: numeric(root, ['remaining_purchase_capacity_gb', 'remainingPurchaseCapacityGb']),
-    usedBytes: numeric(usage, ['used_bytes', 'usedBytes']),
-    remainingBytes: numeric(usage, ['remaining_bytes', 'remainingBytes']),
-    state: recordText(root, ['state'], 'inactive'),
-    writeAllowed: root.write_allowed === true || root.writeAllowed === true,
-    overPlanLimit: root.over_plan_limit === true || root.overPlanLimit === true,
-    packs,
   };
 }
 
@@ -413,7 +361,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     }
   };
 
-  const displayPacks = load.status === 'ready' && load.data.packs.length > 0 ? load.data.packs : fallbackPacks;
+  const displayPacks = load.status === 'ready' ? load.data.packs : [];
 
   return (
     <section className="plan-credit-section plan-credit-storage-section">
@@ -455,6 +403,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
         </>
       )}
 
+      {load.status === 'ready' && displayPacks.length > 0 && (
       <div className="plan-credit-storage-pack-grid" aria-label={copy.title}>
         {displayPacks.map((pack) => {
           const working = purchase.status === 'working' && purchase.productId === pack.productId;
@@ -474,6 +423,10 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
           );
         })}
       </div>
+      )}
+      {load.status === 'ready' && displayPacks.length === 0 && (
+        <div className="plan-credit-storage-status">{copy.unavailable}</div>
+      )}
       {purchase.status === 'error' && <div className="plan-credit-storage-status is-error">{purchase.message}</div>}
     </section>
   );

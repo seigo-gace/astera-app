@@ -1,5 +1,7 @@
 node_modules
 /dist
+pages-dist
+node_modules/.vite-temp
 .git
 .env
 .env.*

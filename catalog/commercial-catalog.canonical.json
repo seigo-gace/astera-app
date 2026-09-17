@@ -1,0 +1,181 @@
+{
+  "staging_d1": {
+    "database_name": "astera-app-staging",
+    "database_id": "08a705ac-50f4-4592-b726-d50154a2a8cb"
+  },
+  "plans": [
+    {
+      "plan_id": "free",
+      "display_name": "Free",
+      "description": "",
+      "included_credits": 10000,
+      "free_signup_bonus_credits": 10000,
+      "monthly_jpy": 0,
+      "annual_jpy": 0,
+      "recurring_interval": "none",
+      "recommended": false,
+      "display_order": 0,
+      "entitlement_ids": ["core_features"]
+    },
+    {
+      "plan_id": "basic",
+      "display_name": "Basic",
+      "description": "",
+      "included_credits": 180000,
+      "free_signup_bonus_credits": 0,
+      "monthly_jpy": 980,
+      "annual_jpy": 9800,
+      "recurring_interval": "month",
+      "recommended": false,
+      "display_order": 10,
+      "entitlement_ids": [
+        "core_features",
+        "high_accuracy_translation",
+        "document_creation",
+        "private_mode",
+        "external_storage_transfer",
+        "astera_storage"
+      ]
+    },
+    {
+      "plan_id": "pro",
+      "display_name": "Pro",
+      "description": "",
+      "included_credits": 640000,
+      "free_signup_bonus_credits": 0,
+      "monthly_jpy": 2980,
+      "annual_jpy": 29800,
+      "recurring_interval": "month",
+      "recommended": true,
+      "display_order": 20,
+      "entitlement_ids": [
+        "core_features",
+        "high_accuracy_translation",
+        "document_creation",
+        "private_mode",
+        "external_storage_transfer",
+        "astera_storage",
+        "document_templates",
+        "api"
+      ]
+    },
+    {
+      "plan_id": "business",
+      "display_name": "Business",
+      "description": "",
+      "included_credits": 2200000,
+      "free_signup_bonus_credits": 0,
+      "monthly_jpy": 9980,
+      "annual_jpy": 99800,
+      "recurring_interval": "month",
+      "recommended": false,
+      "display_order": 30,
+      "entitlement_ids": [
+        "core_features",
+        "high_accuracy_translation",
+        "document_creation",
+        "private_mode",
+        "external_storage_transfer",
+        "astera_storage",
+        "document_templates",
+        "api"
+      ]
+    },
+    {
+      "plan_id": "enterprise",
+      "display_name": "Enterprise",
+      "description": "",
+      "included_credits": 6600000,
+      "free_signup_bonus_credits": 0,
+      "monthly_jpy": 29800,
+      "annual_jpy": 298000,
+      "recurring_interval": "month",
+      "recommended": false,
+      "display_order": 40,
+      "entitlement_ids": [
+        "core_features",
+        "high_accuracy_translation",
+        "document_creation",
+        "private_mode",
+        "external_storage_transfer",
+        "astera_storage",
+        "document_templates",
+        "api"
+      ]
+    }
+  ],
+  "credit_products": [
+    {
+      "product_id": "credit_500pack",
+      "display_name": "©500pack",
+      "amount": 500,
+      "credits": 75000,
+      "display_order": 10
+    },
+    {
+      "product_id": "credit_1000pack",
+      "display_name": "©1000pack",
+      "amount": 1000,
+      "credits": 155000,
+      "display_order": 20
+    },
+    {
+      "product_id": "credit_3000pack",
+      "display_name": "©3000pack",
+      "amount": 3000,
+      "credits": 480000,
+      "display_order": 30
+    },
+    {
+      "product_id": "credit_5000pack",
+      "display_name": "©5000pack",
+      "amount": 5000,
+      "credits": 815000,
+      "display_order": 40
+    },
+    {
+      "product_id": "credit_10000pack",
+      "display_name": "©10000pack",
+      "amount": 10000,
+      "credits": 1650000,
+      "display_order": 50
+    },
+    {
+      "product_id": "credit_30000pack",
+      "display_name": "©30000pack",
+      "amount": 30000,
+      "credits": 5000000,
+      "display_order": 60
+    }
+  ],
+  "storage_plan_max_gb": {
+    "free": 1,
+    "basic": 5,
+    "pro": 20,
+    "business": 50,
+    "enterprise": 150
+  },
+  "storage_packs": [
+    {
+      "product_id": "storage_1gb",
+      "display_name": "+1GB",
+      "capacity_gb": 1,
+      "price_jpy": 480,
+      "display_order": 10
+    },
+    {
+      "product_id": "storage_10gb",
+      "display_name": "+10GB",
+      "capacity_gb": 10,
+      "price_jpy": 1980,
+      "display_order": 20
+    },
+    {
+      "product_id": "storage_50gb",
+      "display_name": "+50GB",
+      "capacity_gb": 50,
+      "price_jpy": 5980,
+      "display_order": 30
+    }
+  ]
+}
