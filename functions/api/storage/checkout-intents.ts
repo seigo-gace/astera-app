@@ -5,6 +5,7 @@ import {
   requireFreshAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
+import { storagePurchaseWithinPlanLimit } from '../../_storage-capacity-guard';
 import { loadStorageCommerceProjection, loadStoragePackProduct } from '../../_storage-commerce';
 import { createSquareCheckout, type SquareEnv } from '../../_square';
 
@@ -83,7 +84,12 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     if (!Number.isSafeInteger(pendingCapacityGb) || pendingCapacityGb < 0) {
       throw new FunctionHttpError(503, 'STORAGE_PENDING_CAPACITY_INVALID', 'Storage購入予約容量を確認できません。');
     }
-    if (commerce.currentCapacityGb + pendingCapacityGb + product.capacityGb > commerce.planMaxCapacityGb) {
+    if (!storagePurchaseWithinPlanLimit(
+      commerce.currentCapacityGb,
+      pendingCapacityGb,
+      product.capacityGb,
+      commerce.planMaxCapacityGb,
+    )) {
       throw new FunctionHttpError(409, 'STORAGE_PLAN_CAPACITY_EXCEEDED', 'このStorage Packを追加すると現在PlanのStorage上限を超えます。', {
         plan_id: commerce.planId,
         current_capacity_gb: commerce.currentCapacityGb,

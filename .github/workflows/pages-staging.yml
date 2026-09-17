@@ -31,6 +31,9 @@ jobs:
       CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
       STAGING_DOMAIN: 'staging.asterav8.jp'
       EVIDENCE_ISSUE: '9'
+      D1_DATABASE_NAME: 'astera-app-staging'
+      D1_DATABASE_ID: '08a705ac-50f4-4592-b726-d50154a2a8cb'
+      WRANGLER_CACHE_DIR: '/tmp/wrangler-cache'
     steps:
       - name: Checkout
         id: checkout
@@ -95,6 +98,67 @@ jobs:
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0016_storage_buyout_packs.sql
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0017_account_registration_state_repair.sql
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0018_active_credit_formula_v1.sql
+
+      - name: Verify staging D1 binding id
+        id: d1_binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { spawnSync } = require('node:child_process');
+          const expectedName = process.env.D1_DATABASE_NAME;
+          const expectedId = process.env.D1_DATABASE_ID;
+          const listed = spawnSync('npx', ['wrangler', 'd1', 'list', '--json'], { encoding: 'utf8' });
+          if (listed.status !== 0) {
+            console.error(listed.stderr || listed.stdout);
+            process.exit(1);
+          }
+          const databases = JSON.parse(listed.stdout || '[]');
+          const match = databases.find((row) => row?.name === expectedName);
+          if (!match || match.uuid !== expectedId) {
+            throw new Error(`D1 binding mismatch for ${expectedName}: expected ${expectedId}, got ${match?.uuid || 'missing'}`);
+          }
+          console.log(`Verified Pages ASTERA_DB binding ${expectedName} / ${expectedId}`);
+          NODE
+
+      - name: Publish commercial catalog to staging D1
+        id: catalog_publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/publish-commercial-catalog.mjs --remote
+
+      - name: Verify published commercial catalog
+        id: catalog_verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT (SELECT COUNT(*) FROM catalog_versions WHERE status='active') AS active_count, (SELECT checksum FROM catalog_versions WHERE status='active' LIMIT 1) AS checksum, (SELECT published_at FROM catalog_versions WHERE status='active' LIMIT 1) AS published_at, (SELECT COUNT(*) FROM plan_catalog_entries WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS plan_entries, (SELECT COUNT(*) FROM plan_billing_variants WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS billing_variants, (SELECT COUNT(*) FROM astera_storage_plan_limits WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS storage_limits, (SELECT COUNT(*) FROM astera_storage_pack_catalog WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1)) AS storage_packs;")"
+          RESULT="$result" node <<'NODE'
+          const payload = JSON.parse(process.env.RESULT || '[]');
+          const row = payload.flatMap((entry) => entry?.results || [])[0] || {};
+          if (Number(row.active_count) !== 1) throw new Error(`active catalog count=${row.active_count}`);
+          if (!row.checksum) throw new Error('active catalog checksum is NULL');
+          if (!row.published_at) throw new Error('active catalog published_at is NULL');
+          if (Number(row.plan_entries) <= 0) throw new Error(`plan entries=${row.plan_entries}`);
+          if (Number(row.billing_variants) <= 0) throw new Error(`billing variants=${row.billing_variants}`);
+          if (Number(row.storage_limits) !== 5) throw new Error(`storage limits=${row.storage_limits}`);
+          if (Number(row.storage_packs) !== 3) throw new Error(`storage packs=${row.storage_packs}`);
+          console.log('Verified active commercial catalog projection');
+          NODE
+          limits="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT plan_id, max_capacity_gb FROM astera_storage_plan_limits WHERE catalog_version=(SELECT version FROM catalog_versions WHERE status='active' LIMIT 1) ORDER BY plan_id ASC;")"
+          LIMITS="$limits" node <<'NODE'
+          const expected = { basic: 5, business: 50, enterprise: 150, free: 1, pro: 20 };
+          const payload = JSON.parse(process.env.LIMITS || '[]');
+          const rows = payload.flatMap((entry) => entry?.results || []);
+          for (const [planId, maxGb] of Object.entries(expected)) {
+            const row = rows.find((item) => item.plan_id === planId);
+            if (!row || Number(row.max_capacity_gb) !== maxGb) {
+              throw new Error(`storage limit ${planId}=${row?.max_capacity_gb}, expected ${maxGb}`);
+            }
+          }
+          console.log('Verified storage plan limits 1/5/20/50/150');
+          NODE
 
       - name: Verify active Credit Policy
         id: credit_policy
@@ -204,6 +268,9 @@ jobs:
           PAGES_CONFIG_OUTCOME: ${{ steps.pages_config.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           D1_RUNTIME_MIGRATIONS_OUTCOME: ${{ steps.d1_runtime_migrations.outcome }}
+          D1_BINDING_OUTCOME: ${{ steps.d1_binding.outcome }}
+          CATALOG_PUBLISH_OUTCOME: ${{ steps.catalog_publish.outcome }}
+          CATALOG_VERIFY_OUTCOME: ${{ steps.catalog_verify.outcome }}
           CREDIT_POLICY_OUTCOME: ${{ steps.credit_policy.outcome }}
           FRONTEND_BUILD_OUTCOME: ${{ steps.frontend_build.outcome }}
           DEPLOYMENT_MARKER_OUTCOME: ${{ steps.deployment_marker.outcome }}
@@ -229,6 +296,9 @@ jobs:
               pages_config: process.env.PAGES_CONFIG_OUTCOME,
               install: process.env.INSTALL_OUTCOME,
               d1_runtime_migrations: process.env.D1_RUNTIME_MIGRATIONS_OUTCOME,
+              d1_binding: process.env.D1_BINDING_OUTCOME,
+              catalog_publish: process.env.CATALOG_PUBLISH_OUTCOME,
+              catalog_verify: process.env.CATALOG_VERIFY_OUTCOME,
               credit_policy: process.env.CREDIT_POLICY_OUTCOME,
               frontend_build: process.env.FRONTEND_BUILD_OUTCOME,
               deployment_marker: process.env.DEPLOYMENT_MARKER_OUTCOME,

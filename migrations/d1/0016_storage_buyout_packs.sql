@@ -1,6 +1,6 @@
 -- Buy-once Astera Storage packs and plan capacity limits.
 -- Canon: 1GB=480 JPY, 10GB=1,980 JPY, 50GB=5,980 JPY; purchases accumulate.
--- Current plan caps: free=0, basic=10GB, pro=100GB, business=500GB, enterprise=1000GB.
+-- Current plan caps: free=1GB, basic=5GB, pro=20GB, business=50GB, enterprise=150GB.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS astera_storage_plan_limits (
@@ -12,15 +12,15 @@ CREATE TABLE IF NOT EXISTS astera_storage_plan_limits (
 );
 
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'free', 0, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'free', 1, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'basic', 10, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'basic', 5, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'pro', 100, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'pro', 20, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'business', 500, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'business', 50, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'enterprise', 1000, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'enterprise', 150, 1 FROM catalog_versions WHERE status='active';
 
 CREATE TABLE IF NOT EXISTS astera_storage_pack_catalog (
   catalog_version TEXT NOT NULL REFERENCES catalog_versions(version),

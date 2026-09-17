@@ -413,7 +413,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     }
   };
 
-  const displayPacks = load.status === 'ready' && load.data.packs.length > 0 ? load.data.packs : fallbackPacks;
+  const displayPacks = load.status === 'ready' ? load.data.packs : [];
 
   return (
     <section className="plan-credit-section plan-credit-storage-section">
@@ -455,6 +455,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
         </>
       )}
 
+      {load.status === 'ready' && displayPacks.length > 0 && (
       <div className="plan-credit-storage-pack-grid" aria-label={copy.title}>
         {displayPacks.map((pack) => {
           const working = purchase.status === 'working' && purchase.productId === pack.productId;
@@ -474,6 +475,10 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
           );
         })}
       </div>
+      )}
+      {load.status === 'ready' && displayPacks.length === 0 && (
+        <div className="plan-credit-storage-status">{copy.unavailable}</div>
+      )}
       {purchase.status === 'error' && <div className="plan-credit-storage-status is-error">{purchase.message}</div>}
     </section>
   );
