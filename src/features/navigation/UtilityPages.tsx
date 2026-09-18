@@ -289,7 +289,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     title: '追加ストレージ', description: '何度でも購入でき合算されます。', loading: 'Storage容量を確認しています…',
     usage: '使用量', currentMax: '現在のMaxストレージ', planLimit: 'プラン上限', remaining: '空き',
     planExceeded: '現在の契約容量がプラン上限を超えているため、新規保存と追加購入を停止しています。',
-    loadError: 'Storage情報を確認できませんでした。 Example',
+    loadError: 'Storage情報を確認できませんでした。',
   } : {
     title: 'Additional Storage', description: 'Purchase as many times as needed; capacities are combined.', loading: 'Loading storage capacity…',
     usage: 'Used', currentMax: 'Current max storage', planLimit: 'Plan limit', remaining: 'Available',
@@ -351,12 +351,8 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
           const href = `/account/checkout?kind=storage&product=${encodeURIComponent(pack.productId)}&capacity=${pack.capacityGb}&amount=${pack.priceJpy}&return_to=plan-credit`;
           const card = (
             <>
-              <h3>{pack.displayName}</h3>
-              <div className="plan-credit-price">¥{pack.priceJpy.toLocaleString('ja-JP')}</div>
-              <div className="plan-credit-storage-pack-detail">
-                <span>{language === 'ja' ? '追加容量' : 'Added capacity'}</span>
-                <strong>{storageCapacityLabel(pack.capacityGb)}</strong>
-              </div>
+              <h3 className="plan-credit-storage-pack-title">{pack.displayName}{language === 'ja' ? '追加' : ' add'}</h3>
+              <div className="plan-credit-storage-pack-price">¥{pack.priceJpy.toLocaleString('ja-JP')}</div>
             </>
           );
           if (load.status === 'ready' && pack.canPurchase) {
