@@ -72,6 +72,11 @@
   line-height: 1.5;
 }
 
+/* The plan-ineligible notice is redundant on this commerce surface. */
+.plan-credit-storage-overview + .plan-credit-storage-status:not(.is-error) {
+  display: none;
+}
+
 .plan-credit-storage-status.is-error {
   border-color: var(--danger);
 }
@@ -96,14 +101,17 @@
   margin-top: 12px;
 }
 
+/* Match the existing credit-card visual language, but keep Storage slightly shorter. */
 .plan-credit-storage-pack {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  --capacity-label: '';
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 0 12px;
   min-width: 0;
-  min-height: 88px;
-  padding: 18px;
+  min-height: 154px;
+  padding: 16px;
   box-sizing: border-box;
   border: 1px solid var(--border-color);
   border-radius: 14px;
@@ -112,25 +120,67 @@
   text-align: left;
   font: inherit;
   text-decoration: none;
-  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
+.plan-credit-storage-pack:nth-child(1) { --capacity-label: '1GB'; }
+.plan-credit-storage-pack:nth-child(2) { --capacity-label: '10GB'; }
+.plan-credit-storage-pack:nth-child(3) { --capacity-label: '50GB'; }
+
 .plan-credit-storage-pack h3 {
+  grid-column: 1 / -1;
+  margin: 0;
   min-width: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 700;
   text-align: left;
   overflow-wrap: anywhere;
 }
 
 .plan-credit-storage-pack .plan-credit-price {
-  flex: 0 0 auto;
-  margin-top: 0;
-  margin-left: auto;
+  grid-column: 1 / -1;
+  margin: 12px 0 10px;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.plan-credit-storage-pack::before,
+.plan-credit-storage-pack::after {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.plan-credit-storage-pack::before {
+  content: '追加容量';
+  grid-column: 1;
+  color: var(--text-secondary);
+}
+
+.plan-credit-storage-pack::after {
+  content: var(--capacity-label);
+  grid-column: 2;
+  color: var(--text-primary);
+  font-weight: 700;
   text-align: right;
   white-space: nowrap;
 }
 
+.plan-credit-storage-pack.is-actionable {
+  cursor: pointer;
+}
+
+.plan-credit-storage-pack.is-unavailable {
+  cursor: default;
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .plan-credit-storage-pack:hover {
+  .plan-credit-storage-pack.is-actionable:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
     background: color-mix(in srgb, var(--text-primary) 2.5%, var(--bg-primary));
@@ -141,10 +191,6 @@
 .plan-credit-storage-pack:focus-visible {
   outline: 2px solid var(--text-primary);
   outline-offset: 3px;
-}
-
-.plan-credit-storage-pack.is-unavailable {
-  cursor: default;
 }
 
 @media (max-width: 1023px) {
@@ -170,7 +216,6 @@
   .plan-credit-storage-status button,
   .plan-credit-storage-pack {
     width: 100%;
-    min-height: 48px;
   }
 }
 
@@ -183,6 +228,14 @@
   .plan-credit-storage-metrics strong {
     font-size: 17px;
   }
+
+  .plan-credit-storage-pack {
+    min-height: 146px;
+  }
+
+  .plan-credit-storage-pack .plan-credit-price {
+    font-size: 24px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -191,7 +244,7 @@
     transition: none;
   }
 
-  .plan-credit-storage-pack:hover {
+  .plan-credit-storage-pack.is-actionable:hover {
     transform: none;
   }
 }
