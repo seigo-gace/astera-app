@@ -288,13 +288,11 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
   const copy = language === 'ja' ? {
     title: '追加ストレージ', description: '何度でも購入でき合算されます。', loading: 'Storage容量を確認しています…',
     usage: '使用量', currentMax: '現在のMaxストレージ', planLimit: 'プラン上限', remaining: '空き',
-    unavailable: '現在のプランではAstera Storageを追加できません。',
     planExceeded: '現在の契約容量がプラン上限を超えているため、新規保存と追加購入を停止しています。',
-    loadError: 'Storage情報を確認できませんでした。',
+    loadError: 'Storage情報を確認できませんでした。 Example',
   } : {
     title: 'Additional Storage', description: 'Purchase as many times as needed; capacities are combined.', loading: 'Loading storage capacity…',
     usage: 'Used', currentMax: 'Current max storage', planLimit: 'Plan limit', remaining: 'Available',
-    unavailable: 'Astera Storage is not available on the current plan.',
     planExceeded: 'Current capacity exceeds the plan limit. New writes and purchases are suspended.',
     loadError: 'Storage information could not be loaded.',
   };
@@ -344,7 +342,6 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
             </div>
             <div className="plan-credit-storage-remaining">{copy.remaining}: {formatBytes(load.data.remainingBytes)}</div>
           </div>
-          {load.data.planMaxCapacityGb <= 0 && <div className="plan-credit-storage-status">{copy.unavailable}</div>}
           {load.data.overPlanLimit && <div className="plan-credit-storage-status is-error">{copy.planExceeded}</div>}
         </>
       )}
@@ -356,6 +353,10 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
             <>
               <h3>{pack.displayName}</h3>
               <div className="plan-credit-price">¥{pack.priceJpy.toLocaleString('ja-JP')}</div>
+              <div className="plan-credit-storage-pack-detail">
+                <span>{language === 'ja' ? '追加容量' : 'Added capacity'}</span>
+                <strong>{storageCapacityLabel(pack.capacityGb)}</strong>
+              </div>
             </>
           );
           if (load.status === 'ready' && pack.canPurchase) {
