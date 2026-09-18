@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import BetaSurveyGate from '../features/beta/BetaSurveyGate';
 import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
@@ -92,7 +93,7 @@ function AccountSessionGateLive({ children }: { children: ReactNode }) {
 
   if (state.status === 'loading') return <BusyState label="AccountとSessionを確認しています…" />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={() => setAttempt((value) => value + 1)} />;
-  return <AccountSessionProvider value={state.session}>{children}</AccountSessionProvider>;
+  return <AccountSessionProvider value={state.session}><BetaSurveyGate>{children}</BetaSurveyGate></AccountSessionProvider>;
 }
 
 function RootRedirect() {

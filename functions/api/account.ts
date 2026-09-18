@@ -1,51 +1,10 @@
-import { createAuth, type AuthEnv } from '../_auth';
+import { createAuth } from '../_auth';
+import type { CreditRow, D1Database, SessionPayload, SessionUser, UserProfileRow } from '../_account-projection';
+import { applyDueRewardSchedules } from '../_reward-schedules';
+import type { RewardProgramEnv } from '../_reward-programs';
 
-type D1Result<T> = { results?: T[]; success?: boolean; error?: string };
-type D1PreparedStatement = {
-  bind: (...values: unknown[]) => D1PreparedStatement;
-  first: <T = Record<string, unknown>>() => Promise<T | null>;
-  run: () => Promise<D1Result<Record<string, unknown>>>;
-};
-type D1Database = {
-  prepare: (query: string) => D1PreparedStatement;
-  batch: (statements: D1PreparedStatement[]) => Promise<Array<D1Result<Record<string, unknown>>>>;
-};
-
-type Env = AuthEnv & { ASTERA_DB: D1Database };
+type Env = RewardProgramEnv;
 type PagesContext = { request: Request; env: Env };
-
-type SessionUser = {
-  id: string;
-  email: string;
-  name?: string | null;
-  emailVerified?: boolean;
-  image?: string | null;
-  twoFactorEnabled?: boolean;
-};
-
-type SessionPayload = {
-  user?: SessionUser;
-  session?: { id?: string; expiresAt?: Date | string };
-};
-
-type UserProfileRow = {
-  user_id: string;
-  tenant_id: string;
-  nickname: string;
-  account_status: string;
-  ui_language: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type CreditRow = {
-  id: string;
-  tenant_id: string;
-  available_balance: number;
-  reserved_balance: number;
-  version: number;
-  updated_at: string;
-};
 
 function correlationId(request: Request): string {
   return request.headers.get('X-Request-ID')?.trim() || crypto.randomUUID();
@@ -69,8 +28,6 @@ async function hasPasswordCredential(db: D1Database, userId: string): Promise<bo
 
 function accountStatus(user: SessionUser, existing: UserProfileRow | null, passwordConfigured: boolean): string {
   if (existing && PROTECTED_ACCOUNT_STATUSES.has(existing.account_status)) return existing.account_status;
-  // Registration requirements decide whether a new/pending account can become active.
-  // Once registration is complete, active is persistent and Login/reload/deploy must not restart registration.
   if (existing?.account_status === 'active') return 'active';
   if (user.emailVerified === false) return 'pending_email_verification';
   return passwordConfigured ? 'active' : 'pending_password_setup';
@@ -123,17 +80,30 @@ async function ensureAsteraAccount(db: D1Database, user: SessionUser): Promise<{
   return { profile, credit };
 }
 
+async function refreshedCredit(db: D1Database, tenantId: string): Promise<CreditRow> {
+  const credit = await db.prepare(
+    `SELECT id, tenant_id, available_balance, reserved_balance, version, updated_at
+     FROM credit_accounts WHERE tenant_id=?1 LIMIT 1`,
+  ).bind(tenantId).first<CreditRow>();
+  if (!credit) throw new Error('ASTERA_ACCOUNT_PROJECTION_FAILED');
+  return credit;
+}
+
 export async function onRequestGet(context: PagesContext): Promise<Response> {
   const requestId = correlationId(context.request);
   try {
     const auth = createAuth(context.env);
     const session = await auth.api.getSession({ headers: context.request.headers }) as SessionPayload | null;
     const user = session?.user;
-    if (!user?.id || !user.email) {
-      return errorResponse(401, 'SESSION_REQUIRED', 'Loginが必要です。', requestId);
+    if (!user?.id || !user.email) return errorResponse(401, 'SESSION_REQUIRED', 'Loginが必要です。', requestId);
+
+    const { profile, credit: initialCredit } = await ensureAsteraAccount(context.env.ASTERA_DB, user);
+    let credit = initialCredit;
+    if (profile.account_status === 'active') {
+      await applyDueRewardSchedules(context.env, { user, session: session?.session, profile, credit: initialCredit });
+      credit = await refreshedCredit(context.env.ASTERA_DB, profile.tenant_id);
     }
 
-    const { profile, credit } = await ensureAsteraAccount(context.env.ASTERA_DB, user);
     return Response.json({
       account: {
         user_id: user.id,
@@ -163,10 +133,8 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
     const migrationMissing = /no such table|D1_ERROR|ASTERA_ACCOUNT_PROJECTION_FAILED/i.test(message);
     return errorResponse(
       migrationMissing ? 503 : 500,
-      migrationMissing ? 'ASTERА_ACCOUNT_SCHEMA_NOT_READY'.replace('А', 'A') : 'ACCOUNT_SESSION_PROJECTION_FAILED',
-      migrationMissing
-        ? '認証・Account・Credit用D1 Migrationが適用されていません。'
-        : 'Account状態を取得できませんでした。',
+      migrationMissing ? 'ASTERA_ACCOUNT_SCHEMA_NOT_READY' : 'ACCOUNT_SESSION_PROJECTION_FAILED',
+      migrationMissing ? '認証・Account・Credit用D1 Migrationが適用されていません。' : 'Account状態を取得できませんでした。',
       requestId,
       message,
     );

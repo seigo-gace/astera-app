@@ -5,11 +5,21 @@ import { apiRequest, asArray, asRecord, recordText } from '../../platform/api-cl
 import type { RouteMatch } from '../../platform/route-registry';
 import { BusyState, ErrorState, ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { FormResult, Panel, submitForm, useResource, type SubmitState } from '../../platform/pages/page-kit';
+import { RewardProgramOverlays, RewardProgramSettingsRows } from './RewardProgramOverlays';
 import { SettingsSurface } from './SettingsSurface';
+
+type RewardOverlayKind = 'coupon' | 'referral' | 'beta' | null;
 
 export function SettingsIndexPage({ route }: { route: RouteMatch }) {
   const { text } = useAppText();
-  return <ResponsivePageShell route={route} description={text('settingsDescription')}><SettingsSurface variant="page" /></ResponsivePageShell>;
+  const [overlay, setOverlay] = useState<RewardOverlayKind>(null);
+  return <ResponsivePageShell route={route} description={text('settingsDescription')}>
+    <div className="settings-surface">
+      <RewardProgramSettingsRows onOpen={setOverlay} />
+    </div>
+    <SettingsSurface variant="page" />
+    <RewardProgramOverlays open={overlay} onClose={() => setOverlay(null)} />
+  </ResponsivePageShell>;
 }
 
 export function LanguageSettingsPage({ route }: { route: RouteMatch }) {
