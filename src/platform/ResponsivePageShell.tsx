@@ -351,7 +351,7 @@ export function ResponsivePageShell({ route, children, eyebrow, description, act
       </div>
     </section>
     <div className="platform-side-meta">
-      <a href="/app/about" onClick={() => setMenuOpen(false)}>{appText('navAbout')}</a>
+      <a href="https://asterav8.jp/" onClick={() => setMenuOpen(false)}>{appText('navAbout')}</a>
       <button
         type="button"
         ref={settingsTriggerRef}
