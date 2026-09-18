@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import CheckoutPage from '../features/checkout/CheckoutPage';
 import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
@@ -110,6 +109,13 @@ function LegacySearchRedirect() {
   return null;
 }
 
+function LegacyPlanRedirect() {
+  useEffect(() => {
+    window.location.replace('/app/plan-credit');
+  }, []);
+  return null;
+}
+
 export default function AppRouter() {
   if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/app/search') return <LegacySearchRedirect />;
   const route = matchCanonicalRoute(window.location.pathname);
@@ -117,8 +123,8 @@ export default function AppRouter() {
   if (route.id === 'root') return <RootRedirect />;
   if (route.id === 'pricing') return <PricingPage />;
 
-  if (route.id === 'account-checkout') {
-    return <AccountSessionGate><CheckoutPage route={route} /></AccountSessionGate>;
+  if (route.id === 'account-checkout' || route.id === 'account-subscription') {
+    return <LegacyPlanRedirect />;
   }
 
   if (route.id === 'app' || route.id === 'new-run') {
