@@ -115,11 +115,6 @@ function SharesPage({ route }: { route: RouteMatch }) {
   </ResponsivePageShell>;
 }
 
-function AboutPage({ route }: { route: RouteMatch }) {
-  const hp = (import.meta.env.VITE_ASTERA_HP_URL as string | undefined) ?? 'https://asterav8.jp/';
-  return <ResponsivePageShell route={route} description="製品説明は公式HP正本を参照し、AppではVersionと接続情報を表示します。"><Panel title="Astera App"><dl className="platform-kv-grid"><div><dt>Frontend</dt><dd>React / TypeScript / Vite</dd></div><div><dt>Platforms</dt><dd>Web / Android / iOS</dd></div><div><dt>Application ID</dt><dd>jp.asterav8.app</dd></div></dl></Panel><a className="platform-button" href={hp}>公式HPを開く</a></ResponsivePageShell>;
-}
-
 const legalDocuments: Record<string, { endpoint: string; description: string }> = {
   legal: { endpoint: '/api/legal', description: '現在有効な法務文書のVersionと公開状態を確認します。' },
   'legal-terms': { endpoint: '/api/legal/terms', description: 'Astera App利用規約の現在Versionです。' },
@@ -154,7 +149,6 @@ export function PublicPlatformPage({ route }: { route: RouteMatch }) {
     case 'public-share': return <PublicShareViewerPage route={route} />;
     case 'private-share': return <PrivateShareViewerPage route={route} />;
     case 'shares': return <SharesPage route={route} />;
-    case 'about': return <AboutPage route={route} />;
     case 'legal': case 'legal-terms': case 'legal-privacy': case 'legal-commercial': case 'legal-api-terms': return <LegalPage route={route} />;
     case 'status': case 'offline': case 'maintenance': return <StatusPage route={route} />;
     case 'support': return <SupportPage route={route} />;
