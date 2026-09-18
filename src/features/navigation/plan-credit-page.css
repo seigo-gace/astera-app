@@ -1,5 +1,5 @@
 .platform-main:has(.plan-credit-page) > .platform-page-head {
-  display: none;
+  display: none !important;
 }
 
 .plan-credit-page {
@@ -44,14 +44,6 @@
   font-size: 19px;
   line-height: 1.3;
   font-weight: 700;
-}
-
-.plan-credit-section-description {
-  margin: -6px 0 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.45;
-  font-weight: 400;
 }
 
 .plan-credit-section-head {
@@ -106,9 +98,6 @@
   color: inherit;
   background: var(--bg-primary);
   text-decoration: none;
-  text-align: left;
-  font: inherit;
-  box-sizing: border-box;
   transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
@@ -122,13 +111,8 @@
   cursor: pointer;
 }
 
-.plan-credit-card.is-actionable:disabled {
-  cursor: progress;
-  opacity: 1;
-}
-
 .plan-credit-card.is-credit {
-  min-height: 0;
+  min-height: 150px;
 }
 
 .plan-credit-card.is-storage {
@@ -141,7 +125,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .plan-credit-card.is-actionable:hover {
+  .plan-credit-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--text-primary) 32%, var(--border-color));
     background: color-mix(in srgb, var(--text-primary) 2.5%, var(--bg-primary));
@@ -181,8 +165,7 @@
   white-space: nowrap;
 }
 
-.plan-credit-plan-top,
-.plan-credit-purchase-top {
+.plan-credit-plan-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -239,14 +222,6 @@
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: -0.02em;
-}
-
-.plan-credit-card.is-credit .plan-credit-price,
-.plan-credit-purchase-top .plan-credit-price {
-  margin-top: 0;
-  margin-left: auto;
-  text-align: right;
-  white-space: nowrap;
 }
 
 .plan-credit-annual-meta {
@@ -345,16 +320,6 @@
   color: var(--text-primary);
 }
 
-.plan-credit-basic-column:first-child .plan-credit-basic-column-title {
-  display: list-item;
-  margin-bottom: 5px;
-  margin-left: 17px;
-  list-style-position: outside;
-  list-style-type: disc;
-  line-height: 1.35;
-  font-weight: 400;
-}
-
 .plan-credit-basic-list {
   display: grid;
   gap: 5px;
@@ -365,54 +330,8 @@
   line-height: 1.35;
 }
 
-.plan-credit-basic-column:first-child .plan-credit-basic-list {
-  padding-left: 17px;
-  list-style: none;
-}
-
 .plan-credit-basic-list li {
   min-width: 0;
-}
-
-.plan-credit-purchase-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 122px;
-  width: 100%;
-}
-
-.plan-credit-purchase-status {
-  margin-top: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-primary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.plan-credit-purchase-status.is-error {
-  border-color: var(--danger);
-  color: var(--text-primary);
-}
-
-.plan-credit-section:last-child .plan-credit-card.is-credit {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 88px;
-}
-
-.plan-credit-section:last-child .plan-credit-card.is-credit h3 {
-  text-align: left;
-}
-
-.plan-credit-section:last-child .plan-credit-card.is-credit .plan-credit-price {
-  margin-top: 0;
-  margin-left: auto;
-  text-align: right;
 }
 
 @media (max-width: 1023px) {
@@ -450,8 +369,7 @@
   }
 
   .plan-credit-card-head,
-  .plan-credit-fact,
-  .plan-credit-purchase-top {
+  .plan-credit-fact {
     align-items: flex-start;
   }
 
@@ -469,7 +387,6 @@
     gap: 10px;
   }
 
-  .plan-credit-basic-column:first-child .plan-credit-basic-column-title,
   .plan-credit-basic-list {
     font-size: 12px;
   }
@@ -480,7 +397,7 @@
     transition: none;
   }
 
-  .plan-credit-card.is-actionable:hover {
+  .plan-credit-card:hover {
     transform: none;
   }
 }
