@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useAppText } from '../../app-text';
+import { RewardProgramOverlays, RewardProgramSettingsRows } from './RewardProgramOverlays';
 import './settings-dedicated.css';
 
 type SettingsSurfaceProps = {
@@ -12,8 +14,11 @@ type SettingsLink = {
   description: string;
 };
 
+type RewardOverlayKind = 'coupon' | 'referral' | 'beta' | null;
+
 export function SettingsSurface({ variant = 'page', onNavigate }: SettingsSurfaceProps) {
   const { text } = useAppText();
+  const [rewardOverlay, setRewardOverlay] = useState<RewardOverlayKind>(null);
 
   const links: SettingsLink[] = [
     { href: '/account', title: text('accountTitle'), description: text('accountDescription') },
@@ -24,16 +29,20 @@ export function SettingsSurface({ variant = 'page', onNavigate }: SettingsSurfac
   ];
 
   return (
-    <nav className={`settings-surface${variant === 'overlay' ? ' is-overlay' : ''}`} aria-label={text('settingsTitle')}>
-      {links.map((item) => (
-        <a className="settings-surface-row" href={item.href} key={item.href} onClick={onNavigate}>
-          <span className="settings-surface-row-copy">
-            <strong>{item.title}</strong>
-            <small>{item.description}</small>
-          </span>
-          <span className="settings-surface-chevron" aria-hidden="true">›</span>
-        </a>
-      ))}
-    </nav>
+    <>
+      <nav className={`settings-surface${variant === 'overlay' ? ' is-overlay' : ''}`} aria-label={text('settingsTitle')}>
+        <RewardProgramSettingsRows onOpen={setRewardOverlay} />
+        {links.map((item) => (
+          <a className="settings-surface-row" href={item.href} key={item.href} onClick={onNavigate}>
+            <span className="settings-surface-row-copy">
+              <strong>{item.title}</strong>
+              <small>{item.description}</small>
+            </span>
+            <span className="settings-surface-chevron" aria-hidden="true">›</span>
+          </a>
+        ))}
+      </nav>
+      <RewardProgramOverlays open={rewardOverlay} onClose={() => setRewardOverlay(null)} />
+    </>
   );
 }
