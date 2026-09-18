@@ -1,7 +1,8 @@
 .plan-credit-storage-overview {
   display: grid;
   gap: 12px;
-  width: 100%;n  box-sizing: border-box;
+  width: 100%;
+  box-sizing: border-box;
   padding: 16px;
   border: 1px solid var(--border-color);
   border-radius: 14px;
