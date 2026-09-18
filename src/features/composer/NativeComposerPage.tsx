@@ -21,7 +21,7 @@ type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pe
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
 type AgentMode = 'low' | 'medium' | 'high';
-type PickerKind = 'add' | 'context' | null;
+type PickerKind = 'purpose' | 'add' | 'context' | null;
 
 type UploadedFile = {
   localId: string;
@@ -687,7 +687,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       const end = event.currentTarget.selectionEnd ?? start;
       if (start === end && (start === 0 || /\s/.test(event.currentTarget.value[start - 1] ?? ''))) {
         event.preventDefault();
-        if (event.key === '/') setPicker('add');
+        if (event.key === '/') setPicker('purpose');
         else openContextPicker();
         return;
       }
@@ -709,7 +709,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const selectedExecutionOptions = selectedOptions.filter((key): key is CurrentExecutionOptionKey => key !== 'document');
 
   const renderPurposeAccordion = () => (
-    <details className="native-option-accordion native-purpose-accordion">
+    <details className="native-option-accordion native-purpose-accordion" open>
       <summary className={purpose === 'auto' ? 'native-option-accordion-trigger' : 'native-option-accordion-trigger is-selected'}>
         <span>用途・目的</span>
         <b>{purpose === 'auto' ? '›' : PURPOSE_LABELS[purpose]}</b>
@@ -726,6 +726,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
               onClick={(event) => {
                 setPurpose((current) => current === item.key ? 'auto' : item.key);
                 event.currentTarget.closest('details')?.removeAttribute('open');
+                setPicker(null);
               }}
             >
               <span>{item.label}</span>
@@ -776,22 +777,20 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     );
   });
 
+  const pickerTitle = picker === 'purpose' ? '用途・目的' : picker === 'add' ? '追加' : 'Option・対象';
   const pickerBody = picker && (
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) setPicker(null);
     }}>
-      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加' : 'Option・対象選択'}>
+      <section className="native-picker" role="dialog" aria-modal="true" aria-label={pickerTitle}>
         <header>
-          <strong>{picker === 'add' ? '追加' : 'Option・対象'}</strong>
+          <strong>{pickerTitle}</strong>
           <button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button>
         </header>
         <div className="native-picker-body">
+          {picker === 'purpose' && renderPurposeAccordion()}
           {picker === 'add' && (
-            <>
-              <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
-              {renderPurposeAccordion()}
-              {renderVisibleOptions()}
-            </>
+            <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
           )}
           {picker === 'context' && (
             <>
@@ -913,7 +912,9 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
             />
             <div className="native-composer-actions" style={{ border: 0, borderTop: 0, boxShadow: 'none' }}>
               <div className="native-left-tools">
-                <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => setPicker('add')}>＋</button>
+                <button type="button" className="native-round-button" aria-label="用途・目的を選択" onClick={() => setPicker('purpose')}>/</button>
+                <button type="button" className="native-round-button" aria-label="Fileを追加" onClick={() => setPicker('add')}>＋</button>
+                <button type="button" className="native-round-button" aria-label="Option・対象を選択" onClick={openContextPicker}>@</button>
                 {selectedPurposeLabel && (
                   <span className="native-form-chip is-purpose">
                     <span>{selectedPurposeLabel}</span>
