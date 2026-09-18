@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useAppText } from '../../app-text';
 import { previewWithoutAuth, useVerifiedAccountSession } from '../../platform/account-session';
 import { apiRequest, asRecord, recordText } from '../../platform/api-client';
+import { nativeCallback, openExternalUrl } from '../../platform/external-navigation';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
 import { PLAN_CREDIT_TEXT } from './plan-credit-text';
@@ -35,6 +36,24 @@ type SubscriptionProjection = {
   billingCycle: BillingCycle;
   hasLiveSubscription: boolean;
 };
+
+type CreditProduct = {
+  productId: string;
+  displayName: string;
+  amount: number;
+  credits: number;
+  active: boolean;
+};
+
+type CreditLoadState =
+  | { status: 'loading' }
+  | { status: 'ready'; products: CreditProduct[] }
+  | { status: 'error'; message: string };
+
+type PurchaseState =
+  | { status: 'idle' }
+  | { status: 'working'; key: string }
+  | { status: 'error'; message: string };
 
 type StoragePack = {
   productId: string;
@@ -133,6 +152,22 @@ function storageFromPayload(payload: unknown): StorageProjection {
   };
 }
 
+function creditProductsFromPayload(payload: unknown): CreditProduct[] {
+  const root = asRecord(payload);
+  const raw = Array.isArray(root.creditProducts)
+    ? root.creditProducts
+    : Array.isArray(root.credit_products)
+      ? root.credit_products
+      : [];
+  return raw.map(asRecord).map((product) => ({
+    productId: recordText(product, ['product_id', 'id']),
+    displayName: recordText(product, ['display_name', 'name'], 'Credit'),
+    amount: numeric(product, ['amount']),
+    credits: numeric(product, ['credits']),
+    active: product.active !== false,
+  })).filter((product) => product.productId && product.amount > 0 && product.credits > 0 && product.active);
+}
+
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const gib = bytes / (1024 ** 3);
@@ -148,6 +183,12 @@ function storageCapacityLabel(capacityGb: number): string {
   return `${capacityGb} GB`;
 }
 
+function yenAmountFromLabel(value?: string): number {
+  if (!value) return 0;
+  const digits = value.replace(/[^0-9]/g, '');
+  return digits ? Number(digits) : 0;
+}
+
 function allowedCheckoutUrl(value: string): boolean {
   try {
     const url = new URL(value, window.location.origin);
@@ -157,6 +198,12 @@ function allowedCheckoutUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function openCheckout(payload: unknown): Promise<void> {
+  const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']);
+  if (!url || !allowedCheckoutUrl(url)) throw new Error('許可されたSquare Checkout URLを確認できません。');
+  await openExternalUrl(url);
 }
 
 function PlanGrid({
@@ -173,6 +220,7 @@ function PlanGrid({
   annualSaving,
   monthlyEquivalent,
   monthlyGrant,
+  previewMode,
 }: {
   title: string;
   items: readonly PlanCreditCard[];
@@ -187,7 +235,30 @@ function PlanGrid({
   annualSaving: string;
   monthlyEquivalent: string;
   monthlyGrant: string;
+  previewMode: boolean;
 }) {
+  const [purchase, setPurchase] = useState<PurchaseState>({ status: 'idle' });
+
+  const startPlanCheckout = async (planId: string) => {
+    if (previewMode || purchase.status === 'working') return;
+    setPurchase({ status: 'working', key: planId });
+    try {
+      const payload = await apiRequest('/api/billing/checkout-intents', {
+        method: 'POST',
+        body: {
+          plan_id: planId,
+          billing_cycle: billingCycle,
+          return_to: 'plan-credit',
+          native_callback: nativeCallback('/account/billing/status'),
+        },
+        idempotent: true,
+      });
+      await openCheckout(payload);
+    } catch (error) {
+      setPurchase({ status: 'error', message: error instanceof Error ? error.message : 'Plan Checkoutを開始できませんでした。' });
+    }
+  };
+
   return (
     <section className="plan-credit-section">
       <div className="plan-credit-section-head">
@@ -219,22 +290,18 @@ function PlanGrid({
           const isCurrentPlan = Boolean(subscription.planId)
             && itemPlanId === subscription.planId
             && (isFree || subscription.billingCycle === billingCycle);
-          const usesSubscriptionManagement = subscription.hasLiveSubscription || isFree;
-          const cycleQuery = `billing=${billingCycle}`;
-          const actionHref = usesSubscriptionManagement
-            ? `/account/subscription?target_plan=${encodeURIComponent(itemPlanId)}&${cycleQuery}&return_to=plan-credit`
-            : `/account/checkout?plan=${encodeURIComponent(itemPlanId)}&${cycleQuery}&return_to=plan-credit`;
           const price = billingCycle === 'annual'
             ? (item.annualPrice ?? item.monthlyPrice ?? item.price)
             : (item.monthlyPrice ?? item.price);
           const cycleLabel = billingCycle === 'annual' ? annualLabel : monthlyLabel;
+          const working = purchase.status === 'working' && purchase.key === itemPlanId;
 
           const cardContent: ReactNode = (
             <>
               <div className="plan-credit-plan-top">
                 <div className="plan-credit-plan-heading">
                   <h3>{item.name}</h3>
-                  {price && <div className="plan-credit-price">{price}</div>}
+                  {price && <div className="plan-credit-price">{working ? 'Checkout…' : price}</div>}
                   {billingCycle === 'annual' && !isFree && (
                     <div className="plan-credit-annual-meta">
                       <span className="plan-credit-saving-badge">{annualSaving}</span>
@@ -288,54 +355,126 @@ function PlanGrid({
             </>
           );
 
-          if (isCurrentPlan) {
+          if (isFree || isCurrentPlan) {
             return (
-              <article className="plan-credit-card is-plan is-current-plan" key={item.name}>
+              <article className={`plan-credit-card is-plan${isCurrentPlan ? ' is-current-plan' : ''}`} key={item.name}>
                 {cardContent}
               </article>
             );
           }
 
           return (
-            <a
+            <button
+              type="button"
               className="plan-credit-card is-plan is-actionable"
-              href={actionHref}
               key={item.name}
               aria-label={`${item.name}・${cycleLabel}`}
+              aria-busy={working}
+              disabled={purchase.status === 'working'}
+              onClick={() => void startPlanCheckout(itemPlanId)}
             >
               {cardContent}
-            </a>
+            </button>
           );
         })}
       </div>
+      {purchase.status === 'error' && <div className="plan-credit-purchase-status is-error">{purchase.message}</div>}
     </section>
   );
 }
 
-function SimpleGrid({ title, items, defaultCreditLabel, description }: {
+function CreditSection({
+  title,
+  items,
+  defaultCreditLabel,
+  previewMode,
+}: {
   title: string;
   items: readonly PlanCreditCard[];
   defaultCreditLabel?: string;
-  description?: string;
+  previewMode: boolean;
 }) {
+  const [catalog, setCatalog] = useState<CreditLoadState>(previewMode ? { status: 'ready', products: [] } : { status: 'loading' });
+  const [purchase, setPurchase] = useState<PurchaseState>({ status: 'idle' });
+
+  useEffect(() => {
+    if (previewMode) {
+      setCatalog({ status: 'ready', products: [] });
+      return;
+    }
+    const controller = new AbortController();
+    setCatalog({ status: 'loading' });
+    apiRequest('/api/account/catalog', { signal: controller.signal })
+      .then((payload) => {
+        if (!controller.signal.aborted) setCatalog({ status: 'ready', products: creditProductsFromPayload(payload) });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setCatalog({ status: 'error', message: error instanceof Error ? error.message : 'Credit商品を取得できませんでした。' });
+      });
+    return () => controller.abort();
+  }, [previewMode]);
+
+  const startCreditCheckout = async (productId: string) => {
+    if (previewMode || purchase.status === 'working') return;
+    setPurchase({ status: 'working', key: productId });
+    try {
+      const payload = await apiRequest('/api/billing/checkout-intents', {
+        method: 'POST',
+        body: {
+          product_id: productId,
+          return_to: 'credit',
+          native_callback: nativeCallback('/account/billing/status'),
+        },
+        idempotent: true,
+      });
+      await openCheckout(payload);
+    } catch (error) {
+      setPurchase({ status: 'error', message: error instanceof Error ? error.message : 'Credit Checkoutを開始できませんでした。' });
+    }
+  };
+
   return (
     <section className="plan-credit-section">
       <h2>{title}</h2>
-      {description && <p className="plan-credit-section-description">{description}</p>}
       <div className="plan-credit-grid">
-        {items.map((item) => (
-          <article className={`plan-credit-card${item.price ? ' is-credit' : ' is-storage'}`} key={item.name}>
-            <h3>{item.name}</h3>
-            {item.price && <div className="plan-credit-price">{item.price}</div>}
-            {item.creditValue && (
-              <div className="plan-credit-fact">
-                <span>{item.creditLabel ?? defaultCreditLabel}</span>
-                <strong>{item.creditValue}</strong>
+        {items.map((item) => {
+          const amount = yenAmountFromLabel(item.price);
+          const product = catalog.status === 'ready' ? catalog.products.find((entry) => entry.amount === amount) : undefined;
+          const key = product?.productId ?? item.name;
+          const working = purchase.status === 'working' && purchase.key === key;
+          const unavailable = !previewMode && catalog.status === 'ready' && !product;
+          return (
+            <button
+              type="button"
+              className={`plan-credit-card is-credit plan-credit-purchase-card${product ? ' is-actionable' : ''}`}
+              key={item.name}
+              aria-label={`${item.name} ${item.price ?? ''}`}
+              aria-disabled={unavailable || catalog.status === 'loading'}
+              aria-busy={working}
+              onClick={() => {
+                if (!product) {
+                  if (catalog.status === 'error') setPurchase({ status: 'error', message: catalog.message });
+                  return;
+                }
+                void startCreditCheckout(product.productId);
+              }}
+            >
+              <div className="plan-credit-purchase-top">
+                <h3>{item.name}</h3>
+                {item.price && <div className="plan-credit-price">{working ? 'Checkout…' : item.price}</div>}
               </div>
-            )}
-          </article>
-        ))}
+              {item.creditValue && (
+                <div className="plan-credit-fact">
+                  <span>{item.creditLabel ?? defaultCreditLabel}</span>
+                  <strong>{item.creditValue}</strong>
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
+      {catalog.status === 'error' && purchase.status !== 'error' && <div className="plan-credit-purchase-status is-error">{catalog.message}</div>}
+      {purchase.status === 'error' && <div className="plan-credit-purchase-status is-error">{purchase.message}</div>}
     </section>
   );
 }
@@ -345,25 +484,31 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
     title: '追加ストレージ',
     description: '何度でも購入でき合算されます。',
     loading: 'Storage容量を確認しています…',
+    plan: 'プラン',
     usage: '使用量',
-    currentMax: '現在のMaxストレージ',
+    currentCapacity: '現在のストレージ容量',
     planLimit: 'プラン上限',
-    remaining: '空き',
+    remainingPurchase: '追加可能容量',
+    remaining: '利用可能',
     add: '追加する',
     unavailable: '現在のプランではAstera Storageを追加できません。',
     planExceeded: '現在の契約容量がプラン上限を超えているため、新規保存と追加購入を停止しています。',
+    packUnavailable: '現在の追加可能容量ではこのStorage Packを購入できません。',
     purchaseError: 'Storage Checkoutを開始できませんでした。',
   } : {
     title: 'Additional Storage',
     description: 'Purchase as many times as needed; capacities are combined.',
     loading: 'Loading storage capacity…',
+    plan: 'Plan',
     usage: 'Used',
-    currentMax: 'Current max storage',
+    currentCapacity: 'Current storage capacity',
     planLimit: 'Plan limit',
+    remainingPurchase: 'Additional capacity available',
     remaining: 'Available',
     add: 'Add',
     unavailable: 'Astera Storage is not available on the current plan.',
     planExceeded: 'Current capacity exceeds the plan limit. New writes and purchases are suspended.',
+    packUnavailable: 'This storage pack exceeds the remaining purchase capacity.',
     purchaseError: 'Could not start Storage Checkout.',
   };
   const fallbackPacks = storagePackFallbacks(language);
@@ -397,7 +542,10 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
   const startPurchase = async (productId: string) => {
     if (previewMode || load.status !== 'ready' || purchase.status === 'working') return;
     const pack = load.data.packs.find((item) => item.productId === productId);
-    if (!pack?.canPurchase) return;
+    if (!pack?.canPurchase) {
+      setPurchase({ status: 'error', message: copy.packUnavailable });
+      return;
+    }
     setPurchase({ status: 'working', productId });
     try {
       const payload = await apiRequest('/api/storage/checkout-intents', {
@@ -405,9 +553,7 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
         body: { product_id: productId },
         idempotent: true,
       });
-      const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']);
-      if (!url || !allowedCheckoutUrl(url)) throw new Error('許可されたSquare Checkout URLを確認できません。');
-      window.location.assign(url);
+      await openCheckout(payload);
     } catch (error) {
       setPurchase({ status: 'error', message: error instanceof Error ? error.message : copy.purchaseError });
     }
@@ -433,9 +579,12 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
         <>
           <div className="plan-credit-storage-overview">
             <div className="plan-credit-storage-metrics">
+              <div><span>{copy.plan}</span><strong>{load.data.planId || 'free'}</strong></div>
               <div><span>{copy.usage}</span><strong>{formatBytes(load.data.usedBytes)}</strong></div>
-              <div><span>{copy.currentMax}</span><strong>{storageCapacityLabel(load.data.currentCapacityGb)}</strong></div>
+              <div><span>{copy.currentCapacity}</span><strong>{storageCapacityLabel(load.data.currentCapacityGb)}</strong></div>
               <div><span>{copy.planLimit}</span><strong>{storageCapacityLabel(load.data.planMaxCapacityGb)}</strong></div>
+              <div><span>{copy.remainingPurchase}</span><strong>{storageCapacityLabel(load.data.remainingPurchaseCapacityGb)}</strong></div>
+              <div><span>{copy.remaining}</span><strong>{formatBytes(load.data.remainingBytes)}</strong></div>
             </div>
             <div
               className="plan-credit-storage-gauge"
@@ -447,7 +596,6 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
             >
               <span style={{ width: `${load.data.currentCapacityGb > 0 ? Math.min(100, (load.data.usedBytes / (load.data.currentCapacityGb * 1024 ** 3)) * 100) : 0}%` }} />
             </div>
-            <div className="plan-credit-storage-remaining">{copy.remaining}: {formatBytes(load.data.remainingBytes)}</div>
           </div>
 
           {load.data.planMaxCapacityGb <= 0 && <div className="plan-credit-storage-status">{copy.unavailable}</div>}
@@ -458,18 +606,28 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
       <div className="plan-credit-storage-pack-grid" aria-label={copy.title}>
         {displayPacks.map((pack) => {
           const working = purchase.status === 'working' && purchase.productId === pack.productId;
-          const disabled = load.status !== 'ready' || !pack.canPurchase || purchase.status === 'working';
+          const purchaseBlocked = load.status !== 'ready' || !pack.canPurchase || purchase.status === 'working';
           return (
             <button
               type="button"
-              className="plan-credit-card is-credit plan-credit-storage-pack"
+              className={`plan-credit-card is-credit plan-credit-storage-pack${pack.canPurchase ? ' is-actionable' : ' is-unavailable'}`}
               key={pack.productId}
-              disabled={disabled}
+              aria-disabled={purchaseBlocked}
+              aria-busy={working}
               aria-label={`${pack.displayName} ¥${pack.priceJpy.toLocaleString('ja-JP')}${pack.canPurchase ? ` ${copy.add}` : ''}`}
-              onClick={() => startPurchase(pack.productId)}
+              onClick={() => {
+                if (purchase.status === 'working') return;
+                void startPurchase(pack.productId);
+              }}
             >
-              <h3>{pack.displayName}</h3>
-              <div className="plan-credit-price">{working ? 'Checkout…' : `¥${pack.priceJpy.toLocaleString('ja-JP')}`}</div>
+              <div className="plan-credit-purchase-top">
+                <h3>{pack.displayName}</h3>
+                <div className="plan-credit-price">{working ? 'Checkout…' : `¥${pack.priceJpy.toLocaleString('ja-JP')}`}</div>
+              </div>
+              <div className="plan-credit-fact">
+                <span>{copy.add}</span>
+                <strong>{storageCapacityLabel(pack.capacityGb)}</strong>
+              </div>
             </button>
           );
         })}
@@ -510,7 +668,7 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
         if (next.planId || next.hasLiveSubscription) setSubscription(next);
       })
       .catch(() => {
-        // Current-plan indicator and route selection are additive UI state; keep the page usable if readback fails.
+        // Current-plan indicator is additive UI state; keep the page usable if readback fails.
       });
 
     return () => controller.abort();
@@ -537,11 +695,13 @@ export function PlanCreditPage({ route }: { route: RouteMatch }) {
           annualSaving={pageText.annualSaving}
           monthlyEquivalent={pageText.monthlyEquivalent}
           monthlyGrant={pageText.monthlyGrant}
+          previewMode={previewMode}
         />
-        <SimpleGrid
+        <CreditSection
           title={pageText.creditSectionTitle}
           items={pageText.credits}
           defaultCreditLabel={pageText.grantedCredit}
+          previewMode={previewMode}
         />
         <StorageSection language={language} previewMode={previewMode} />
       </div>
