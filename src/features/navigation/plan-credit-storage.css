@@ -72,11 +72,6 @@
   line-height: 1.5;
 }
 
-/* The plan-ineligible notice is redundant on this commerce surface. */
-.plan-credit-storage-overview + .plan-credit-storage-status:not(.is-error) {
-  display: none;
-}
-
 .plan-credit-storage-status.is-error {
   border-color: var(--danger);
 }
@@ -101,16 +96,12 @@
   margin-top: 12px;
 }
 
-/* Match the existing credit-card visual language, but keep Storage slightly shorter. */
 .plan-credit-storage-pack {
-  --capacity-label: '';
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto auto;
-  align-content: start;
-  gap: 0 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
-  min-height: 154px;
+  min-height: 142px;
   padding: 16px;
   box-sizing: border-box;
   border: 1px solid var(--border-color);
@@ -123,12 +114,7 @@
   transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 
-.plan-credit-storage-pack:nth-child(1) { --capacity-label: '1GB'; }
-.plan-credit-storage-pack:nth-child(2) { --capacity-label: '10GB'; }
-.plan-credit-storage-pack:nth-child(3) { --capacity-label: '50GB'; }
-
 .plan-credit-storage-pack h3 {
-  grid-column: 1 / -1;
   margin: 0;
   min-width: 0;
   font-size: 18px;
@@ -139,33 +125,33 @@
 }
 
 .plan-credit-storage-pack .plan-credit-price {
-  grid-column: 1 / -1;
-  margin: 12px 0 10px;
-  font-size: 26px;
+  margin: 10px 0 8px;
+  font-size: 25px;
   line-height: 1.15;
   font-weight: 800;
   text-align: left;
   white-space: nowrap;
 }
 
-.plan-credit-storage-pack::before,
-.plan-credit-storage-pack::after {
-  padding-top: 10px;
+.plan-credit-storage-pack-detail {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 9px;
   border-top: 1px solid var(--border-color);
   font-size: 13px;
   line-height: 1.35;
 }
 
-.plan-credit-storage-pack::before {
-  content: '追加容量';
-  grid-column: 1;
+.plan-credit-storage-pack-detail span {
   color: var(--text-secondary);
 }
 
-.plan-credit-storage-pack::after {
-  content: var(--capacity-label);
-  grid-column: 2;
+.plan-credit-storage-pack-detail strong {
   color: var(--text-primary);
+  font-size: 15px;
   font-weight: 700;
   text-align: right;
   white-space: nowrap;
@@ -230,7 +216,7 @@
   }
 
   .plan-credit-storage-pack {
-    min-height: 146px;
+    min-height: 134px;
   }
 
   .plan-credit-storage-pack .plan-credit-price {
