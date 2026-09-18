@@ -5,6 +5,7 @@ import { resolvedApiBase } from "../../platform/api-client";
 import type { RouteMatch } from "../../platform/route-registry";
 import { ResponsivePageShell } from "../../platform/ResponsivePageShell";
 import { PLAN_CREDIT_TEXT } from "../navigation/plan-credit-text";
+import { isAllowedCheckoutUrl, readCheckoutResponseError } from "./checkout-security";
 import { CHECKOUT_TEXT } from "./checkout-text";
 import "./checkout-page.css";
 
@@ -22,6 +23,7 @@ type ConnectionState =
   | { status: "checking" }
   | { status: "ready"; currentPlan?: string; productId?: string; storage?: StorageContext }
   | { status: "login-required" }
+  | { status: "reauth-required" }
   | { status: "error"; message: string };
 type SubmitState =
   | { status: "idle" }
@@ -114,18 +116,6 @@ function checkoutUrl(payload: unknown): string {
   if (!isRecord(payload)) return "";
   const data = isRecord(payload.data) ? payload.data : {};
   return firstText(payload, ["checkout_url", "url", "redirect_url"]) || firstText(data, ["checkout_url", "url", "redirect_url"]);
-}
-
-function isAllowedCheckoutUrl(value: string): boolean {
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.origin === window.location.origin) return true;
-    if (url.protocol !== "https:") return false;
-    const host = url.hostname.toLowerCase();
-    return host === "square.link" || host.endsWith(".square.site") || host.endsWith(".squareup.com");
-  } catch {
-    return false;
-  }
 }
 
 function checkoutReturnTo(value: string | null): CheckoutReturnTo {
@@ -234,11 +224,14 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
         headers: { Accept: "application/json" },
         signal: controller.signal,
       });
-      if (response.status === 401 || response.status === 403) {
-        setConnection({ status: "login-required" });
-        return;
+      if (!response.ok) {
+        const failure = await readCheckoutResponseError(response, `${kind.toUpperCase()}_CATALOG_HTTP_${response.status}`);
+        if (failure.authentication) {
+          setConnection({ status: failure.authentication });
+          return;
+        }
+        throw new Error(failure.code);
       }
-      if (!response.ok) throw new Error(`${kind.toUpperCase()}_CATALOG_HTTP_${response.status}`);
       const payload: unknown = await response.json();
 
       if (kind === "plan") {
@@ -343,23 +336,14 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      if (response.status === 401 || response.status === 403) {
-        setConnection({ status: "login-required" });
-        setSubmit({ status: "idle" });
-        return;
-      }
       if (!response.ok) {
-        let code = `CHECKOUT_INTENT_HTTP_${response.status}`;
-        try {
-          const payload: unknown = await response.json();
-          if (isRecord(payload)) {
-            const error = isRecord(payload.error) ? payload.error : payload;
-            code = firstText(error, ["code", "message"]) || code;
-          }
-        } catch {
-          // Keep the HTTP fallback code.
+        const failure = await readCheckoutResponseError(response, `CHECKOUT_INTENT_HTTP_${response.status}`);
+        if (failure.authentication) {
+          setConnection({ status: failure.authentication });
+          setSubmit({ status: "idle" });
+          return;
         }
-        throw new Error(code);
+        throw new Error(failure.code);
       }
       const payload: unknown = await response.json();
       const destination = checkoutUrl(payload);
@@ -503,6 +487,12 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
                   <>
                     <span>{text.loginRequired}</span>
                     <div className="checkout-connection-actions"><a href={`/login?return_to=${loginReturn}`}>{text.login}</a><a href={`/register?return_to=${loginReturn}`}>{text.register}</a></div>
+                  </>
+                )}
+                {connection.status === "reauth-required" && (
+                  <>
+                    <span>{text.reauthRequired}</span>
+                    <div className="checkout-connection-actions"><a href={`/login?return_to=${loginReturn}`}>{text.reauthenticate}</a></div>
                   </>
                 )}
                 {connection.status === "error" && (

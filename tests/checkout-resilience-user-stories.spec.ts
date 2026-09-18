@@ -46,3 +46,56 @@ test('STORY-CHECKOUT-003 rapid duplicate confirmation creates one Checkout Inten
   expect(idempotencyKeys[0].length).toBeGreaterThan(10);
   expect(requestIds[0]).toBe(idempotencyKeys[0]);
 });
+
+test('STORY-CHECKOUT-004 a stale authenticated session requests reauthentication and keeps the checkout return URL', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') {
+      return json(route, { account: { account_status: 'active', email: 'checkout@example.test' } });
+    }
+    if (path === '/api/account/catalog') {
+      return json(route, { error: { code: 'FRESH_SESSION_REQUIRED', message: 'Fresh session required' } }, 403);
+    }
+    return json(route, { ok: true });
+  });
+
+  await page.goto('/account/checkout?plan=basic&return_to=pricing');
+  await expect(page.getByText('安全な決済操作のため再認証してください。')).toBeVisible();
+  await expect(page.getByText('決済へ進むにはLoginが必要です。')).toHaveCount(0);
+  const href = await page.getByRole('link', { name: '再認証' }).getAttribute('href');
+  expect(decodeURIComponent(href ?? '')).toContain('/account/checkout?plan=basic&return_to=pricing');
+});
+
+test('STORY-CHECKOUT-005 a missing session remains a Login-required state', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') {
+      return json(route, { account: { account_status: 'active', email: 'checkout@example.test' } });
+    }
+    if (path === '/api/account/catalog') {
+      return json(route, { error: { code: 'SESSION_REQUIRED', message: 'Login required' } }, 401);
+    }
+    return json(route, { ok: true });
+  });
+
+  await page.goto('/account/checkout?plan=basic&return_to=pricing');
+  await expect(page.getByText('決済へ進むにはLoginが必要です。')).toBeVisible();
+  await expect(page.getByText('安全な決済操作のため再認証してください。')).toHaveCount(0);
+});
+
+test('STORY-CHECKOUT-006 a non-auth 403 preserves the account error code', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') {
+      return json(route, { account: { account_status: 'active', email: 'checkout@example.test' } });
+    }
+    if (path === '/api/account/catalog') {
+      return json(route, { error: { code: 'ACCOUNT_SUSPENDED', message: 'Account suspended' } }, 403);
+    }
+    return json(route, { ok: true });
+  });
+
+  await page.goto('/account/checkout?plan=basic&return_to=pricing');
+  await expect(page.getByRole('alert')).toContainText('ACCOUNT_SUSPENDED');
+  await expect(page.getByText('決済へ進むにはLoginが必要です。')).toHaveCount(0);
+});

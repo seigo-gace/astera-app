@@ -36,6 +36,8 @@ export const CHECKOUT_TEXT = {
     connectionChecking: "決済接続を確認しています…",
     connectionBlocked: "現在Squareへ進めません。決済接続を再確認してください。",
     loginRequired: "決済へ進むにはLoginが必要です。",
+    reauthRequired: "安全な決済操作のため再認証してください。",
+    reauthenticate: "再認証",
     login: "Login",
     register: "Account登録",
     retry: "再確認",
@@ -81,6 +83,8 @@ export const CHECKOUT_TEXT = {
     connectionBlocked:
       "Square Checkout is currently unavailable. Check the payment connection again.",
     loginRequired: "Login is required before payment.",
+    reauthRequired: "Please reauthenticate to continue this secure payment operation.",
+    reauthenticate: "Reauthenticate",
     login: "Login",
     register: "Create account",
     retry: "Retry",

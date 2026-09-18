@@ -4,6 +4,7 @@ import { openExternalUrl } from '../../platform/external-navigation';
 import { resolvedApiBase } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
+import { isAllowedCheckoutUrl, readCheckoutResponseError } from './checkout-security';
 import { CHECKOUT_TEXT } from './checkout-text';
 import './checkout-page.css';
 
@@ -12,6 +13,8 @@ type PurchaseKind = 'credit' | 'storage';
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; productId: string; currentCapacityGb?: number; planMaxCapacityGb?: number }
+  | { status: 'login-required' }
+  | { status: 'reauth-required' }
   | { status: 'error'; message: string };
 type SubmitState = 'idle' | 'submitting';
 
@@ -47,17 +50,6 @@ function checkoutUrl(payload: unknown): string {
   if (!isRecord(payload)) return '';
   const data = isRecord(payload.data) ? payload.data : {};
   return textValue(payload, ['checkout_url', 'url', 'redirect_url']) || textValue(data, ['checkout_url', 'url', 'redirect_url']);
-}
-
-function allowedCheckoutUrl(value: string): boolean {
-  try {
-    const url = new URL(value, window.location.origin);
-    if (url.protocol !== 'https:') return false;
-    const host = url.hostname.toLowerCase();
-    return host === 'square.link' || host.endsWith('.square.site') || host.endsWith('.squareup.com');
-  } catch {
-    return false;
-  }
 }
 
 function money(value: number): string {
@@ -107,7 +99,14 @@ export default function OneTimeCheckoutPage({ route, kind }: { route: RouteMatch
           throw new Error('CREDIT_SELECTION_INVALID');
         }
         const response = await fetch(ACCOUNT_CATALOG_ENDPOINT, { credentials: 'include', headers: { Accept: 'application/json' }, signal: controller.signal });
-        if (!response.ok) throw new Error(`ACCOUNT_CATALOG_HTTP_${response.status}`);
+        if (!response.ok) {
+          const failure = await readCheckoutResponseError(response, `ACCOUNT_CATALOG_HTTP_${response.status}`);
+          if (failure.authentication) {
+            setLoad({ status: failure.authentication });
+            return;
+          }
+          throw new Error(failure.code);
+        }
         const payload: unknown = await response.json();
         if (!isRecord(payload)) throw new Error('ACCOUNT_CATALOG_INVALID');
         const products = Array.isArray(payload.creditProducts)
@@ -126,7 +125,14 @@ export default function OneTimeCheckoutPage({ route, kind }: { route: RouteMatch
         throw new Error('STORAGE_SELECTION_INVALID');
       }
       const response = await fetch(STORAGE_CATALOG_ENDPOINT, { credentials: 'include', headers: { Accept: 'application/json' }, signal: controller.signal });
-      if (!response.ok) throw new Error(`STORAGE_CATALOG_HTTP_${response.status}`);
+      if (!response.ok) {
+        const failure = await readCheckoutResponseError(response, `STORAGE_CATALOG_HTTP_${response.status}`);
+        if (failure.authentication) {
+          setLoad({ status: failure.authentication });
+          return;
+        }
+        throw new Error(failure.code);
+      }
       const payload: unknown = await response.json();
       if (!isRecord(payload)) throw new Error('STORAGE_CATALOG_INVALID');
       const packs = Array.isArray(payload.packs) ? payload.packs : [];
@@ -176,10 +182,17 @@ export default function OneTimeCheckoutPage({ route, kind }: { route: RouteMatch
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey, 'X-Request-ID': idempotencyKey },
         body: JSON.stringify(body),
       });
-      if (!response.ok) throw new Error(`CHECKOUT_INTENT_HTTP_${response.status}`);
+      if (!response.ok) {
+        const failure = await readCheckoutResponseError(response, `CHECKOUT_INTENT_HTTP_${response.status}`);
+        if (failure.authentication) {
+          setLoad({ status: failure.authentication });
+          return;
+        }
+        throw new Error(failure.code);
+      }
       const payload: unknown = await response.json();
       const destination = checkoutUrl(payload);
-      if (!destination || !allowedCheckoutUrl(destination)) throw new Error('CHECKOUT_URL_REJECTED');
+      if (!destination || !isAllowedCheckoutUrl(destination)) throw new Error('CHECKOUT_URL_REJECTED');
       await openExternalUrl(destination);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'CHECKOUT_INTENT_FAILED');
@@ -196,6 +209,7 @@ export default function OneTimeCheckoutPage({ route, kind }: { route: RouteMatch
   const planLimit = load.status === 'ready' ? load.planMaxCapacityGb ?? 0 : 0;
   const afterCapacity = currentCapacity + capacityGb;
   const canPay = load.status === 'ready' && accepted && submit !== 'submitting';
+  const loginReturn = encodeURIComponent(window.location.pathname + window.location.search);
 
   return (
     <ResponsivePageShell route={route} fullWidth>
@@ -244,6 +258,18 @@ export default function OneTimeCheckoutPage({ route, kind }: { route: RouteMatch
         <p className="checkout-square-note">{text.squareNote}</p>
 
         {load.status === 'loading' && <div className="checkout-connection" role="status"><span>{text.connectionChecking}</span></div>}
+        {load.status === 'login-required' && (
+          <div className="checkout-connection is-login-required" role="status">
+            <span>{text.loginRequired}</span>
+            <div className="checkout-connection-actions"><a href={`/login?return_to=${loginReturn}`}>{text.login}</a><a href={`/register?return_to=${loginReturn}`}>{text.register}</a></div>
+          </div>
+        )}
+        {load.status === 'reauth-required' && (
+          <div className="checkout-connection is-reauth-required" role="status">
+            <span>{text.reauthRequired}</span>
+            <div className="checkout-connection-actions"><a href={`/login?return_to=${loginReturn}`}>{text.reauthenticate}</a></div>
+          </div>
+        )}
         {load.status === 'error' && (
           <div className="checkout-connection is-error" role="alert"><span>{copy.invalid}</span><code>{load.message}</code><button type="button" onClick={() => void loadPurchase()}>{text.retry}</button></div>
         )}
