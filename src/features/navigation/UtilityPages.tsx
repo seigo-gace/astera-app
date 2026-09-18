@@ -349,16 +349,17 @@ function StorageSection({ language, previewMode }: { language: 'ja' | 'en'; prev
       <div className="plan-credit-storage-pack-grid" aria-label={copy.title}>
         {displayPacks.map((pack) => {
           const href = `/account/checkout?kind=storage&product=${encodeURIComponent(pack.productId)}&capacity=${pack.capacityGb}&amount=${pack.priceJpy}&return_to=plan-credit`;
-          const card = (
-            <>
+          return (
+            <a
+              className="plan-credit-card is-credit plan-credit-storage-pack is-actionable"
+              href={href}
+              key={pack.productId}
+              aria-label={`${pack.displayName}${language === 'ja' ? '追加' : ' add'} ¥${pack.priceJpy.toLocaleString('ja-JP')}`}
+            >
               <h3 className="plan-credit-storage-pack-title">{pack.displayName}{language === 'ja' ? '追加' : ' add'}</h3>
               <div className="plan-credit-storage-pack-price">¥{pack.priceJpy.toLocaleString('ja-JP')}</div>
-            </>
+            </a>
           );
-          if (load.status === 'ready' && pack.canPurchase) {
-            return <a className="plan-credit-card is-credit plan-credit-storage-pack is-actionable" href={href} key={pack.productId}>{card}</a>;
-          }
-          return <article className="plan-credit-card is-credit plan-credit-storage-pack is-unavailable" key={pack.productId} aria-disabled="true">{card}</article>;
         })}
       </div>
     </section>
