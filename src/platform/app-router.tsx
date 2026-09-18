@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import BetaSurveyGate from '../features/beta/BetaSurveyGate';
 import CheckoutPage from '../features/checkout/CheckoutPage';
 import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
@@ -30,7 +31,6 @@ function accountContinuation(payload: unknown, returnTo: string): string | null 
   const params = new URLSearchParams({ return_to: returnTo });
   const email = recordText(account, ['email']);
   if (email) params.set('email', email);
-
   if (status === 'pending_email_verification') return `/verify-email?${params.toString()}`;
   if (status === 'pending_password_setup') return `/account/password/setup?${params.toString()}`;
   return null;
@@ -38,7 +38,7 @@ function accountContinuation(payload: unknown, returnTo: string): string | null 
 
 function AccountSessionGate({ children }: { children: ReactNode }) {
   if (previewWithoutAuth()) {
-    return <AccountSessionProvider value={PREVIEW_ACCOUNT_SESSION}>{children}</AccountSessionProvider>;
+    return <AccountSessionProvider value={PREVIEW_ACCOUNT_SESSION}><BetaSurveyGate>{children}</BetaSurveyGate></AccountSessionProvider>;
   }
   return <AccountSessionGateLive>{children}</AccountSessionGateLive>;
 }
@@ -58,24 +58,13 @@ function AccountSessionGateLive({ children }: { children: ReactNode }) {
           window.location.replace(continuation);
           return;
         }
-
         const account = accountProjection(payload);
         const accountStatus = recordText(account, ['account_status', 'status']);
         if (accountStatus && accountStatus !== 'active') {
-          setState({
-            status: 'error',
-            error: new ApiError('Accountの現在状態ではこのPageを利用できません。', 403, `ACCOUNT_${accountStatus.toUpperCase()}`, payload),
-          });
+          setState({ status: 'error', error: new ApiError('Accountの現在状態ではこのPageを利用できません。', 403, `ACCOUNT_${accountStatus.toUpperCase()}`, payload) });
           return;
         }
-        setState({
-          status: 'ready',
-          session: {
-            payload,
-            accountStatus: accountStatus || 'active',
-            displayName: recordText(account, ['nickname', 'display_name', 'name', 'email'], 'Account'),
-          },
-        });
+        setState({ status: 'ready', session: { payload, accountStatus: accountStatus || 'active', displayName: recordText(account, ['nickname', 'display_name', 'name', 'email'], 'Account') } });
       })
       .catch((error: unknown) => {
         if (error instanceof ApiError) {
@@ -93,51 +82,36 @@ function AccountSessionGateLive({ children }: { children: ReactNode }) {
 
   if (state.status === 'loading') return <BusyState label="AccountとSessionを確認しています…" />;
   if (state.status === 'error') return <ErrorState error={state.error} onRetry={() => setAttempt((value) => value + 1)} />;
-  return <AccountSessionProvider value={state.session}>{children}</AccountSessionProvider>;
+  return <AccountSessionProvider value={state.session}><BetaSurveyGate>{children}</BetaSurveyGate></AccountSessionProvider>;
 }
 
 function RootRedirect() {
-  useEffect(() => {
-    window.location.replace('/app/new');
-  }, []);
+  useEffect(() => { window.location.replace('/app/new'); }, []);
   return <BusyState label="Astera Appを開いています…" />;
 }
 
 function LegacySearchRedirect() {
-  useEffect(() => {
-    window.location.replace('/app/history');
-  }, []);
+  useEffect(() => { window.location.replace('/app/history'); }, []);
   return null;
 }
 
 function LegacyPlanRedirect() {
-  useEffect(() => {
-    window.location.replace('/app/plan-credit');
-  }, []);
+  useEffect(() => { window.location.replace('/app/plan-credit'); }, []);
   return null;
 }
 
 export default function AppRouter() {
   if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/app/search') return <LegacySearchRedirect />;
   const route = matchCanonicalRoute(window.location.pathname);
-
   if (route.id === 'root') return <RootRedirect />;
   if (route.id === 'pricing') return <PricingPage />;
-
   if (route.id === 'account-checkout') {
     return <AccountSessionGate><CheckoutPage route={route} /></AccountSessionGate>;
   }
-
-  if (route.id === 'account-subscription') {
-    return <LegacyPlanRedirect />;
-  }
-
+  if (route.id === 'account-subscription') return <LegacyPlanRedirect />;
   if (route.id === 'app' || route.id === 'new-run') {
     return <AccountSessionGate><NativeComposerPage route={route} /></AccountSessionGate>;
   }
-
   const page = <CanonicalPage route={route} />;
-  return route.access === 'authenticated'
-    ? <AccountSessionGate>{page}</AccountSessionGate>
-    : page;
+  return route.access === 'authenticated' ? <AccountSessionGate>{page}</AccountSessionGate> : page;
 }
