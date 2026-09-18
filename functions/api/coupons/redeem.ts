@@ -41,9 +41,38 @@ function successResponse(row: RedemptionRow, requestId: string): Response {
   }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
 }
 
+async function releaseCapacity(env: RewardProgramEnv, digest: string, campaignId: string, releaseCode: boolean, releaseCampaign: boolean): Promise<void> {
+  const now = new Date().toISOString();
+  const statements = [];
+  if (releaseCode) {
+    statements.push(env.ASTERA_DB.prepare(
+      `UPDATE coupon_code_projection
+       SET redeemed_count=CASE WHEN redeemed_count>0 THEN redeemed_count-1 ELSE 0 END,
+           status=CASE WHEN status='exhausted' THEN 'active' ELSE status END,
+           updated_at=?1
+       WHERE code_digest=?2`,
+    ).bind(now, digest));
+  }
+  if (releaseCampaign) {
+    statements.push(env.ASTERA_DB.prepare(
+      `UPDATE coupon_campaign_projection
+       SET redeemed_count=CASE WHEN redeemed_count>0 THEN redeemed_count-1 ELSE 0 END,
+           status=CASE WHEN status='exhausted' THEN 'active' ELSE status END,
+           updated_at=?1
+       WHERE id=?2`,
+    ).bind(now, campaignId));
+  }
+  if (statements.length) await env.ASTERA_DB.batch(statements);
+}
+
 export async function onRequest(context: PagesContext): Promise<Response> {
   const correlationId = requestCorrelationId(context.request);
   let redemptionId = '';
+  let digest = '';
+  let campaignId = '';
+  let codeCapacityClaimed = false;
+  let campaignCapacityClaimed = false;
+  let rewardStarted = false;
   try {
     if (context.request.method !== 'POST') {
       return Response.json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'POSTを使用してください。', correlation_id: correlationId } }, { status: 405 });
@@ -61,16 +90,19 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       throw new FunctionHttpError(409, 'REDEMPTION_IN_PROGRESS', 'このコードの適用処理を確認しています。再度お試しください。', { redemption_id: prior.id, state: prior.state });
     }
 
-    const digest = await rewardCodeDigest(context.env, body?.code);
+    digest = await rewardCodeDigest(context.env, body?.code);
     const coupon = await validateCouponForActor(
       context.env.ASTERA_DB,
       actor,
       await loadCouponProjection(context.env.ASTERA_DB, digest),
     );
+    campaignId = coupon.campaign_id;
     const items = parseRewardItems(coupon.items_json);
+
     const countRow = await context.env.ASTERA_DB.prepare(
-      `SELECT COUNT(*) AS count FROM coupon_redemptions WHERE code_digest=?1 AND user_id=?2`,
-    ).bind(digest, actor.user.id).first<{ count: number }>();
+      `SELECT COUNT(*) AS count FROM coupon_redemptions
+       WHERE campaign_id=?1 AND user_id=?2`,
+    ).bind(coupon.campaign_id, actor.user.id).first<{ count: number }>();
     const redemptionSeq = Number(countRow?.count ?? 0) + 1;
     redemptionId = crypto.randomUUID();
     const fingerprint = await requestFingerprint([
@@ -84,23 +116,50 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     ]);
     const now = new Date().toISOString();
 
-    const inserted = await context.env.ASTERA_DB.prepare(
+    await context.env.ASTERA_DB.prepare(
       `INSERT OR IGNORE INTO coupon_redemptions
        (id, code_digest, campaign_id, reward_package_id, user_id, tenant_id, redemption_seq, state,
         client_request_id, request_fingerprint, created_at, updated_at)
        VALUES (?1,?2,?3,?4,?5,?6,?7,'reserved',?8,?9,?10,?10)`,
     ).bind(redemptionId, digest, coupon.campaign_id, coupon.reward_package_id, actor.user.id, actor.profile.tenant_id, redemptionSeq, clientRequestId, fingerprint, now).run();
-    if (inserted.success === false) throw new FunctionHttpError(503, 'REDEMPTION_RESERVATION_FAILED', 'Coupon適用を開始できませんでした。');
 
     const reserved = await loadExisting(context.env, actor.user.id, clientRequestId);
     if (!reserved) throw new FunctionHttpError(409, 'USED', 'すでに使用されています。');
     redemptionId = reserved.id;
     if (reserved.state === 'applied') return successResponse(reserved, correlationId);
 
-    await context.env.ASTERA_DB.prepare(
-      `UPDATE coupon_redemptions SET state='applying', updated_at=?1 WHERE id=?2 AND state IN ('reserved','failed')`,
-    ).bind(new Date().toISOString(), redemptionId).run();
+    const codeClaim = await context.env.ASTERA_DB.prepare(
+      `UPDATE coupon_code_projection
+       SET redeemed_count=redeemed_count+1,
+           status=CASE WHEN redeemed_count+1 >= redemption_limit THEN 'exhausted' ELSE status END,
+           updated_at=?1
+       WHERE code_digest=?2 AND status='active' AND redeemed_count < redemption_limit
+       RETURNING code_digest`,
+    ).bind(now, digest).first<{ code_digest: string }>();
+    if (!codeClaim) throw new FunctionHttpError(409, 'USED', 'すでに使用されています。');
+    codeCapacityClaimed = true;
 
+    const campaignClaim = await context.env.ASTERA_DB.prepare(
+      `UPDATE coupon_campaign_projection
+       SET redeemed_count=redeemed_count+1,
+           status=CASE WHEN total_limit IS NOT NULL AND redeemed_count+1 >= total_limit THEN 'exhausted' ELSE status END,
+           updated_at=?1
+       WHERE id=?2 AND status='active' AND (total_limit IS NULL OR redeemed_count < total_limit)
+       RETURNING id`,
+    ).bind(now, coupon.campaign_id).first<{ id: string }>();
+    if (!campaignClaim) {
+      await releaseCapacity(context.env, digest, coupon.campaign_id, true, false);
+      codeCapacityClaimed = false;
+      throw new FunctionHttpError(409, 'LIMIT_REACHED', '利用上限に達しています。');
+    }
+    campaignCapacityClaimed = true;
+
+    const applying = await context.env.ASTERA_DB.prepare(
+      `UPDATE coupon_redemptions SET state='applying', updated_at=?1 WHERE id=?2 AND state IN ('reserved','failed') RETURNING id`,
+    ).bind(new Date().toISOString(), redemptionId).first<{ id: string }>();
+    if (!applying) throw new FunctionHttpError(409, 'REDEMPTION_IN_PROGRESS', 'このコードの適用処理を確認しています。再度お試しください。');
+
+    rewardStarted = true;
     const application = await applyRewardItems(context.env.ASTERA_DB, actor, items, {
       referenceType: 'coupon_redemption',
       referenceId: redemptionId,
@@ -108,28 +167,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     });
 
     const appliedAt = new Date().toISOString();
-    const results = await context.env.ASTERA_DB.batch([
-      context.env.ASTERA_DB.prepare(
-        `UPDATE coupon_code_projection
-         SET redeemed_count=redeemed_count+1,
-             status=CASE WHEN redeemed_count+1 >= redemption_limit THEN 'exhausted' ELSE status END,
-             updated_at=?1
-         WHERE code_digest=?2
-           AND redeemed_count < redemption_limit`,
-      ).bind(appliedAt, digest),
-      context.env.ASTERA_DB.prepare(
-        `UPDATE coupon_campaign_projection
-         SET redeemed_count=redeemed_count+1,
-             status=CASE WHEN total_limit IS NOT NULL AND redeemed_count+1 >= total_limit THEN 'exhausted' ELSE status END,
-             updated_at=?1
-         WHERE id=?2
-           AND (total_limit IS NULL OR redeemed_count < total_limit)`,
-      ).bind(appliedAt, coupon.campaign_id),
-      context.env.ASTERA_DB.prepare(
-        `UPDATE coupon_redemptions SET state='applied', error_code=NULL, applied_at=?1, updated_at=?1 WHERE id=?2`,
-      ).bind(appliedAt, redemptionId),
-    ]);
-    if (results.some((result) => result.success === false)) {
+    const finalized = await context.env.ASTERA_DB.prepare(
+      `UPDATE coupon_redemptions SET state='applied', error_code=NULL, applied_at=?1, updated_at=?1
+       WHERE id=?2 AND state='applying' RETURNING id`,
+    ).bind(appliedAt, redemptionId).first<{ id: string }>();
+    if (!finalized) {
       await context.env.ASTERA_DB.prepare(
         `UPDATE coupon_redemptions SET state='reconcile_required', error_code='FINALIZE_FAILED', updated_at=?1 WHERE id=?2`,
       ).bind(new Date().toISOString(), redemptionId).run();
@@ -147,14 +189,23 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       applied_at: appliedAt,
     }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': correlationId } });
   } catch (error) {
+    if (redemptionId && !rewardStarted && (codeCapacityClaimed || campaignCapacityClaimed)) {
+      try {
+        await releaseCapacity(context.env, digest, campaignId, codeCapacityClaimed, campaignCapacityClaimed);
+        codeCapacityClaimed = false;
+        campaignCapacityClaimed = false;
+      } catch {
+        // Capacity release failure is surfaced through redemption reconcile state below.
+      }
+    }
     if (redemptionId && error instanceof Error && !(error instanceof FunctionHttpError && error.code === 'RECONCILE_REQUIRED')) {
       try {
         await context.env.ASTERA_DB.prepare(
           `UPDATE coupon_redemptions
-           SET state=CASE WHEN state='applying' THEN 'reconcile_required' ELSE 'failed' END,
-               error_code=?1, updated_at=?2
-           WHERE id=?3 AND state<>'applied'`,
-        ).bind(error instanceof FunctionHttpError ? error.code : 'REWARD_APPLICATION_FAILED', new Date().toISOString(), redemptionId).run();
+           SET state=CASE WHEN ?1=1 THEN 'reconcile_required' ELSE 'failed' END,
+               error_code=?2, updated_at=?3
+           WHERE id=?4 AND state<>'applied'`,
+        ).bind(rewardStarted ? 1 : 0, error instanceof FunctionHttpError ? error.code : 'REWARD_APPLICATION_FAILED', new Date().toISOString(), redemptionId).run();
       } catch {
         // Original error is preserved. Recovery is handled by reconcile_required/audit flow.
       }
