@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import BetaSurveyGate from '../features/beta/BetaSurveyGate';
-import CheckoutPage from '../features/checkout/CheckoutPage';
+import CheckoutRouterPage from '../features/checkout/CheckoutRouterPage';
 import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
@@ -106,7 +106,7 @@ export default function AppRouter() {
   if (route.id === 'root') return <RootRedirect />;
   if (route.id === 'pricing') return <PricingPage />;
   if (route.id === 'account-checkout') {
-    return <AccountSessionGate><CheckoutPage route={route} /></AccountSessionGate>;
+    return <AccountSessionGate><CheckoutRouterPage route={route} /></AccountSessionGate>;
   }
   if (route.id === 'account-subscription') return <LegacyPlanRedirect />;
   if (route.id === 'app' || route.id === 'new-run') {
