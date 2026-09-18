@@ -38,6 +38,39 @@
         color: var(--ex-muted, var(--platform-muted,var(--text-tertiary,#aaa)));
         opacity: .55;
       }
+      .platform-side-meta > a[href="https://asterav8.jp/"] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 10px !important;
+        min-height: 40px !important;
+        border-radius: 9px !important;
+        padding-inline: 10px !important;
+        --platform-nav-icon: url("https://cdn.jsdelivr.net/npm/lucide-static@1.28.0/icons/circle-question-mark.svg");
+      }
+      .platform-side-meta > a[href="https://asterav8.jp/"]::before {
+        content: "" !important;
+        display: block !important;
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+        flex: 0 0 20px !important;
+        background: currentColor !important;
+        -webkit-mask: var(--platform-nav-icon) center/20px 20px no-repeat !important;
+        mask: var(--platform-nav-icon) center/20px 20px no-repeat !important;
+        opacity: .92 !important;
+      }
+      @media (min-width: 761px) {
+        html .platform-shell.exterior-sidebar-collapsed .platform-side-meta > a[href="https://asterav8.jp/"] {
+          display: flex !important;
+          justify-content: center !important;
+          width: 100% !important;
+          padding-inline: 0 !important;
+          font-size: 0 !important;
+        }
+        html .platform-shell.exterior-sidebar-collapsed .platform-side-meta > a[href="https://asterav8.jp/"]::before {
+          margin: 0 !important;
+        }
+      }
     </style>
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
