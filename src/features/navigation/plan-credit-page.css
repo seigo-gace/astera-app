@@ -277,17 +277,22 @@
   font-weight: 700;
 }
 
-.plan-credit-feature-list {
+.plan-credit-feature-list,
+.plan-credit-basic-column:nth-child(2) .plan-credit-basic-list {
   display: grid;
   gap: 7px;
   margin: 10px 0 0;
   padding-left: 18px;
+  list-style: disc;
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.45;
 }
 
-.plan-credit-feature-list li {
+.plan-credit-feature-list li,
+.plan-credit-basic-column:nth-child(2) .plan-credit-basic-list li {
+  display: list-item;
+  list-style: disc;
   overflow-wrap: anywhere;
 }
 
@@ -325,7 +330,7 @@
   color: var(--text-primary);
 }
 
-.plan-credit-basic-list {
+.plan-credit-basic-column:first-child .plan-credit-basic-list {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -337,13 +342,17 @@
   line-height: 1.35;
 }
 
-.plan-credit-basic-list li {
+.plan-credit-basic-column:first-child .plan-credit-basic-list li {
   display: block;
   min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
   overflow-wrap: anywhere;
+}
+
+.plan-credit-basic-column:nth-child(2) .plan-credit-basic-list {
+  margin-top: 0;
 }
 
 @media (max-width: 1023px) {
@@ -400,7 +409,7 @@
     gap: 10px;
   }
 
-  .plan-credit-basic-list {
+  .plan-credit-basic-column:first-child .plan-credit-basic-list {
     font-size: 12px;
   }
 }
