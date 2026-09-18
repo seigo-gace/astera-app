@@ -56,8 +56,17 @@ export async function proxyBillingRequest(
     body: method === 'GET' || method === 'HEAD' ? undefined : body,
   });
 
-  const responseHeaders = new Headers(upstream.headers);
-  responseHeaders.set('Cache-Control', 'no-store');
-  responseHeaders.set('X-Correlation-ID', requestId);
-  return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
+  // Cloudflare Pages/Workers: forwarding hop-by-hop upstream headers (Connection,
+  // Keep-Alive, Transfer-Encoding, etc.) can crash the isolate with plain-text 502.
+  // Buffer the body and return only safe client headers.
+  const upstreamText = await upstream.text();
+  const responseHeaders = new Headers({
+    'Cache-Control': 'no-store',
+    'X-Correlation-ID': requestId,
+  });
+  const upstreamContentType = upstream.headers.get('Content-Type')?.trim();
+  if (upstreamContentType) responseHeaders.set('Content-Type', upstreamContentType);
+  const upstreamCorrelation = upstream.headers.get('X-Correlation-ID')?.trim();
+  if (upstreamCorrelation) responseHeaders.set('X-Upstream-Correlation-ID', upstreamCorrelation);
+  return new Response(upstreamText, { status: upstream.status, headers: responseHeaders });
 }
