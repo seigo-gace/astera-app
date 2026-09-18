@@ -12,7 +12,7 @@ export type CanonicalRoute = {
 
 export type RouteMatch = CanonicalRoute & { params: Record<string, string> };
 
-export const CANONICAL_ROUTE_COUNT = 45;
+export const CANONICAL_ROUTE_COUNT = 44;
 
 export const canonicalRoutes: readonly CanonicalRoute[] = [
   { id: 'root', pattern: '/', title: 'Astera App', group: 'entry', access: 'public' },
@@ -30,7 +30,6 @@ export const canonicalRoutes: readonly CanonicalRoute[] = [
   { id: 'projects', pattern: '/app/projects', title: 'プロジェクト', group: 'app', access: 'authenticated', nav: 'projects' },
   { id: 'plan-credit', pattern: '/app/plan-credit', title: 'プラン / クレジット', group: 'app', access: 'authenticated', nav: 'plan-credit' },
   { id: 'history', pattern: '/app/history', title: '履歴', group: 'app', access: 'authenticated', nav: 'history' },
-  { id: 'about', pattern: '/app/about', title: 'ASTERAとは？', group: 'app', access: 'authenticated' },
   { id: 'settings', pattern: '/app/settings', title: '設定', group: 'settings', access: 'authenticated', nav: 'settings' },
   { id: 'settings-options', pattern: '/app/settings/options', title: 'オプション', group: 'settings', access: 'authenticated', nav: 'options' },
   { id: 'settings-language', pattern: '/app/settings/language', title: '言語', group: 'settings', access: 'authenticated', nav: 'settings' },
@@ -115,5 +114,6 @@ export function safeReturnPath(rawValue: string | null | undefined, fallback = '
     const route = matchCanonicalRoute(url.pathname);
     if (route.group === 'auth') return fallback;
     return `${url.pathname}${url.search}${url.hash}`;
-  } catch { return fallback; }
+  } catch { return fallback;
+  }
 }
