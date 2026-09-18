@@ -304,12 +304,17 @@
 
 .plan-credit-basic-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
   gap: 14px;
 }
 
 .plan-credit-basic-column {
+  display: block;
   min-width: 0;
+  visibility: visible;
+  opacity: 1;
 }
 
 .plan-credit-basic-column-title {
@@ -321,10 +326,11 @@
 }
 
 .plan-credit-basic-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 5px;
   margin: 0;
-  padding-left: 0;
+  padding: 0;
   list-style: none;
   color: var(--text-primary);
   font-size: 13px;
@@ -332,7 +338,12 @@
 }
 
 .plan-credit-basic-list li {
+  display: block;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1023px) {
@@ -385,6 +396,7 @@
   }
 
   .plan-credit-basic-columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
   }
 
