@@ -98,19 +98,18 @@ export async function sha256Hex(value: string): Promise<string> {
   return toHex(new Uint8Array(digest));
 }
 
-async function hmacHex(keyBytes: Uint8Array, value: string): Promise<string> {
+async function hmacHex(keyBytes: ArrayBuffer, value: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value));
   return toHex(new Uint8Array(signature));
 }
 
-async function codeDigestKey(env: RewardProgramEnv): Promise<Uint8Array> {
+async function codeDigestKey(env: RewardProgramEnv): Promise<ArrayBuffer> {
   const secret = requiredSecret(env);
-  const derived = await crypto.subtle.digest(
+  return crypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode(`astera:reward-code:v1:${secret}`),
   );
-  return new Uint8Array(derived);
 }
 
 export async function rewardCodeDigest(env: RewardProgramEnv, rawCode: unknown): Promise<string> {
