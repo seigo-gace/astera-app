@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppText } from "../../app-text";
-import {
-  nativeCallback,
-  openExternalUrl,
-} from "../../platform/external-navigation";
+import { nativeCallback, openExternalUrl } from "../../platform/external-navigation";
 import { resolvedApiBase } from "../../platform/api-client";
 import type { RouteMatch } from "../../platform/route-registry";
 import { ResponsivePageShell } from "../../platform/ResponsivePageShell";
@@ -15,9 +12,15 @@ type JsonRecord = Record<string, unknown>;
 type Language = keyof typeof CHECKOUT_TEXT;
 type CheckoutReturnTo = "pricing" | "plan-credit" | "app";
 type BillingCycle = "monthly" | "annual";
+type CheckoutKind = "plan" | "credit" | "storage";
+type StorageContext = {
+  currentCapacityGb: number;
+  planMaxCapacityGb: number;
+  capacityGb: number;
+};
 type ConnectionState =
   | { status: "checking" }
-  | { status: "ready"; currentPlan: string }
+  | { status: "ready"; currentPlan?: string; productId?: string; storage?: StorageContext }
   | { status: "login-required" }
   | { status: "error"; message: string };
 type SubmitState =
@@ -27,7 +30,9 @@ type SubmitState =
 
 const API_BASE = resolvedApiBase();
 const ACCOUNT_CATALOG_ENDPOINT = `${API_BASE}/api/account/catalog`;
+const STORAGE_CATALOG_ENDPOINT = `${API_BASE}/api/storage/catalog`;
 const CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/billing/checkout-intents`;
+const STORAGE_CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/storage/checkout-intents`;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -43,17 +48,40 @@ function firstText(record: JsonRecord, keys: string[]): string {
   return "";
 }
 
+function firstNumber(record: JsonRecord, keys: string[], fallback = 0): number {
+  for (const key of keys) {
+    const value = record[key];
+    const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function queryNumber(value: string | null): number {
+  if (!value) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function planArray(payload: unknown): unknown[] {
   if (!isRecord(payload)) return [];
   const data = isRecord(payload.data) ? payload.data : null;
   const account = isRecord(payload.account) ? payload.account : null;
-  const candidates = [
-    payload.plans,
-    payload.available_plans,
-    data?.plans,
-    data?.available_plans,
-    account?.plans,
-  ];
+  const candidates = [payload.plans, payload.available_plans, data?.plans, data?.available_plans, account?.plans];
+  return (candidates.find(Array.isArray) as unknown[] | undefined) ?? [];
+}
+
+function creditProductArray(payload: unknown): unknown[] {
+  if (!isRecord(payload)) return [];
+  const data = isRecord(payload.data) ? payload.data : null;
+  const candidates = [payload.creditProducts, payload.credit_products, data?.creditProducts, data?.credit_products];
+  return (candidates.find(Array.isArray) as unknown[] | undefined) ?? [];
+}
+
+function storagePackArray(payload: unknown): unknown[] {
+  if (!isRecord(payload)) return [];
+  const data = isRecord(payload.data) ? payload.data : null;
+  const candidates = [payload.packs, payload.storage_packs, data?.packs, data?.storage_packs];
   return (candidates.find(Array.isArray) as unknown[] | undefined) ?? [];
 }
 
@@ -61,23 +89,16 @@ function planSupportsCycle(plan: JsonRecord, cycle: BillingCycle): boolean {
   if (!Array.isArray(plan.billing_variants)) return cycle === "monthly";
   return plan.billing_variants.some((variant) => {
     if (!isRecord(variant)) return false;
-    const variantCycle = firstText(variant, ["billing_cycle"]);
-    return variantCycle === cycle && variant.active !== false;
+    return firstText(variant, ["billing_cycle"]) === cycle && variant.active !== false;
   });
 }
 
-function validateServerPlan(
-  payload: unknown,
-  planId: string,
-  cycle: BillingCycle,
-): { currentPlan: string } | null {
+function validateServerPlan(payload: unknown, planId: string, cycle: BillingCycle): { currentPlan: string } | null {
   if (!isRecord(payload)) return null;
   const data = isRecord(payload.data) ? payload.data : {};
   const account = isRecord(payload.account) ? payload.account : {};
   const selected = planArray(payload).find(
-    (item) =>
-      isRecord(item) &&
-      firstText(item, ["plan_id", "id", "key", "slug"]) === planId,
+    (item) => isRecord(item) && firstText(item, ["plan_id", "id", "key", "slug"]) === planId,
   );
   if (!isRecord(selected) || !planSupportsCycle(selected, cycle)) return null;
   return {
@@ -92,10 +113,7 @@ function validateServerPlan(
 function checkoutUrl(payload: unknown): string {
   if (!isRecord(payload)) return "";
   const data = isRecord(payload.data) ? payload.data : {};
-  return (
-    firstText(payload, ["checkout_url", "url", "redirect_url"]) ||
-    firstText(data, ["checkout_url", "url", "redirect_url"])
-  );
+  return firstText(payload, ["checkout_url", "url", "redirect_url"]) || firstText(data, ["checkout_url", "url", "redirect_url"]);
 }
 
 function isAllowedCheckoutUrl(value: string): boolean {
@@ -104,11 +122,7 @@ function isAllowedCheckoutUrl(value: string): boolean {
     if (url.origin === window.location.origin) return true;
     if (url.protocol !== "https:") return false;
     const host = url.hostname.toLowerCase();
-    return (
-      host === "square.link" ||
-      host.endsWith(".square.site") ||
-      host.endsWith(".squareup.com")
-    );
+    return host === "square.link" || host.endsWith(".square.site") || host.endsWith(".squareup.com");
   } catch {
     return false;
   }
@@ -125,10 +139,7 @@ function checkoutReturnPath(value: CheckoutReturnTo): string {
   return "/app";
 }
 
-function checkoutReturnLabel(
-  value: CheckoutReturnTo,
-  language: Language,
-): string {
+function checkoutReturnLabel(value: CheckoutReturnTo, language: Language): string {
   const text = CHECKOUT_TEXT[language];
   if (value === "pricing") return text.backPricing;
   if (value === "plan-credit") return text.backPlanCredit;
@@ -139,22 +150,37 @@ function parseBillingCycle(value: string | null): BillingCycle {
   return value === "annual" ? "annual" : "monthly";
 }
 
+function parseCheckoutKind(value: string | null): CheckoutKind {
+  if (value === "credit" || value === "storage") return value;
+  return "plan";
+}
+
+function yen(value: number): string {
+  return `¥${Math.max(0, value).toLocaleString("ja-JP")}`;
+}
+
+function gb(value: number): string {
+  return `${Math.max(0, value).toLocaleString("ja-JP")} GB`;
+}
+
 export default function CheckoutPage({ route }: { route: RouteMatch }) {
   const { language } = useAppText();
   const text = CHECKOUT_TEXT[language];
   const planText = PLAN_CREDIT_TEXT[language];
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const kind = parseCheckoutKind(params.get("kind"));
   const planId = params.get("plan")?.trim() ?? "";
+  const creditAmount = queryNumber(params.get("amount"));
+  const creditValue = queryNumber(params.get("credits"));
+  const storageProductId = params.get("product")?.trim() ?? "";
+  const storageCapacity = queryNumber(params.get("capacity"));
+  const storageAmount = queryNumber(params.get("amount"));
   const returnTo = checkoutReturnTo(params.get("return_to"));
   const returnPath = checkoutReturnPath(returnTo);
   const returnLabel = checkoutReturnLabel(returnTo, language);
   const selectedPlan = planText.plans.find((plan) => plan.id === planId) ?? null;
-  const [cycle, setCycle] = useState<BillingCycle>(() =>
-    parseBillingCycle(params.get("billing")),
-  );
-  const [connection, setConnection] = useState<ConnectionState>({
-    status: "checking",
-  });
+  const [cycle, setCycle] = useState<BillingCycle>(() => parseBillingCycle(params.get("billing")));
+  const [connection, setConnection] = useState<ConnectionState>({ status: "checking" });
   const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
   const [accepted, setAccepted] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -165,40 +191,44 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
       ? selectedPlan.annualPrice
       : selectedPlan.monthlyPrice
     : "";
-  const annualMonthlyEquivalent =
-    selectedPlan && "annualMonthlyEquivalent" in selectedPlan
-      ? selectedPlan.annualMonthlyEquivalent
-      : "";
+  const annualMonthlyEquivalent = selectedPlan && "annualMonthlyEquivalent" in selectedPlan
+    ? selectedPlan.annualMonthlyEquivalent
+    : "";
 
-  const switchCycle = useCallback(
-    (next: BillingCycle) => {
-      if (next === cycle || submit.status === "submitting") return;
-      setCycle(next);
-      setAccepted(false);
-      setSubmit({ status: "idle" });
-      setConnection({ status: "checking" });
-      const url = new URL(window.location.href);
-      url.searchParams.set("billing", next);
-      window.history.replaceState(window.history.state, "", url.toString());
-    },
-    [cycle, submit.status],
-  );
+  const switchCycle = useCallback((next: BillingCycle) => {
+    if (next === cycle || submit.status === "submitting" || kind !== "plan") return;
+    setCycle(next);
+    setAccepted(false);
+    setSubmit({ status: "idle" });
+    setConnection({ status: "checking" });
+    const url = new URL(window.location.href);
+    url.searchParams.set("billing", next);
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [cycle, kind, submit.status]);
 
-  const loadAccountCatalog = useCallback(async () => {
-    if (!planId || !selectedPlan) {
+  const loadCheckoutContext = useCallback(async () => {
+    if (kind === "plan" && (!planId || !selectedPlan)) {
       setConnection({ status: "error", message: "PLAN_ID_REQUIRED" });
       return;
     }
+    if (kind === "credit" && (!creditAmount || !creditValue)) {
+      setConnection({ status: "error", message: "CREDIT_PRODUCT_REQUIRED" });
+      return;
+    }
+    if (kind === "storage" && (!storageProductId || !storageCapacity || !storageAmount)) {
+      setConnection({ status: "error", message: "STORAGE_PRODUCT_REQUIRED" });
+      return;
+    }
+
     requestRef.current?.abort("superseded");
     const controller = new AbortController();
     requestRef.current = controller;
-    const timeout = window.setTimeout(
-      () => controller.abort("timeout"),
-      REQUEST_TIMEOUT_MS,
-    );
+    const timeout = window.setTimeout(() => controller.abort("timeout"), REQUEST_TIMEOUT_MS);
     setConnection({ status: "checking" });
+
     try {
-      const response = await fetch(ACCOUNT_CATALOG_ENDPOINT, {
+      const endpoint = kind === "storage" ? STORAGE_CATALOG_ENDPOINT : ACCOUNT_CATALOG_ENDPOINT;
+      const response = await fetch(endpoint, {
         method: "GET",
         credentials: "include",
         headers: { Accept: "application/json" },
@@ -208,65 +238,100 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
         setConnection({ status: "login-required" });
         return;
       }
-      if (!response.ok) {
-        throw new Error(`ACCOUNT_CATALOG_HTTP_${response.status}`);
-      }
+      if (!response.ok) throw new Error(`${kind.toUpperCase()}_CATALOG_HTTP_${response.status}`);
       const payload: unknown = await response.json();
-      const serverPlan = validateServerPlan(payload, planId, cycle);
-      if (!serverPlan) {
-        throw new Error("PLAN_BILLING_VARIANT_NOT_AVAILABLE");
+
+      if (kind === "plan") {
+        const serverPlan = validateServerPlan(payload, planId, cycle);
+        if (!serverPlan) throw new Error("PLAN_BILLING_VARIANT_NOT_AVAILABLE");
+        setConnection({ status: "ready", currentPlan: serverPlan.currentPlan });
+        return;
       }
-      setConnection({ status: "ready", currentPlan: serverPlan.currentPlan });
+
+      if (kind === "credit") {
+        const selected = creditProductArray(payload).find((item) => {
+          if (!isRecord(item) || item.active === false) return false;
+          return firstNumber(item, ["amount", "price_jpy", "priceJpy"]) === creditAmount
+            && firstNumber(item, ["credits", "credit_value", "creditValue"]) === creditValue;
+        });
+        if (!isRecord(selected)) throw new Error("CREDIT_PRODUCT_NOT_AVAILABLE");
+        const productId = firstText(selected, ["product_id", "productId", "id"]);
+        if (!productId) throw new Error("CREDIT_PRODUCT_ID_MISSING");
+        setConnection({ status: "ready", productId });
+        return;
+      }
+
+      if (!isRecord(payload)) throw new Error("STORAGE_CATALOG_INVALID");
+      const selected = storagePackArray(payload).find((item) => {
+        if (!isRecord(item)) return false;
+        const productId = firstText(item, ["product_id", "productId", "id"]);
+        return productId === storageProductId
+          || (firstNumber(item, ["capacity_gb", "capacityGb"]) === storageCapacity
+            && firstNumber(item, ["price_jpy", "priceJpy", "amount"]) === storageAmount);
+      });
+      if (!isRecord(selected)) throw new Error("STORAGE_PRODUCT_NOT_AVAILABLE");
+      const productId = firstText(selected, ["product_id", "productId", "id"]);
+      if (!productId) throw new Error("STORAGE_PRODUCT_ID_MISSING");
+      const currentCapacityGb = firstNumber(payload, ["current_capacity_gb", "currentCapacityGb"]);
+      const planMaxCapacityGb = firstNumber(payload, ["plan_max_capacity_gb", "planMaxCapacityGb"]);
+      const capacityGb = firstNumber(selected, ["capacity_gb", "capacityGb"], storageCapacity);
+      setConnection({
+        status: "ready",
+        productId,
+        storage: { currentCapacityGb, planMaxCapacityGb, capacityGb },
+      });
     } catch (error) {
       if (controller.signal.aborted) {
-        if (controller.signal.reason === "timeout") {
-          setConnection({
-            status: "error",
-            message: "ACCOUNT_CATALOG_TIMEOUT",
-          });
-        }
+        if (controller.signal.reason === "timeout") setConnection({ status: "error", message: "CHECKOUT_CONTEXT_TIMEOUT" });
         return;
       }
       setConnection({
         status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "ACCOUNT_CATALOG_UNKNOWN_ERROR",
+        message: error instanceof Error ? error.message : "CHECKOUT_CONTEXT_UNKNOWN_ERROR",
       });
     } finally {
       window.clearTimeout(timeout);
       if (requestRef.current === controller) requestRef.current = null;
     }
-  }, [cycle, planId, selectedPlan]);
+  }, [creditAmount, creditValue, cycle, kind, planId, selectedPlan, storageAmount, storageCapacity, storageProductId]);
 
   useEffect(() => {
-    void loadAccountCatalog();
+    void loadCheckoutContext();
     return () => {
       requestRef.current?.abort("unmount");
       checkoutRef.current?.abort("unmount");
     };
-  }, [loadAccountCatalog]);
+  }, [loadCheckoutContext]);
 
   const createCheckoutIntent = async () => {
-    if (
-      !selectedPlan ||
-      connection.status !== "ready" ||
-      !accepted ||
-      checkoutRef.current
-    ) {
-      return;
-    }
+    if (connection.status !== "ready" || !accepted || checkoutRef.current) return;
+    if (kind === "plan" && !selectedPlan) return;
+    if ((kind === "credit" || kind === "storage") && !connection.productId) return;
+
     const controller = new AbortController();
     checkoutRef.current = controller;
-    const timeout = window.setTimeout(
-      () => controller.abort("timeout"),
-      REQUEST_TIMEOUT_MS,
-    );
+    const timeout = window.setTimeout(() => controller.abort("timeout"), REQUEST_TIMEOUT_MS);
     const idempotencyKey = crypto.randomUUID();
     setSubmit({ status: "submitting" });
+
     try {
-      const response = await fetch(CHECKOUT_INTENT_ENDPOINT, {
+      const endpoint = kind === "storage" ? STORAGE_CHECKOUT_INTENT_ENDPOINT : CHECKOUT_INTENT_ENDPOINT;
+      const body = kind === "plan"
+        ? {
+            plan_id: planId,
+            billing_cycle: cycle,
+            return_to: returnTo,
+            native_callback: nativeCallback("/account/billing/status"),
+          }
+        : kind === "credit"
+          ? {
+              product_id: connection.productId,
+              return_to: returnTo,
+              native_callback: nativeCallback("/account/billing/status"),
+            }
+          : { product_id: connection.productId };
+
+      const response = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -275,12 +340,7 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
           "Idempotency-Key": idempotencyKey,
           "X-Request-ID": idempotencyKey,
         },
-        body: JSON.stringify({
-          plan_id: planId,
-          billing_cycle: cycle,
-          return_to: returnTo,
-          native_callback: nativeCallback("/account/billing/status"),
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
       if (response.status === 401 || response.status === 403) {
@@ -289,57 +349,58 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
         return;
       }
       if (!response.ok) {
-        throw new Error(`CHECKOUT_INTENT_HTTP_${response.status}`);
+        let code = `CHECKOUT_INTENT_HTTP_${response.status}`;
+        try {
+          const payload: unknown = await response.json();
+          if (isRecord(payload)) {
+            const error = isRecord(payload.error) ? payload.error : payload;
+            code = firstText(error, ["code", "message"]) || code;
+          }
+        } catch {
+          // Keep the HTTP fallback code.
+        }
+        throw new Error(code);
       }
       const payload: unknown = await response.json();
       const destination = checkoutUrl(payload);
-      if (!destination || !isAllowedCheckoutUrl(destination)) {
-        throw new Error("CHECKOUT_URL_REJECTED");
-      }
+      if (!destination || !isAllowedCheckoutUrl(destination)) throw new Error("CHECKOUT_URL_REJECTED");
       await openExternalUrl(destination);
       setSubmit({ status: "idle" });
     } catch (error) {
       if (controller.signal.aborted) {
-        if (controller.signal.reason === "timeout") {
-          setSubmit({ status: "error", message: "CHECKOUT_INTENT_TIMEOUT" });
-        }
+        if (controller.signal.reason === "timeout") setSubmit({ status: "error", message: "CHECKOUT_INTENT_TIMEOUT" });
         return;
       }
-      setSubmit({
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "CHECKOUT_INTENT_UNKNOWN_ERROR",
-      });
+      setSubmit({ status: "error", message: error instanceof Error ? error.message : "CHECKOUT_INTENT_UNKNOWN_ERROR" });
     } finally {
       window.clearTimeout(timeout);
       if (checkoutRef.current === controller) checkoutRef.current = null;
     }
   };
 
-  const loginReturn = encodeURIComponent(
-    window.location.pathname + window.location.search,
-  );
-  const canPay =
-    Boolean(selectedPlan) &&
-    connection.status === "ready" &&
-    accepted &&
-    submit.status !== "submitting";
+  const loginReturn = encodeURIComponent(window.location.pathname + window.location.search);
+  const hasSelection = kind === "plan"
+    ? Boolean(selectedPlan)
+    : kind === "credit"
+      ? Boolean(creditAmount && creditValue)
+      : Boolean(storageProductId && storageCapacity && storageAmount);
+  const canPay = hasSelection && connection.status === "ready" && accepted && submit.status !== "submitting";
   const cycleLabel = cycle === "annual" ? text.annualValue : text.monthlyValue;
   const renewalLabel = cycle === "annual" ? text.annualRenewal : text.monthlyRenewal;
   const showConnection = connection.status !== "ready" || submit.status === "error";
+  const invalidLabel = kind === "credit" ? text.invalidCredit : kind === "storage" ? text.invalidStorage : text.invalidPlan;
+  const invalidCode = kind === "credit" ? "CREDIT_PRODUCT_REQUIRED" : kind === "storage" ? "STORAGE_PRODUCT_REQUIRED" : "PLAN_ID_REQUIRED";
+  const oneTimeAgreement = kind !== "plan";
+  const storageContext = connection.status === "ready" ? connection.storage : undefined;
 
   return (
     <ResponsivePageShell route={route} fullWidth>
       <div className="checkout-page">
-        {!selectedPlan ? (
+        {!hasSelection ? (
           <div className="checkout-connection is-error" role="alert">
-            <strong>{text.invalidPlan}</strong>
-            <code>PLAN_ID_REQUIRED</code>
-            <a className="platform-button" href={returnPath}>
-              {returnLabel}
-            </a>
+            <strong>{invalidLabel}</strong>
+            <code>{invalidCode}</code>
+            <a className="platform-button" href={returnPath}>{returnLabel}</a>
           </div>
         ) : (
           <>
@@ -348,139 +409,107 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
               <span>{returnLabel}</span>
             </a>
 
-            <header className="checkout-heading">
-              <h1>{text.title}</h1>
-            </header>
+            <header className="checkout-heading"><h1>{text.title}</h1></header>
 
-            <section className="checkout-order" aria-label={text.orderSummary}>
-              <div className="checkout-plan-row">
-                <div>
-                  <span className="checkout-eyebrow">{text.selectedPlan}</span>
-                  <h2>{selectedPlan.name}</h2>
-                </div>
-                <div
-                  className="checkout-cycle-toggle"
-                  role="group"
-                  aria-label={`${planText.billingMonthly} / ${planText.billingAnnual}`}
-                >
-                  <button
-                    type="button"
-                    className={cycle === "monthly" ? "is-active" : ""}
-                    aria-pressed={cycle === "monthly"}
-                    disabled={submit.status === "submitting"}
-                    onClick={() => switchCycle("monthly")}
-                  >
-                    {planText.billingMonthly}
-                  </button>
-                  <button
-                    type="button"
-                    className={cycle === "annual" ? "is-active" : ""}
-                    aria-pressed={cycle === "annual"}
-                    disabled={submit.status === "submitting"}
-                    onClick={() => switchCycle("annual")}
-                  >
-                    {planText.billingAnnual}
-                  </button>
-                </div>
-              </div>
-
-              <div className="checkout-price-block">
-                <strong>{selectedPrice}</strong>
-                {cycle === "annual" && planId !== "free" && (
-                  <div className="checkout-annual-meta">
-                    <span className="checkout-saving-badge">
-                      {planText.annualSaving}
-                    </span>
-                    {annualMonthlyEquivalent && (
-                      <span>
-                        {planText.monthlyEquivalent}: {annualMonthlyEquivalent}
-                      </span>
-                    )}
+            {kind === "plan" && selectedPlan && (
+              <section className="checkout-order" aria-label={text.orderSummary}>
+                <div className="checkout-plan-row">
+                  <div>
+                    <span className="checkout-eyebrow">{text.selectedPlan}</span>
+                    <h2>{selectedPlan.name}</h2>
                   </div>
-                )}
-              </div>
+                  <div className="checkout-cycle-toggle" role="group" aria-label={`${planText.billingMonthly} / ${planText.billingAnnual}`}>
+                    <button type="button" className={cycle === "monthly" ? "is-active" : ""} aria-pressed={cycle === "monthly"} disabled={submit.status === "submitting"} onClick={() => switchCycle("monthly")}>{planText.billingMonthly}</button>
+                    <button type="button" className={cycle === "annual" ? "is-active" : ""} aria-pressed={cycle === "annual"} disabled={submit.status === "submitting"} onClick={() => switchCycle("annual")}>{planText.billingAnnual}</button>
+                  </div>
+                </div>
 
-              <dl className="checkout-order-rows">
-                <div>
-                  <dt>{text.dueToday}</dt>
-                  <dd>{selectedPrice}</dd>
+                <div className="checkout-price-block">
+                  <strong>{selectedPrice}</strong>
+                  {cycle === "annual" && planId !== "free" && (
+                    <div className="checkout-annual-meta">
+                      <span className="checkout-saving-badge">{planText.annualSaving}</span>
+                      {annualMonthlyEquivalent && <span>{planText.monthlyEquivalent}: {annualMonthlyEquivalent}</span>}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <dt>{text.monthlyCredit}</dt>
-                  <dd>{selectedPlan.creditValue}</dd>
-                </div>
-                <div>
-                  <dt>{text.renewalCycle}</dt>
-                  <dd>{renewalLabel}</dd>
-                </div>
-                <div>
-                  <dt>{text.nextCharge}</dt>
-                  <dd>{selectedPrice}</dd>
-                </div>
-              </dl>
 
-              <p className="checkout-order-note">
-                {text.creditGrantValue} · {cycleLabel}
-              </p>
-            </section>
+                <dl className="checkout-order-rows">
+                  <div><dt>{text.dueToday}</dt><dd>{selectedPrice}</dd></div>
+                  <div><dt>{text.monthlyCredit}</dt><dd>{selectedPlan.creditValue}</dd></div>
+                  <div><dt>{text.renewalCycle}</dt><dd>{renewalLabel}</dd></div>
+                  <div><dt>{text.nextCharge}</dt><dd>{selectedPrice}</dd></div>
+                </dl>
+                <p className="checkout-order-note">{text.creditGrantValue} · {cycleLabel}</p>
+              </section>
+            )}
+
+            {kind === "credit" && (
+              <section className="checkout-order" aria-label={text.orderSummary}>
+                <div className="checkout-plan-row">
+                  <div>
+                    <span className="checkout-eyebrow">{text.selectedCredit}</span>
+                    <h2>{creditValue.toLocaleString("ja-JP")} ©</h2>
+                  </div>
+                </div>
+                <div className="checkout-price-block"><strong>{yen(creditAmount)}</strong></div>
+                <dl className="checkout-order-rows">
+                  <div><dt>{text.dueToday}</dt><dd>{yen(creditAmount)}</dd></div>
+                  <div><dt>{text.grantedCredit}</dt><dd>{creditValue.toLocaleString("ja-JP")} ©</dd></div>
+                  <div><dt>{text.paymentType}</dt><dd>{text.oneTimePayment}</dd></div>
+                </dl>
+              </section>
+            )}
+
+            {kind === "storage" && (
+              <section className="checkout-order" aria-label={text.orderSummary}>
+                <div className="checkout-plan-row">
+                  <div>
+                    <span className="checkout-eyebrow">{text.selectedStorage}</span>
+                    <h2>＋{storageCapacity.toLocaleString("ja-JP")}GB追加</h2>
+                  </div>
+                </div>
+                <div className="checkout-price-block"><strong>{yen(storageAmount)}</strong></div>
+                <dl className="checkout-order-rows">
+                  <div><dt>{text.dueToday}</dt><dd>{yen(storageAmount)}</dd></div>
+                  <div><dt>{text.addedCapacity}</dt><dd>{gb(storageCapacity)}</dd></div>
+                  <div><dt>{text.currentCapacity}</dt><dd>{storageContext ? gb(storageContext.currentCapacityGb) : "—"}</dd></div>
+                  <div><dt>{text.afterCapacity}</dt><dd>{storageContext ? gb(storageContext.currentCapacityGb + storageContext.capacityGb) : "—"}</dd></div>
+                  <div><dt>{text.planLimit}</dt><dd>{storageContext ? gb(storageContext.planMaxCapacityGb) : "—"}</dd></div>
+                </dl>
+              </section>
+            )}
 
             <div className="checkout-agreement">
-              <input
-                id="checkout-agreement"
-                type="checkbox"
-                checked={accepted}
-                onChange={(event) => setAccepted(event.target.checked)}
-                disabled={submit.status === "submitting"}
-              />
+              <input id="checkout-agreement" type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} disabled={submit.status === "submitting"} />
               <div>
-                <label htmlFor="checkout-agreement">{text.agreementLead}</label>
+                <label htmlFor="checkout-agreement">{oneTimeAgreement ? text.oneTimeAgreementLead : text.agreementLead}</label>
                 <span className="checkout-agreement-links">
-                  <a href="/legal/terms">{text.terms}</a>
-                  <span>・</span>
-                  <a href="/legal/privacy">{text.privacy}</a>
-                  <span>・</span>
-                  <a href="/legal/commercial">{text.commercial}</a>
+                  <a href="/legal/terms">{text.terms}</a><span>・</span><a href="/legal/privacy">{text.privacy}</a><span>・</span><a href="/legal/commercial">{text.commercial}</a>
                 </span>
                 <span>{text.agreementTail}</span>
               </div>
             </div>
 
-            <button
-              className="platform-button is-primary checkout-pay-button"
-              type="button"
-              disabled={!canPay}
-              onClick={() => void createCheckoutIntent()}
-            >
+            <button className="platform-button is-primary checkout-pay-button" type="button" disabled={!canPay} onClick={() => void createCheckoutIntent()}>
               {submit.status === "submitting" ? text.preparing : text.pay}
             </button>
             <p className="checkout-square-note">{text.squareNote}</p>
 
             {showConnection && (
-              <div
-                className={`checkout-connection is-${connection.status}`}
-                role={connection.status === "error" ? "alert" : "status"}
-              >
-                {connection.status === "checking" && (
-                  <span>{text.connectionChecking}</span>
-                )}
+              <div className={`checkout-connection is-${connection.status}`} role={connection.status === "error" ? "alert" : "status"}>
+                {connection.status === "checking" && <span>{text.connectionChecking}</span>}
                 {connection.status === "login-required" && (
                   <>
                     <span>{text.loginRequired}</span>
-                    <div className="checkout-connection-actions">
-                      <a href={`/login?return_to=${loginReturn}`}>{text.login}</a>
-                      <a href={`/register?return_to=${loginReturn}`}>
-                        {text.register}
-                      </a>
-                    </div>
+                    <div className="checkout-connection-actions"><a href={`/login?return_to=${loginReturn}`}>{text.login}</a><a href={`/register?return_to=${loginReturn}`}>{text.register}</a></div>
                   </>
                 )}
                 {connection.status === "error" && (
                   <>
                     <span>{text.connectionBlocked}</span>
                     <code>{connection.message}</code>
-                    <button type="button" onClick={() => void loadAccountCatalog()}>
-                      {text.retry}
-                    </button>
+                    <button type="button" onClick={() => void loadCheckoutContext()}>{text.retry}</button>
                   </>
                 )}
                 {submit.status === "error" && <code>{submit.message}</code>}
