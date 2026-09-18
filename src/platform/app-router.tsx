@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import CheckoutPage from '../features/checkout/CheckoutPage';
 import NativeComposerPage from '../features/composer/NativeComposerPage';
 import PricingPage from '../features/pricing/PricingPage';
 import { AccountSessionProvider, PREVIEW_ACCOUNT_SESSION, previewWithoutAuth, type AccountSessionProjection } from './account-session';
@@ -123,7 +124,11 @@ export default function AppRouter() {
   if (route.id === 'root') return <RootRedirect />;
   if (route.id === 'pricing') return <PricingPage />;
 
-  if (route.id === 'account-checkout' || route.id === 'account-subscription') {
+  if (route.id === 'account-checkout') {
+    return <AccountSessionGate><CheckoutPage route={route} /></AccountSessionGate>;
+  }
+
+  if (route.id === 'account-subscription') {
     return <LegacyPlanRedirect />;
   }
 
