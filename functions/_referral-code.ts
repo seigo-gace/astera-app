@@ -14,6 +14,12 @@ function base64UrlDecode(value: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+function concreteBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 async function encryptionKey(env: RewardProgramEnv): Promise<CryptoKey> {
   const secret = env.BETTER_AUTH_SECRET?.trim();
   if (!secret || secret.length < 32) throw new FunctionHttpError(503, 'REFERRAL_KEY_UNAVAILABLE', '紹介コード暗号化Keyを利用できません。');
@@ -23,7 +29,11 @@ async function encryptionKey(env: RewardProgramEnv): Promise<CryptoKey> {
 
 async function encryptCode(env: RewardProgramEnv, code: string): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await encryptionKey(env), new TextEncoder().encode(code));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: concreteBuffer(iv) },
+    await encryptionKey(env),
+    new TextEncoder().encode(code),
+  );
   return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(new Uint8Array(ciphertext))}`;
 }
 
@@ -32,9 +42,9 @@ async function decryptCode(env: RewardProgramEnv, encrypted: string): Promise<st
   if (version !== 'v1' || !ivRaw || !cipherRaw) throw new FunctionHttpError(500, 'REFERRAL_CODE_CIPHERTEXT_INVALID', '紹介コードを復元できませんでした。');
   try {
     const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: base64UrlDecode(ivRaw) },
+      { name: 'AES-GCM', iv: concreteBuffer(base64UrlDecode(ivRaw)) },
       await encryptionKey(env),
-      base64UrlDecode(cipherRaw),
+      concreteBuffer(base64UrlDecode(cipherRaw)),
     );
     return new TextDecoder().decode(plaintext);
   } catch {
