@@ -31,8 +31,17 @@ export function SettingsSurface({ variant = 'page', onNavigate }: SettingsSurfac
   return (
     <>
       <nav className={`settings-surface${variant === 'overlay' ? ' is-overlay' : ''}`} aria-label={text('settingsTitle')}>
+        {links.slice(0, 1).map((item) => (
+          <a className="settings-surface-row" href={item.href} key={item.href} onClick={onNavigate}>
+            <span className="settings-surface-row-copy">
+              <strong>{item.title}</strong>
+              <small>{item.description}</small>
+            </span>
+            <span className="settings-surface-chevron" aria-hidden="true">›</span>
+          </a>
+        ))}
         <RewardProgramSettingsRows onOpen={setRewardOverlay} />
-        {links.map((item) => (
+        {links.slice(1).map((item) => (
           <a className="settings-surface-row" href={item.href} key={item.href} onClick={onNavigate}>
             <span className="settings-surface-row-copy">
               <strong>{item.title}</strong>
