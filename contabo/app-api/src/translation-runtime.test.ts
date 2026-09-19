@@ -13,10 +13,10 @@ type ProviderInput = {
 };
 
 test('translation runtime translates section bodies only and preserves protected values', async () => {
-  let providerInput: ProviderInput | null = null;
+  const providerInputs: ProviderInput[] = [];
   const fakeVault = {
     providerJson: async (input: ProviderInput) => {
-      providerInput = input;
+      providerInputs.push(input);
       const body = input.body as {
         systemInstruction?: { parts?: Array<{ text?: string }> };
         contents: Array<{ parts: Array<{ text: string }> }>;
@@ -48,6 +48,7 @@ test('translation runtime translates section bodies only and preserves protected
   assert.equal(output.usage.calls, 1);
   assert.equal(output.usage.totalTokens, 15);
 
+  const providerInput = providerInputs[0];
   assert.ok(providerInput);
   assert.equal(providerInput.secretId, 'vault-ref');
   assert.equal(providerInput.consumer, 'translation-flash-lite');
