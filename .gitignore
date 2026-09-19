@@ -6,6 +6,11 @@ dist/
 .DS_Store
 *.log
 
+# Local verification/test artifacts
+playwright-report/
+test-results/
+.verify/
+
 # Android generated build state
 android/.gradle/
 android/local.properties
