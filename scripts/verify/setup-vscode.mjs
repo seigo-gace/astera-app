@@ -9,6 +9,7 @@ const REQUIRED_FILES = [
   '.vscode/tasks.json',
   '.vscode/extensions.json',
   'scripts/verify/staging-readback.mjs',
+  'scripts/verify/checkout-e2e.mjs',
   'playwright.config.ts',
 ];
 const PLAYWRIGHT_EXTENSION = 'ms-playwright.playwright';
@@ -32,6 +33,16 @@ function commandExists(command) {
   const finder = process.platform === 'win32' ? 'where.exe' : 'sh';
   const args = process.platform === 'win32' ? [command] : ['-lc', `command -v ${command}`];
   return run(finder, args, { allowFailure: true }) !== null;
+}
+
+function requireNode22() {
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major !== 22) {
+    console.error(`[FAIL] Node ${process.versions.node} is active. Astera requires Node 22.x.`);
+    console.error('Load NVM and run: nvm use 22.23.1');
+    process.exit(1);
+  }
+  console.log(`[PASS] Node ${process.versions.node}`);
 }
 
 function requireWorkspaceFiles() {
@@ -60,6 +71,27 @@ function verifyTaskDefinitions() {
     process.exit(1);
   }
   console.log('[PASS] Required VS Code tasks are configured.');
+}
+
+function ensureDependencies() {
+  const suffix = process.platform === 'win32' ? '.cmd' : '';
+  const tsc = resolve(ROOT, 'node_modules', '.bin', `tsc${suffix}`);
+  const playwrightPackage = resolve(ROOT, 'node_modules', '@playwright', 'test', 'package.json');
+
+  if (existsSync(tsc) && existsSync(playwrightPackage)) {
+    console.log('[PASS] Project dependencies are installed.');
+    return;
+  }
+
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  console.log('[SETUP] Installing project dependencies...');
+  run(npm, ['install', '--no-fund', '--no-audit'], { inherit: true });
+
+  if (!existsSync(tsc) || !existsSync(playwrightPackage)) {
+    console.error('[FAIL] npm install completed but required development tools are still missing.');
+    process.exit(1);
+  }
+  console.log('[PASS] Project dependencies installed.');
 }
 
 function installRecommendedExtension() {
@@ -98,13 +130,16 @@ function reportRuntime() {
   console.log('  Checkout E2E    : npm run verify:checkout:e2e');
   console.log('');
   console.log('VS Code UI: Terminal -> Run Task... -> ASTERAv8: Full Verify');
+  console.log('Checkout E2E prefers the official Playwright Docker image when Docker is available.');
   console.log('Safety: setup does not switch branches, stash/reset/clean/push, modify D1, or access Square personal/payment payloads.');
 }
 
 console.log('==================================================');
 console.log(' ASTERAv8 VS CODE VERIFICATION SETUP');
 console.log('==================================================');
+requireNode22();
 requireWorkspaceFiles();
 verifyTaskDefinitions();
+ensureDependencies();
 installRecommendedExtension();
 reportRuntime();
