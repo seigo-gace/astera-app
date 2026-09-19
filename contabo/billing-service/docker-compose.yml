@@ -1,0 +1,44 @@
+name: astera-billing
+
+networks:
+  libral-vault_default:
+    external: true
+    name: libral-vault_default
+
+services:
+  billing-api:
+    build:
+      context: .
+      target: runtime
+    init: true
+    user: "1000:1000"
+    env_file: /home/admin1/.config/astera-billing/runtime.env
+    environment:
+      BILLING_APP_SECRET_FILE: /run/secrets/billing-app-secret
+      BILLING_PROJECTION_SECRET_FILE: /run/secrets/billing-projection-secret
+    volumes:
+      - /home/admin1/.config/astera-billing/billing-app-secret:/run/secrets/billing-app-secret:ro
+      - /home/admin1/.config/astera-billing/billing-projection-secret:/run/secrets/billing-projection-secret:ro
+    command: ["node", "dist/system/server.js"]
+    ports:
+      - "127.0.0.1:8792:8788"
+    networks:
+      - libral-vault_default
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/node_modules/.vite-temp:size=32m,uid=10001,gid=10001,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 30s

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+workers/projection/.wrangler/
+workers/projection/.dev.vars
+workers/projection/node_modules/
