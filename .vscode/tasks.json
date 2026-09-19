@@ -1,0 +1,87 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ASTERAv8: Full Verify",
+      "type": "npm",
+      "script": "verify:vscode",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "focus": false
+      },
+      "detail": "Quick workspace checks -> safe staging read-back -> checkout Chromium E2E"
+    },
+    {
+      "label": "ASTERAv8: Staging Read-Back (safe)",
+      "type": "npm",
+      "script": "verify:staging",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "detail": "Read-only verification of GitHub main, Actions, staging marker, and deployed checkout contracts. Does not switch/reset/stash/push or access D1/Square payloads."
+    },
+    {
+      "label": "ASTERAv8: Quick Workspace Verify",
+      "type": "npm",
+      "script": "verify:quick",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "detail": "TypeScript + contracts + checkout security contract tests for the current workspace"
+    },
+    {
+      "label": "ASTERAv8: Checkout Browser E2E",
+      "type": "npm",
+      "script": "verify:checkout:e2e",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "detail": "Runs duplicate prevention, reauthentication, 401 login, and non-auth 403 checkout stories in Chromium"
+    },
+    {
+      "label": "ASTERAv8: Debug Failed Checkout E2E",
+      "type": "npm",
+      "script": "verify:checkout:debug",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false,
+        "focus": true
+      },
+      "detail": "Re-runs the last failed checkout E2E under Playwright Inspector"
+    },
+    {
+      "label": "ASTERAv8: Existing Canonical Verify",
+      "type": "npm",
+      "script": "verify",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "detail": "Runs the repository's existing full canonical verify chain without replacing it"
+    }
+  ]
+}
