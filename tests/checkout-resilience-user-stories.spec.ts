@@ -19,6 +19,9 @@ test('STORY-CHECKOUT-003 rapid duplicate confirmation creates one Checkout Inten
   const idempotencyKeys: string[] = [];
   const requestIds: string[] = [];
 
+  await page.route('**/api/account', async (route) => {
+    return json(route, { account: { account_status: 'active' } });
+  });
   await page.route('**/api/account/catalog', async (route) => {
     return json(route, {
       account: { current_plan_name: 'Free' },
@@ -36,12 +39,12 @@ test('STORY-CHECKOUT-003 rapid duplicate confirmation creates one Checkout Inten
 
   await page.goto('/account/checkout?plan=basic&return_to=pricing');
   await page.getByRole('checkbox').check();
-  await page.getByRole('button', { name: 'Square Checkoutへ進む' }).evaluate((button: HTMLButtonElement) => {
+  await page.getByRole('button', { name: 'Squareで支払う' }).evaluate((button: HTMLButtonElement) => {
     button.click();
     button.click();
   });
 
-  await expect(page.getByRole('alert')).toContainText('CHECKOUT_URL_REJECTED');
+  await expect(page.getByText('CHECKOUT_URL_REJECTED')).toBeVisible();
   expect(checkoutRequests).toBe(1);
   expect(idempotencyKeys[0].length).toBeGreaterThan(10);
   expect(requestIds[0]).toBe(idempotencyKeys[0]);
