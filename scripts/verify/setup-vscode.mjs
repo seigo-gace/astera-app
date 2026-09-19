@@ -15,12 +15,13 @@ const PLAYWRIGHT_EXTENSION = 'ms-playwright.playwright';
 
 function run(command, args, options = {}) {
   try {
-    return execFileSync(command, args, {
+    const result = execFileSync(command, args, {
       cwd: ROOT,
       encoding: 'utf8',
       stdio: options.inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
       ...options,
     });
+    return result ?? '';
   } catch (error) {
     if (options.allowFailure) return null;
     throw error;
@@ -30,7 +31,7 @@ function run(command, args, options = {}) {
 function commandExists(command) {
   const finder = process.platform === 'win32' ? 'where.exe' : 'sh';
   const args = process.platform === 'win32' ? [command] : ['-lc', `command -v ${command}`];
-  return Boolean(run(finder, args, { allowFailure: true }));
+  return run(finder, args, { allowFailure: true }) !== null;
 }
 
 function requireWorkspaceFiles() {
