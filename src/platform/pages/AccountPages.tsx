@@ -39,6 +39,11 @@ function CreditPage({ route }: { route: RouteMatch }) {
   const [state, setState] = useState<SubmitState>({ type: 'idle' });
   const [productId, setProductId] = useState('');
   const loginReturn = encodeURIComponent(window.location.pathname + window.location.search);
+  const authenticationState = state.code === 'FRESH_SESSION_REQUIRED'
+    ? 'reauth-required'
+    : state.code === 'SESSION_REQUIRED'
+      ? 'login-required'
+      : null;
 
   const products = useMemo(() => {
     if (catalog.status !== 'ready') return [];
@@ -88,8 +93,8 @@ function CreditPage({ route }: { route: RouteMatch }) {
     <Panel title="残高">{balance.status === 'loading' ? <BusyState /> : balance.status === 'error' ? <ErrorState error={balance.error} /> : <KeyValueGrid value={balance.data} />}</Panel>
     <Panel title="Creditを追加">
       {catalog.status === 'loading' ? <BusyState label="購入可能なCredit商品を確認しています…" /> : catalog.status === 'error' ? <ErrorState error={catalog.error} /> : products.length === 0 ? <EmptyState>現在購入可能なCredit商品はありません。</EmptyState> : <form className="platform-inline-form" onSubmit={purchase}><SelectField label="Credit商品" name="product_id" value={productId} onChange={setProductId} options={productOptions} /><button className="platform-button is-primary" type="submit" disabled={!productId || state.type === 'working'}>Checkoutへ</button></form>}
-      <FormResult state={state.code === 'FRESH_SESSION_REQUIRED' ? { type: 'error', message: '安全な決済操作のため再認証してください。', code: state.code } : state} />
-      {state.code === 'FRESH_SESSION_REQUIRED' && <a className="platform-button" href={`/login?return_to=${loginReturn}`}>再認証</a>}
+      <FormResult state={authenticationState === 'reauth-required' ? { type: 'error', message: '安全な決済操作のため再認証してください。', code: state.code } : authenticationState === 'login-required' ? { type: 'error', message: '決済へ進むにはLoginが必要です。', code: state.code } : state} />
+      {authenticationState && <a className="platform-button" href={`/login?return_to=${loginReturn}`}>{authenticationState === 'reauth-required' ? '再認証' : 'Login'}</a>}
     </Panel>
     <Panel title="Ledger">{ledger.status === 'loading' ? <BusyState /> : ledger.status === 'error' ? <ErrorState error={ledger.error} onRetry={reload} /> : <RecordList items={asArray(ledger.data, ['ledger', 'entries', 'items'])} titleKeys={['type', 'description', 'transaction_id', 'id']} subtitleKeys={['amount', 'created_at', 'status']} />}</Panel>
   </ResponsivePageShell>;
