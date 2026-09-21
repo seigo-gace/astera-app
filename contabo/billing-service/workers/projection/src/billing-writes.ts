@@ -69,6 +69,18 @@ export async function writeIntentCheckoutCreated(db: D1Database, body: Record<st
      WHERE id = ?5 AND status IN ('creating_checkout', 'failed') AND checkout_url IS NULL`,
   ).bind(checkoutId, orderId, checkoutUrl, updatedAt, intentId).run();
   if (Number(result.meta?.changes ?? 0) === 0) {
+    const existing = await db.prepare(
+      `SELECT status, provider_checkout_id, provider_order_id, checkout_url
+       FROM billing_intents WHERE id = ?1 LIMIT 1`,
+    ).bind(intentId).first<Record<string, unknown>>();
+    if (
+      existing?.status === 'checkout_created'
+      && existing.provider_checkout_id === checkoutId
+      && existing.provider_order_id === orderId
+      && existing.checkout_url === checkoutUrl
+    ) {
+      return { accepted: true, duplicate: true, intent_id: intentId, status: 'checkout_created' };
+    }
     throw { status: 409, code: 'INTENT_CHECKOUT_TRANSITION_FAILED', message: 'Intent checkout transition failed.' };
   }
   return { accepted: true, intent_id: intentId, status: 'checkout_created' };
@@ -136,6 +148,18 @@ export async function writeStorageIntentCheckoutCreated(db: D1Database, body: Re
      WHERE id=?5 AND status IN ('creating_checkout', 'failed') AND checkout_url IS NULL`,
   ).bind(checkoutId, orderId, checkoutUrl, updatedAt, intentId).run();
   if (Number(result.meta?.changes ?? 0) === 0) {
+    const existing = await db.prepare(
+      `SELECT status, provider_checkout_id, provider_order_id, checkout_url
+       FROM astera_storage_pack_intents WHERE id=?1 LIMIT 1`,
+    ).bind(intentId).first<Record<string, unknown>>();
+    if (
+      existing?.status === 'checkout_created'
+      && existing.provider_checkout_id === checkoutId
+      && existing.provider_order_id === orderId
+      && existing.checkout_url === checkoutUrl
+    ) {
+      return { accepted: true, duplicate: true, intent_id: intentId, status: 'checkout_created' };
+    }
     throw { status: 409, code: 'STORAGE_INTENT_CHECKOUT_TRANSITION_FAILED', message: 'Storage intent checkout transition failed.' };
   }
   return { accepted: true, intent_id: intentId, status: 'checkout_created' };

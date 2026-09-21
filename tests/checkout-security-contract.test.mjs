@@ -35,6 +35,7 @@ test('checkout URL allowlist accepts only intended HTTPS Square destinations', (
   for (const url of [
     'http://sandbox.square.link/u/test',
     'https://square.link.evil.example/u/test',
+    'https://evil-square.example.com/u/test',
     'https://evil.example/u/test',
     'https://unexpected.square.link/u/test',
     '/account/billing/status?intent=test',

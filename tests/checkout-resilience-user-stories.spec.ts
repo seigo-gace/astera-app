@@ -102,3 +102,59 @@ test('STORY-CHECKOUT-006 a non-auth 403 preserves the account error code', async
   await expect(page.getByRole('alert')).toContainText('ACCOUNT_SUSPENDED');
   await expect(page.getByText('決済へ進むにはLoginが必要です。')).toHaveCount(0);
 });
+
+test('STORY-CHECKOUT-007 successful reauthentication returns to checkout and refetches fresh state', async ({ page }) => {
+  let fresh = false;
+  let catalogRequests = 0;
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') {
+      return json(route, { account: { account_status: 'active', email: 'checkout@example.test' } });
+    }
+    if (path === '/api/account/catalog') {
+      catalogRequests += 1;
+      if (!fresh) {
+        return json(route, { error: { code: 'FRESH_SESSION_REQUIRED', message: 'Fresh session required' } }, 403);
+      }
+      return json(route, {
+        account: { current_plan_name: 'Free' },
+        plans: [{ plan_id: 'basic', display_name: 'Basic', price_label: '¥980' }],
+      });
+    }
+    if (path === '/api/auth/sign-in/email') {
+      fresh = true;
+      return json(route, { user: { emailVerified: true, account_status: 'active' } });
+    }
+    return json(route, { ok: true });
+  });
+
+  await page.goto('/account/checkout?plan=basic&return_to=pricing');
+  await page.getByRole('link', { name: '再認証' }).click();
+  await expect(page).toHaveURL(/\/login\?return_to=/);
+  await page.getByLabel('Email').fill('checkout@example.test');
+  await page.getByLabel('Password').fill('test-password');
+  await page.getByRole('button', { name: 'EmailでLogin' }).click();
+  await expect(page).toHaveURL(/\/account\/checkout\?plan=basic&return_to=pricing/);
+  await expect(page.getByText('安全な決済操作のため再認証してください。')).toHaveCount(0);
+  await page.getByRole('checkbox').check();
+  await expect(page.getByRole('button', { name: 'Squareで支払う' })).toBeEnabled();
+  expect(catalogRequests).toBeGreaterThanOrEqual(2);
+});
+
+test('STORY-CHECKOUT-008 a security hold never enables checkout', async ({ page }) => {
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/account') {
+      return json(route, { account: { account_status: 'active', email: 'checkout@example.test' } });
+    }
+    if (path === '/api/account/catalog') {
+      return json(route, { error: { code: 'ACCOUNT_SECURITY_HOLD', message: 'Security hold' } }, 403);
+    }
+    return json(route, { ok: true });
+  });
+
+  await page.goto('/account/checkout?plan=basic&return_to=pricing');
+  await expect(page.getByRole('alert')).toContainText('ACCOUNT_SECURITY_HOLD');
+  await expect(page.getByRole('button', { name: 'Squareで支払う' })).toBeDisabled();
+  await expect(page.getByRole('link', { name: '再認証' })).toHaveCount(0);
+});

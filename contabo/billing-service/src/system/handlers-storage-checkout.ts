@@ -111,9 +111,9 @@ export async function handleStorageCheckoutIntents(request: Request, env: Billin
     }
 
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-    const intentId = crypto.randomUUID();
-    await projection.postStorageIntentCreate({
+    let expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    let intentId: string = crypto.randomUUID();
+    const createResult = await projection.postStorageIntentCreate({
       intent_id: intentId,
       tenant_id: actor.profile.tenant_id,
       user_id: actor.user.id,
@@ -125,6 +125,44 @@ export async function handleStorageCheckoutIntents(request: Request, env: Billin
       expires_at: expiresAt,
       created_at: now.toISOString(),
     });
+
+    if (createResult.duplicate) {
+      const duplicateIntentId = text(createResult.intent?.['id']);
+      if (!duplicateIntentId) {
+        throw new FunctionHttpError(409, 'STORAGE_CHECKOUT_INTENT_IN_PROGRESS', '同じStorage Checkoutを作成中です。');
+      }
+      const authoritativeRow = await projection.getStorageIntentById(duplicateIntentId, actor.profile.tenant_id);
+      if (!authoritativeRow) {
+        throw new FunctionHttpError(409, 'STORAGE_CHECKOUT_INTENT_IN_PROGRESS', '同じStorage Checkoutを作成中です。');
+      }
+      const authoritative = authoritativeRow as unknown as ExistingIntent & { capacity_gb?: unknown; price_jpy?: unknown };
+      if (authoritative.tenant_id !== actor.profile.tenant_id || authoritative.user_id !== actor.user.id) {
+        throw new FunctionHttpError(409, 'IDEMPOTENCY_KEY_OWNERSHIP_MISMATCH', 'このIdempotency-Keyは別Contextで使用されています。');
+      }
+      if (
+        authoritative.product_id !== product.productId
+        || Number(authoritative.capacity_gb) !== product.capacityGb
+        || Number(authoritative.price_jpy) !== product.priceJpy
+      ) {
+        throw new FunctionHttpError(409, 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH', 'このIdempotency-Keyは別のCheckout内容で使用されています。');
+      }
+      if (authoritative.checkout_url) {
+        return Response.json({
+          intent_id: authoritative.id,
+          status: authoritative.status,
+          checkout_url: authoritative.checkout_url,
+          provider_checkout_id: authoritative.provider_checkout_id,
+          provider_order_id: authoritative.provider_order_id,
+          expires_at: authoritative.expires_at,
+          reused: true,
+        }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
+      }
+      if (!storageIntentRetryable(authoritative)) {
+        throw new FunctionHttpError(409, 'STORAGE_CHECKOUT_INTENT_IN_PROGRESS', '同じStorage Checkoutを作成中です。');
+      }
+      intentId = authoritative.id;
+      expiresAt = authoritative.expires_at ?? expiresAt;
+    }
 
     const square = await runSquareStorageCheckout(
       { env, vault, projection },

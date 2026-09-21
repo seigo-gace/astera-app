@@ -97,6 +97,11 @@ export class MemoryD1Database implements D1Database {
       return row ? [row] : [];
     }
 
+    if (/^SELECT status, provider_checkout_id, provider_order_id, checkout_url FROM billing_intents WHERE id = \?1/i.test(normalized)) {
+      const row = this.table('billing_intents').find((entry) => entry.id === params[0]);
+      return row ? [row] : [];
+    }
+
     if (normalized.includes('FROM billing_intents') && normalized.includes('provider_order_id')) {
       if (normalized.includes('tenant_id=?1') && normalized.includes('provider_order_id=?2')) {
         const row = this.table('billing_intents').find((entry) => {
@@ -157,6 +162,16 @@ export class MemoryD1Database implements D1Database {
       const idParam = params[params.length - 1];
       const row = this.table('billing_intents').find((entry) => entry.id === idParam);
       if (row) {
+        if (normalized.includes("status = 'checkout_created'")) {
+          if ((row.status === 'creating_checkout' || row.status === 'failed') && row.checkout_url == null) {
+            row.status = 'checkout_created';
+            row.provider_checkout_id = params[0];
+            row.provider_order_id = params[1];
+            row.checkout_url = params[2];
+            row.updated_at = params[3];
+          }
+          return [];
+        }
         if (normalized.includes('status=')) {
           const match = normalized.match(/status='([^']+)'/i);
           if (match) row.status = match[1];

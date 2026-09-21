@@ -52,6 +52,24 @@ function returnRoute(value: unknown): string {
   return '/app/new';
 }
 
+function assertCheckoutMatchesIntent(
+  intent: ExistingIntent,
+  expected: { productKind: 'credit' | 'plan'; productId: string; billingCycle: BillingCycle | null; amount: number },
+): void {
+  if (
+    intent.product_kind !== expected.productKind
+    || intent.product_id !== expected.productId
+    || intent.billing_cycle !== expected.billingCycle
+    || intent.amount !== expected.amount
+  ) {
+    throw new FunctionHttpError(
+      409,
+      'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH',
+      'このIdempotency-Keyは別のCheckout内容で使用されています。',
+    );
+  }
+}
+
 export async function handleBillingCheckoutIntents(request: Request, env: BillingServiceEnv): Promise<Response> {
   const requestId = requestCorrelationId(request.headers);
   try {
@@ -178,12 +196,12 @@ export async function handleBillingCheckoutIntents(request: Request, env: Billin
     }
 
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-    const intentId = crypto.randomUUID();
-    const contextId = crypto.randomUUID();
+    let expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    let intentId: string = crypto.randomUUID();
+    let contextId: string = crypto.randomUUID();
     const route = returnRoute(body.return_to);
 
-    await projection.postIntentCreate({
+    const createResult = await projection.postIntentCreate({
       intent_id: intentId,
       context_id: contextId,
       tenant_id: actor.profile.tenant_id,
@@ -199,6 +217,51 @@ export async function handleBillingCheckoutIntents(request: Request, env: Billin
       created_at: now.toISOString(),
       idempotency_key: key,
     });
+
+    if (createResult.duplicate) {
+      const duplicateIntentId = text(createResult.intent?.['id']);
+      if (!duplicateIntentId) {
+        throw new FunctionHttpError(409, 'CHECKOUT_INTENT_IN_PROGRESS', '同じCheckout Intentを作成中です。');
+      }
+      const authoritativeRow = await projection.getBillingIntentLookup({
+        intent_id: duplicateIntentId,
+        tenant_id: actor.profile.tenant_id,
+      });
+      if (!authoritativeRow) {
+        throw new FunctionHttpError(409, 'CHECKOUT_INTENT_IN_PROGRESS', '同じCheckout Intentを作成中です。');
+      }
+      const authoritative = authoritativeRow as unknown as ExistingIntent;
+      if (authoritative.tenant_id !== actor.profile.tenant_id || authoritative.user_id !== actor.user.id) {
+        throw new FunctionHttpError(409, 'IDEMPOTENCY_KEY_OWNERSHIP_MISMATCH', 'このIdempotency-Keyは別Contextで使用されています。');
+      }
+      assertCheckoutMatchesIntent(authoritative, {
+        productKind,
+        productId: selectedId,
+        billingCycle,
+        amount,
+      });
+      if (authoritative.checkout_url) {
+        return Response.json({
+          intent_id: authoritative.id,
+          status: authoritative.status,
+          checkout_url: authoritative.checkout_url,
+          provider_checkout_id: authoritative.provider_checkout_id,
+          provider_order_id: authoritative.provider_order_id,
+          expires_at: authoritative.expires_at,
+          reused: true,
+        }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
+      }
+      if (!billingIntentRetryable(authoritative)) {
+        throw new FunctionHttpError(409, 'CHECKOUT_INTENT_IN_PROGRESS', '同じCheckout Intentを作成中です。');
+      }
+      const authoritativeSquareInput = resolveBillingSquareCheckout(catalog, authoritative);
+      intentId = authoritative.id;
+      contextId = text(authoritative.return_context_id);
+      expiresAt = authoritative.expires_at ?? expiresAt;
+      displayName = authoritativeSquareInput.displayName;
+      amount = authoritativeSquareInput.amount;
+      subscriptionPlanVariationId = authoritativeSquareInput.subscriptionPlanVariationId;
+    }
 
     const square = await runSquareBillingCheckout(
       { env, vault, projection },

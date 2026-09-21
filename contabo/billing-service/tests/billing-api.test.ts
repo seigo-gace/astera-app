@@ -3,12 +3,19 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { redactSquareWebhookPayload } from '../dist/feature/square-redactor.js';
 import { SQUARE_SUPPORTED_EVENT_TYPES } from '../dist/feature/square-webhook-support.js';
 import { handleSquareIngress, handleSquareWebhook } from '../dist/system/handlers-ingress.js';
+import { handleBillingCheckoutIntents } from '../dist/system/handlers-billing-checkout.js';
+import { handleBillingStatus } from '../dist/system/handlers-billing-status.js';
+import { handleStorageCheckoutIntents } from '../dist/system/handlers-storage-checkout.js';
 import { createMemoryD1 } from '../dist/component/d1-memory.js';
 import type { BillingServiceEnv } from '../dist/part/billing-env.js';
 import { createSquareCheckout } from '../dist/feature/square.js';
 import type { AsteraProjectionClient } from '../dist/feature/astera-projection.js';
 import type { LibralVaultClient } from '../dist/feature/libral-vault.js';
-import { recoverExactReconciliationIntent, writeWebhookInvoicePayment } from '../workers/projection/src/billing-writes.js';
+import {
+  recoverExactReconciliationIntent,
+  writeIntentCheckoutCreated,
+  writeWebhookInvoicePayment,
+} from '../workers/projection/src/billing-writes.js';
 
 const NOTIFICATION_URL = 'https://api.asterav8.jp/billing/webhooks/square';
 
@@ -80,6 +87,8 @@ function mockProjection(db?: ReturnType<typeof createMemoryD1>): AsteraProjectio
     getStorageCommerce: vi.fn().mockRejectedValue(new Error('not used')),
     getStorageProduct: vi.fn().mockRejectedValue(new Error('not used')),
     getPendingStorageCapacityGb: vi.fn().mockResolvedValue(0),
+    getLatestPendingPlanIntent: vi.fn().mockResolvedValue(null),
+    listPendingPlanIntents: vi.fn().mockResolvedValue([]),
     getLedgerGrant: vi.fn().mockResolvedValue(null),
     getEvent: vi.fn().mockImplementation(async (eventId: string) => getEventFromDb(eventId)),
     hasSignupBonus: vi.fn().mockResolvedValue(false),
@@ -291,6 +300,219 @@ describe('checkout idempotency key', () => {
     expect(body.idempotency_key).toBe('idem-key-123');
     const resolved = await (vault.actionsHttp as ReturnType<typeof vi.fn>).mock.results[0]?.value;
     expect(JSON.stringify(resolved)).not.toMatch(/sandbox-token|Bearer\s+[A-Za-z0-9._-]{8,}/);
+  });
+
+  it('uses the persisted intent returned by a duplicate projection create race', async () => {
+    const persistedIntentId = 'intent-persisted-race';
+    const projection = mockProjection();
+    projection.getActor = vi.fn().mockResolvedValue({
+      profile: {
+        user_id: 'user-1',
+        tenant_id: 'tenant-1',
+        nickname: 'Test',
+        account_status: 'active',
+        ui_language: 'ja',
+        created_at: '2026-09-20T00:00:00Z',
+        updated_at: '2026-09-20T00:00:00Z',
+      },
+      credit: {
+        id: 'credit-1', tenant_id: 'tenant-1', available_balance: 0, reserved_balance: 0, version: 1,
+        updated_at: '2026-09-20T00:00:00Z',
+      },
+    });
+    projection.getCatalog = vi.fn().mockResolvedValue({
+      catalog_version: 'catalog-v1',
+      checksum: 'checksum',
+      published_at: '2026-09-20T00:00:00Z',
+      plans: [],
+      creditProducts: [{
+        product_id: 'credit-1000',
+        id: 'credit-1000',
+        display_name: '1,000 Credits',
+        name: '1,000 Credits',
+        description: '',
+        currency: 'JPY',
+        amount: 1000,
+        price_label: '¥1,000',
+        credits: 1000,
+        credits_label: '1,000',
+        active: true,
+        square_catalog_object_id: null,
+      }],
+    });
+    const persisted = {
+      id: persistedIntentId,
+      tenant_id: 'tenant-1',
+      user_id: 'user-1',
+      status: 'creating_checkout',
+      checkout_url: null,
+      provider_checkout_id: null,
+      provider_order_id: null,
+      expires_at: '2026-09-22T00:00:00Z',
+      product_id: 'credit-1000',
+      product_kind: 'credit',
+      billing_cycle: null,
+      amount: 1000,
+      return_context_id: 'context-persisted-race',
+    };
+    projection.postIntentCreate = vi.fn().mockResolvedValue({ duplicate: true, intent: { id: persistedIntentId } });
+    projection.getBillingIntentLookup = vi.fn().mockResolvedValue(persisted);
+    const vault = mockVault(true);
+    const request = new Request('http://127.0.0.1/checkout-intents', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': 'idem-race-1',
+        'authorization': 'Bearer billing-test-secret',
+        'x-astera-tenant-id': 'tenant-1',
+        'x-astera-user-id': 'user-1',
+      },
+      body: JSON.stringify({ product_id: 'credit-1000', return_to: 'credit' }),
+    });
+
+    const response = await handleBillingCheckoutIntents(request, testEnv(createMemoryD1(), vault, projection));
+    const responseBody = await response.json() as { intent_id: string };
+
+    expect(response.status).toBe(201);
+    expect(responseBody.intent_id).toBe(persistedIntentId);
+    const squareBody = (vault.actionsHttp as ReturnType<typeof vi.fn>).mock.calls[0]![0].body as { payment_note: string };
+    expect(squareBody.payment_note).toBe(`astera_billing_intent:${persistedIntentId}`);
+    expect(projection.postIntentCheckoutCreated).toHaveBeenCalledWith(expect.objectContaining({ intent_id: persistedIntentId }));
+  });
+
+  it('treats an identical checkout-created transition as idempotent', async () => {
+    const db = createMemoryD1();
+    db.tables.set('billing_intents', [{
+      id: 'intent-transition-1',
+      status: 'checkout_created',
+      provider_checkout_id: 'checkout-1',
+      provider_order_id: 'order-1',
+      checkout_url: 'https://sandbox.square.link/example',
+    }]);
+
+    const result = await writeIntentCheckoutCreated(db, {
+      intent_id: 'intent-transition-1',
+      provider_checkout_id: 'checkout-1',
+      provider_order_id: 'order-1',
+      checkout_url: 'https://sandbox.square.link/example',
+      updated_at: '2026-09-20T00:00:00Z',
+    });
+
+    expect(result).toEqual(expect.objectContaining({ accepted: true, duplicate: true, intent_id: 'intent-transition-1' }));
+  });
+
+  it('uses the persisted storage intent returned by a duplicate projection create race', async () => {
+    const projection = mockProjection();
+    projection.getActor = vi.fn().mockResolvedValue({
+      profile: {
+        user_id: 'user-1', tenant_id: 'tenant-1', nickname: 'Test', account_status: 'active', ui_language: 'ja',
+        created_at: '2026-09-20T00:00:00Z', updated_at: '2026-09-20T00:00:00Z',
+      },
+      credit: {
+        id: 'credit-1', tenant_id: 'tenant-1', available_balance: 0, reserved_balance: 0, version: 1,
+        updated_at: '2026-09-20T00:00:00Z',
+      },
+    });
+    projection.getStorageCommerce = vi.fn().mockResolvedValue({
+      catalogVersion: 'catalog-v1', planId: 'basic', planMaxCapacityGb: 100, legacyCapacityGb: 0,
+      purchasedCapacityGb: 0, currentCapacityGb: 0, remainingCapacityGb: 100, packs: [],
+    });
+    projection.getStorageProduct = vi.fn().mockResolvedValue({
+      productId: 'storage-10', displayName: '10 GB', capacityGb: 10, priceJpy: 500,
+    });
+    projection.postStorageIntentCreate = vi.fn().mockResolvedValue({
+      duplicate: true,
+      intent: { id: 'storage-persisted-race' },
+    });
+    projection.getStorageIntentById = vi.fn().mockResolvedValue({
+      id: 'storage-persisted-race', tenant_id: 'tenant-1', user_id: 'user-1', status: 'creating_checkout',
+      checkout_url: null, provider_checkout_id: null, provider_order_id: null,
+      expires_at: '2026-09-22T00:00:00Z', product_id: 'storage-10', capacity_gb: 10, price_jpy: 500,
+    });
+    const vault = mockVault(true);
+    const request = new Request('http://127.0.0.1/storage-checkout-intents', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', 'idempotency-key': 'storage-race-1',
+        authorization: 'Bearer billing-test-secret', 'x-astera-tenant-id': 'tenant-1', 'x-astera-user-id': 'user-1',
+      },
+      body: JSON.stringify({ product_id: 'storage-10' }),
+    });
+
+    const response = await handleStorageCheckoutIntents(request, testEnv(createMemoryD1(), vault, projection));
+    const body = await response.json() as { intent_id: string };
+
+    expect(response.status).toBe(201);
+    expect(body.intent_id).toBe('storage-persisted-race');
+    const squareBody = (vault.actionsHttp as ReturnType<typeof vi.fn>).mock.calls[0]![0].body as { payment_note: string };
+    expect(squareBody.payment_note).toBe('astera_billing_intent:storage-persisted-race');
+    expect(projection.postStorageIntentCheckoutCreated).toHaveBeenCalledWith(expect.objectContaining({ intent_id: 'storage-persisted-race' }));
+  });
+});
+
+describe('billing intent status tenant boundary', () => {
+  function authenticatedProjection(): ReturnType<typeof mockProjection> {
+    const projection = mockProjection();
+    projection.getActor = vi.fn().mockResolvedValue({
+      profile: {
+        user_id: 'user-1', tenant_id: 'tenant-1', nickname: 'Test', account_status: 'active', ui_language: 'ja',
+        created_at: '2026-09-20T00:00:00Z', updated_at: '2026-09-20T00:00:00Z',
+      },
+      credit: {
+        id: 'credit-1', tenant_id: 'tenant-1', available_balance: 0, reserved_balance: 0, version: 1,
+        updated_at: '2026-09-20T00:00:00Z',
+      },
+    });
+    return projection;
+  }
+
+  function statusRequest(): Request {
+    return new Request('http://127.0.0.1/billing/intents/intent-1', {
+      headers: {
+        authorization: 'Bearer billing-test-secret',
+        'x-astera-tenant-id': 'tenant-1',
+        'x-astera-user-id': 'user-1',
+      },
+    });
+  }
+
+  it('returns 200 for a reconciliation_required intent owned by the actor tenant', async () => {
+    const projection = authenticatedProjection();
+    projection.getBillingIntentLookup = vi.fn().mockResolvedValue({
+      id: 'intent-1', tenant_id: 'tenant-1', user_id: 'user-1', status: 'reconciliation_required',
+      product_kind: 'plan', product_id: 'basic', catalog_version: 'catalog-v1', amount: 1000, currency: 'JPY',
+      credit_amount: 0, failure_code: 'SUBSCRIPTION_ID_RECONCILIATION_REQUIRED',
+    });
+
+    const response = await handleBillingStatus(statusRequest(), testEnv(createMemoryD1(), mockVault(true), projection), 'intent-1');
+    const body = await response.json() as { status: string; failure_code: string };
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe('reconciliation_required');
+    expect(body.failure_code).toBe('SUBSCRIPTION_ID_RECONCILIATION_REQUIRED');
+    expect(projection.getBillingIntentLookup).toHaveBeenCalledWith({ intent_id: 'intent-1', tenant_id: 'tenant-1' });
+  });
+
+  it('keeps a wrong-tenant intent behind privacy 404', async () => {
+    const projection = authenticatedProjection();
+    projection.getBillingIntentLookup = vi.fn().mockResolvedValue(null);
+    projection.getStorageIntentById = vi.fn().mockResolvedValue(null);
+
+    const response = await handleBillingStatus(statusRequest(), testEnv(createMemoryD1(), mockVault(true), projection), 'intent-1');
+    const body = await response.json() as { error: { code: string } };
+
+    expect(response.status).toBe(404);
+    expect(body.error.code).toBe('BILLING_INTENT_NOT_FOUND');
+  });
+
+  it('returns 404 for an unknown intent', async () => {
+    const projection = authenticatedProjection();
+    projection.getBillingIntentLookup = vi.fn().mockResolvedValue(null);
+    projection.getStorageIntentById = vi.fn().mockResolvedValue(null);
+
+    const response = await handleBillingStatus(statusRequest(), testEnv(createMemoryD1(), mockVault(true), projection), 'unknown-intent');
+
+    expect(response.status).toBe(404);
   });
 });
 
