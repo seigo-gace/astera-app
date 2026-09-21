@@ -275,6 +275,15 @@ export async function writeIntentPaymentApply(db: D1Database, body: Record<strin
     return { processing_status: 'processed', billing_intent_id: intent.id };
   }
 
+  // Square can deliver payment.updated(COMPLETED) before payment.created(APPROVED).
+  // A later non-COMPLETED event must not erase a reconciliation decision made from the completed payment.
+  if (String(intent.status) === 'reconciliation_required' && status !== 'COMPLETED') {
+    await db.prepare(
+      `UPDATE billing_events SET billing_intent_id=?1, processing_status='reconciliation_required', processed_at=?2 WHERE provider_event_id=?3`,
+    ).bind(intent.id, new Date().toISOString(), eventId).run();
+    return { processing_status: 'reconciliation_required', billing_intent_id: intent.id };
+  }
+
   if (paidAmount === null || paidAmount !== Number(intent.amount) || paidCurrency !== intent.currency) {
     await db.batch([
       db.prepare(

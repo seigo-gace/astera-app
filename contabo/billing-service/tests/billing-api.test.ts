@@ -14,6 +14,7 @@ import type { LibralVaultClient } from '../dist/feature/libral-vault.js';
 import {
   recoverExactReconciliationIntent,
   writeIntentCheckoutCreated,
+  writeIntentPaymentApply,
   writeWebhookInvoicePayment,
 } from '../workers/projection/src/billing-writes.js';
 
@@ -559,6 +560,42 @@ describe('payment-first reconciliation recovery', () => {
       ...overrides,
     };
   }
+
+  it('does not downgrade reconciliation_required when APPROVED payment.created arrives after COMPLETED payment.updated', async () => {
+    const db = createMemoryD1();
+    const intent = makeRecoveryFixture({ status: 'checkout_created', failure_code: null, provider_payment_id: null });
+    db.tables.set('billing_intents', [intent]);
+    db.tables.set('billing_events', [
+      { provider_event_id: 'evt-completed', processing_status: 'processing' },
+      { provider_event_id: 'evt-approved-late', processing_status: 'processing' },
+    ]);
+
+    const completed = await writeIntentPaymentApply(db, {
+      provider_event_id: 'evt-completed',
+      provider_order_id: 'order-123',
+      provider_payment_id: 'payment-1',
+      payment_status: 'COMPLETED',
+      paid_amount: 1000,
+      paid_currency: 'JPY',
+      grant_idempotency_key: 'grant-completed',
+      grant_fingerprint: 'fingerprint-completed',
+    });
+    const lateApproved = await writeIntentPaymentApply(db, {
+      provider_event_id: 'evt-approved-late',
+      provider_order_id: 'order-123',
+      provider_payment_id: 'payment-1',
+      payment_status: 'APPROVED',
+      paid_amount: 1000,
+      paid_currency: 'JPY',
+      grant_idempotency_key: 'grant-approved',
+      grant_fingerprint: 'fingerprint-approved',
+    });
+
+    expect(completed.processing_status).toBe('reconciliation_required');
+    expect(lateApproved.processing_status).toBe('reconciliation_required');
+    expect(db.tables.get('billing_intents')![0]!.status).toBe('reconciliation_required');
+    expect(db.tables.get('billing_intents')![0]!.failure_code).toBe('SUBSCRIPTION_ID_RECONCILIATION_REQUIRED');
+  });
 
   it('recovers the exact pending intent when the matching subscription mapping arrives later', async () => {
     const db = createMemoryD1();
