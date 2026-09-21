@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 const baseURL = 'http://127.0.0.1:4173';
+const playwrightOutDir = '.verify/playwright-dist';
 
 function project(
   name: string,
@@ -47,6 +48,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
     env: {
+      ASTERA_VITE_OUT_DIR: playwrightOutDir,
       VITE_ASTERA_API_BASE: baseURL,
     },
   },
