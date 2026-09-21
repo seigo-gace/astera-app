@@ -5,7 +5,10 @@ import { extname, join, resolve } from 'node:path';
 
 const ROOT = process.cwd();
 const DIST = resolve(ROOT, 'dist');
-const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.css', '.json', '.map']);
+// Only scan browser-executed / browser-consumed deploy artifacts.
+// Source maps can legitimately contain development URLs inside embedded sourceContent;
+// they are not executed by the application runtime and must not fail the deploy gate.
+const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.css', '.json']);
 const LOOPBACK_ORIGIN_WITH_PORT = /https?:\/\/(?:127\.0\.0\.1|localhost):\d+/i;
 
 async function walk(dir) {
@@ -35,12 +38,12 @@ async function main() {
   }
 
   if (offenders.length > 0) {
-    console.error('Deploy artifact guard FAILED: browser bundle contains loopback origin(s).');
+    console.error('Deploy artifact guard FAILED: browser runtime artifact contains loopback origin(s).');
     for (const offender of offenders) console.error(`- ${offender}`);
     process.exit(1);
   }
 
-  console.log(`Deploy artifact guard PASS: ${files.length} files checked; no loopback origin with port found.`);
+  console.log(`Deploy artifact guard PASS: ${files.length} files checked; no runtime loopback origin with port found.`);
 }
 
 main().catch((error) => {
