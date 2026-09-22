@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { isAllowedCheckoutUrl } from '../../features/checkout/checkout-security';
+import { isAllowedOneTimeCheckoutUrl } from '../../features/checkout/checkout-security';
 import { ApiError, asArray, asRecord, queryValue, recordText } from '../api-client';
 import { nativeCallback, openExternalUrl } from '../external-navigation';
 import type { RouteMatch } from '../route-registry';
@@ -77,7 +77,7 @@ function CreditPage({ route }: { route: RouteMatch }) {
     }, setState, { success: 'Checkoutを準備しました。', idempotent: true });
     if (!payload) return;
     const url = recordText(asRecord(payload), ['checkout_url', 'url', 'redirect_url']);
-    if (!url || !isAllowedCheckoutUrl(url)) {
+    if (!url || !isAllowedOneTimeCheckoutUrl(url)) {
       setState({ type: 'error', message: '許可されたCheckout URLを確認できません。', code: 'CHECKOUT_URL_REJECTED' });
       return;
     }
