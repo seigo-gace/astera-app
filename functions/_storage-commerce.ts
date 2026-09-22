@@ -10,11 +10,11 @@ export type StoragePackProduct = {
 export type StorageCommerceProjection = {
   catalogVersion: string;
   planId: string;
+  planBaseCapacityGb: number;
   planMaxCapacityGb: number;
   legacyCapacityGb: number;
   purchasedCapacityGb: number;
   currentCapacityGb: number;
-  remainingCapacityGb: number;
   packs: Array<StoragePackProduct & { canPurchase: boolean }>;
 };
 
@@ -75,14 +75,16 @@ export async function loadStorageCommerceProjection(db: D1Database, tenantId: st
       ).bind(catalogVersion).all<PackRow>(),
     ]);
 
-    const planMaxCapacityGb = safeNonNegativeInteger(limit?.max_capacity_gb ?? 0, 'STORAGE_PLAN_LIMIT_INVALID');
+    // The legacy DB column is named max_capacity_gb, but the current commercial
+    // contract treats this value as the plan-included/base Storage capacity.
+    // Purchased buy-once packs are additive and are not capped by that base.
+    const planBaseCapacityGb = safeNonNegativeInteger(limit?.max_capacity_gb ?? 0, 'STORAGE_PLAN_BASE_INVALID');
     const legacyCapacityGb = safeNonNegativeInteger(legacy?.capacity_gb ?? 0, 'STORAGE_LEGACY_CAPACITY_INVALID');
     const purchasedCapacityGb = safeNonNegativeInteger(purchased?.total ?? 0, 'STORAGE_PURCHASE_CAPACITY_INVALID');
-    const currentCapacityGb = legacyCapacityGb + purchasedCapacityGb;
+    const currentCapacityGb = planBaseCapacityGb + legacyCapacityGb + purchasedCapacityGb;
     if (!Number.isSafeInteger(currentCapacityGb)) {
       throw new FunctionHttpError(503, 'STORAGE_TOTAL_CAPACITY_INVALID', 'Storage合計容量を安全に計算できません。');
     }
-    const remainingCapacityGb = Math.max(0, planMaxCapacityGb - currentCapacityGb);
     const packs = (packResult.results ?? []).map((row) => {
       const capacityGb = safeNonNegativeInteger(row.capacity_gb, 'STORAGE_PACK_CAPACITY_INVALID');
       const priceJpy = safeNonNegativeInteger(row.price_jpy, 'STORAGE_PACK_PRICE_INVALID');
@@ -91,18 +93,20 @@ export async function loadStorageCommerceProjection(db: D1Database, tenantId: st
         displayName: row.display_name,
         capacityGb,
         priceJpy,
-        canPurchase: planMaxCapacityGb > 0 && capacityGb <= remainingCapacityGb,
+        canPurchase: planId !== 'free' && planBaseCapacityGb > 0,
       };
     });
 
     return {
       catalogVersion,
       planId,
-      planMaxCapacityGb,
+      planBaseCapacityGb,
+      // Compatibility alias for older internal consumers. It must not be treated
+      // as a total-capacity ceiling; new code must use planBaseCapacityGb.
+      planMaxCapacityGb: planBaseCapacityGb,
       legacyCapacityGb,
       purchasedCapacityGb,
       currentCapacityGb,
-      remainingCapacityGb,
       packs,
     };
   } catch (error) {

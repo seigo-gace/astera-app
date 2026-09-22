@@ -27,10 +27,11 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
     return Response.json({
       catalog_version: commerce.catalogVersion,
       plan_id: commerce.planId,
-      plan_max_capacity_gb: commerce.planMaxCapacityGb,
+      plan_base_capacity_gb: commerce.planBaseCapacityGb,
+      // Backward-compatible internal alias. This is no longer a hard purchase cap.
+      plan_max_capacity_gb: commerce.planBaseCapacityGb,
       current_capacity_gb: commerce.currentCapacityGb,
-      remaining_purchase_capacity_gb: commerce.remainingCapacityGb,
-      over_plan_limit: contract.overPlanLimit,
+      over_plan_limit: false,
       state: contract.state,
       write_allowed: contract.writeAllowed,
       usage: quota,

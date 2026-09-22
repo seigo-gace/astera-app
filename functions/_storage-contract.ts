@@ -14,6 +14,7 @@ export type StorageContractProjection = {
   graceEndsAt: string | null;
   deletionScheduledAt: string | null;
   purchasedCapacityGb: number;
+  planBaseCapacityGb: number;
   planMaxCapacityGb: number;
   overPlanLimit: boolean;
 };
@@ -58,17 +59,12 @@ export async function loadStorageContractProjection(db: D1Database, tenantId: st
     }
 
     const totalCapacityGb = commerce.currentCapacityGb;
-    const planMaxCapacityGb = commerce.planMaxCapacityGb;
-    const overPlanLimit = totalCapacityGb > planMaxCapacityGb;
-    const entitled = totalCapacityGb > 0 && planMaxCapacityGb > 0;
-    const effectiveCapacityGb = entitled ? Math.min(totalCapacityGb, planMaxCapacityGb) : 0;
+    const planBaseCapacityGb = commerce.planBaseCapacityGb;
+    const entitled = totalCapacityGb > 0 && planBaseCapacityGb > 0;
+    const effectiveCapacityGb = entitled ? totalCapacityGb : 0;
     const legacyState = legacy?.state ?? 'active';
-    const state: StorageContractState | 'inactive' = !entitled
-      ? 'inactive'
-      : overPlanLimit
-        ? 'save_suspended'
-        : legacyState;
-    const writeAllowed = entitled && !overPlanLimit && state === 'active';
+    const state: StorageContractState | 'inactive' = entitled ? legacyState : 'inactive';
+    const writeAllowed = entitled && state === 'active';
 
     return {
       entitled,
@@ -80,9 +76,11 @@ export async function loadStorageContractProjection(db: D1Database, tenantId: st
       nextChargeAt: legacy?.next_charge_at ?? null,
       graceEndsAt: legacy?.grace_ends_at ?? null,
       deletionScheduledAt: legacy?.deletion_scheduled_at ?? null,
-      purchasedCapacityGb: totalCapacityGb,
-      planMaxCapacityGb,
-      overPlanLimit,
+      purchasedCapacityGb: commerce.purchasedCapacityGb,
+      planBaseCapacityGb,
+      // Compatibility alias. The plan value is base capacity, not a ceiling.
+      planMaxCapacityGb: planBaseCapacityGb,
+      overPlanLimit: false,
     };
   } catch (error) {
     if (error instanceof FunctionHttpError) throw error;
