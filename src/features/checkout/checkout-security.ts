@@ -65,6 +65,7 @@ export function isAllowedCheckoutUrl(value: string): boolean {
     const host = url.hostname.toLowerCase();
     return host === 'square.link'
       || host === 'sandbox.square.link'
+      || host.endsWith('.squareupsandbox.com')
       || host.endsWith('.square.site')
       || host.endsWith('.squareup.com');
   } catch {
