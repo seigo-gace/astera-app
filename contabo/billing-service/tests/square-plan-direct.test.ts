@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createDirectPlanSubscription } from '../dist/feature/square-plan-direct.js';
 import type { BillingServiceEnv } from '../dist/part/billing-env.js';
@@ -14,10 +15,17 @@ function response(body: unknown) {
   return { status: 200, ok: true, headers: {}, body: JSON.stringify(body) };
 }
 
+function expectedCardKey(sourceId: string): string {
+  const compact = intentId.replaceAll('-', '').slice(0, 16);
+  const digest = createHash('sha256').update(sourceId, 'utf8').digest('hex').slice(0, 16);
+  return `ast-card-${compact}-${digest}`;
+}
+
 type SubscriptionPage = { subscriptions?: unknown[]; cursor?: string };
 type VaultOptions = {
   references?: unknown[];
   emails?: unknown[];
+  existingCards?: unknown[];
   cardMismatch?: boolean;
   subscriptionMismatch?: boolean;
   subscriptionPages?: SubscriptionPage[];
@@ -37,14 +45,24 @@ function vaultFor(options: VaultOptions = {}) {
       if (input.url.endsWith('/v2/subscriptions/search')) {
         return response(options.subscriptionPages?.[subscriptionSearchIndex++] ?? { subscriptions: [] });
       }
+      if (input.method === 'GET' && input.url.includes('/v2/cards?')) {
+        return response({ cards: options.existingCards ?? [] });
+      }
       if (input.url.endsWith('/v2/customers')) {
         return response({ customer: { id: 'cust-1', reference_id: 'tenant-1', email_address: 'verified@example.com' } });
       }
-      if (input.url.endsWith('/v2/cards')) {
+      if (input.method === 'POST' && input.url.endsWith('/v2/cards')) {
         return response({ card: { id: 'card-1', customer_id: options.cardMismatch ? 'wrong' : 'cust-1', reference_id: intentId } });
       }
       if (input.url.endsWith('/v2/subscriptions')) {
-        return response({ subscription: { id: 'sub-1', customer_id: 'cust-1', card_id: 'card-1', plan_variation_id: options.subscriptionMismatch ? 'wrong' : 'variation-1', status: 'PENDING' } });
+        const body = input.body as any;
+        return response({ subscription: {
+          id: 'sub-1',
+          customer_id: 'cust-1',
+          card_id: body.card_id,
+          plan_variation_id: options.subscriptionMismatch ? 'wrong' : 'variation-1',
+          status: 'PENDING',
+        } });
       }
       if (input.url.includes('/v2/customers/')) {
         return response({ customer: { id: 'cust-1', reference_id: 'tenant-1' } });
@@ -55,12 +73,12 @@ function vaultFor(options: VaultOptions = {}) {
   return { vault, calls };
 }
 
-async function create(vault: LibralVaultClient) {
+async function create(vault: LibralVaultClient, sourceId = 'cnon:token') {
   return createDirectPlanSubscription({ ...envBase, vault }, {
     intentId,
     tenantId: 'tenant-1',
     verifiedEmail: 'verified@example.com',
-    sourceId: 'cnon:token',
+    sourceId,
     planVariationId: 'variation-1',
   });
 }
@@ -72,13 +90,16 @@ describe('direct Square Plan subscription', () => {
     expect(calls.some((call) => call.url.endsWith('/v2/customers'))).toBe(false);
     const search = calls.find((call) => call.url.endsWith('/v2/subscriptions/search'))!.body as any;
     expect(search).toEqual({ query: { filter: { customer_ids: ['cust-1'] } }, limit: 100 });
-    const card = calls.find((call) => call.url.endsWith('/v2/cards'))!.body as any;
+    const cardSearch = calls.find((call) => call.method === 'GET' && call.url.includes('/v2/cards?'))!;
+    expect(cardSearch.url).toContain('customer_id=cust-1');
+    expect(cardSearch.url).toContain(`reference_id=${encodeURIComponent(intentId)}`);
+    const card = calls.find((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))!.body as any;
     expect(card).toEqual({
-      idempotency_key: `ast-card-${intentId.replaceAll('-', '')}`,
+      idempotency_key: expectedCardKey('cnon:token'),
       source_id: 'cnon:token',
       card: { customer_id: 'cust-1', reference_id: intentId, billing_address: { postal_code: '94103' } },
     });
-    expect(String(card.idempotency_key)).toHaveLength(41);
+    expect(String(card.idempotency_key)).toHaveLength(42);
     const subscription = calls.find((call) => call.url.endsWith('/v2/subscriptions'))!.body as any;
     expect(subscription).toEqual({
       idempotency_key: `ast-sub-${intentId.replaceAll('-', '')}`,
@@ -120,7 +141,7 @@ describe('direct Square Plan subscription', () => {
       subscriptionPages: [{ subscriptions: [{ id: 'existing-1', customer_id: 'cust-1', status: 'ACTIVE' }] }],
     });
     await expect(create(vault)).rejects.toMatchObject({ code: 'SQUARE_SUBSCRIPTION_ALREADY_EXISTS', status: 409 });
-    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))).toBe(false);
     expect(calls.some((call) => call.url.endsWith('/v2/subscriptions'))).toBe(false);
   });
 
@@ -133,7 +154,7 @@ describe('direct Square Plan subscription', () => {
       ] }],
     });
     await expect(create(vault)).resolves.toMatchObject({ subscriptionId: 'sub-1' });
-    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(true);
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))).toBe(true);
   });
 
   it('walks subscription search cursors and blocks a live subscription on a later page', async () => {
@@ -148,7 +169,7 @@ describe('direct Square Plan subscription', () => {
     const searches = calls.filter((call) => call.url.endsWith('/v2/subscriptions/search'));
     expect(searches).toHaveLength(2);
     expect((searches[1]!.body as any).cursor).toBe('page-2');
-    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))).toBe(false);
   });
 
   it('fails closed when a subscription search row does not match the customer', async () => {
@@ -157,7 +178,30 @@ describe('direct Square Plan subscription', () => {
       subscriptionPages: [{ subscriptions: [{ id: 'bad-1', customer_id: 'other-customer', status: 'CANCELED' }] }],
     });
     await expect(create(vault)).rejects.toMatchObject({ code: 'SQUARE_SUBSCRIPTION_SEARCH_MISMATCH', status: 502 });
-    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))).toBe(false);
+  });
+
+  it('recovers an existing enabled card for the same Billing Intent and skips CreateCard', async () => {
+    const { vault, calls } = vaultFor({
+      references: [{ id: 'cust-1', reference_id: 'tenant-1' }],
+      existingCards: [{ id: 'card-existing', customer_id: 'cust-1', reference_id: intentId, enabled: true }],
+    });
+    await expect(create(vault, 'cnon:new-token')).resolves.toMatchObject({ cardId: 'card-existing', subscriptionId: 'sub-1' });
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))).toBe(false);
+    const subscription = calls.find((call) => call.url.endsWith('/v2/subscriptions'))!.body as any;
+    expect(subscription.card_id).toBe('card-existing');
+  });
+
+  it('fails closed when multiple cards exist for one Billing Intent', async () => {
+    const { vault, calls } = vaultFor({
+      references: [{ id: 'cust-1', reference_id: 'tenant-1' }],
+      existingCards: [
+        { id: 'card-1', customer_id: 'cust-1', reference_id: intentId, enabled: true },
+        { id: 'card-2', customer_id: 'cust-1', reference_id: intentId, enabled: true },
+      ],
+    });
+    await expect(create(vault)).rejects.toMatchObject({ code: 'DUPLICATE_SQUARE_INTENT_CARD', status: 409 });
+    expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/v2/cards'))).toBe(false);
   });
 
   it('fails closed when a CreateCard response mismatches', async () => {
@@ -170,13 +214,24 @@ describe('direct Square Plan subscription', () => {
     await expect(create(vault)).rejects.toMatchObject({ code: 'SQUARE_SUBSCRIPTION_RESPONSE_MISMATCH' });
   });
 
-  it('uses the same deterministic idempotency keys on a retry', async () => {
+  it('uses the same deterministic idempotency keys for an exact retry with the same source token', async () => {
     const { vault, calls } = vaultFor({ references: [{ id: 'cust-1', reference_id: 'tenant-1' }] });
-    await create(vault);
-    await create(vault);
-    const cardKeys = calls.filter((call) => call.url.endsWith('/v2/cards')).map((call) => (call.body as any).idempotency_key);
+    await create(vault, 'cnon:same-token');
+    await create(vault, 'cnon:same-token');
+    const cardKeys = calls.filter((call) => call.method === 'POST' && call.url.endsWith('/v2/cards')).map((call) => (call.body as any).idempotency_key);
     const subscriptionKeys = calls.filter((call) => call.url.endsWith('/v2/subscriptions')).map((call) => (call.body as any).idempotency_key);
     expect(new Set(cardKeys).size).toBe(1);
     expect(new Set(subscriptionKeys).size).toBe(1);
+  });
+
+  it('uses a new CreateCard idempotency key when Web Payments SDK returns a new source token', async () => {
+    const { vault, calls } = vaultFor({ references: [{ id: 'cust-1', reference_id: 'tenant-1' }] });
+    await create(vault, 'cnon:token-a');
+    await create(vault, 'cnon:token-b');
+    const cardKeys = calls.filter((call) => call.method === 'POST' && call.url.endsWith('/v2/cards')).map((call) => (call.body as any).idempotency_key);
+    expect(cardKeys).toHaveLength(2);
+    expect(cardKeys[0]).toBe(expectedCardKey('cnon:token-a'));
+    expect(cardKeys[1]).toBe(expectedCardKey('cnon:token-b'));
+    expect(cardKeys[0]).not.toBe(cardKeys[1]);
   });
 });
