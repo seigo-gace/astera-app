@@ -191,7 +191,7 @@ export async function createDirectPlanSubscription(
   const cardPayload = await squareJson<{ card?: SquareCard }>(env, vault, 'POST', '/v2/cards', {
     idempotency_key: idempotencyKey(input.intentId, 'card'),
     source_id: input.sourceId,
-    card: { customer_id: customerId, reference_id: input.intentId },
+    card: { customer_id: customerId, reference_id: input.intentId, ...(env.SQUARE_ENVIRONMENT?.trim().toLowerCase()==="sandbox" ? { billing_address: { postal_code: "94103" } } : {}) },
   });
   const cardId = String(cardPayload.card?.id ?? '').trim();
   if (!cardId || cardPayload.card?.customer_id !== customerId || cardPayload.card?.reference_id !== input.intentId) {

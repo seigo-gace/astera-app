@@ -76,7 +76,7 @@ describe('direct Square Plan subscription', () => {
     expect(card).toEqual({
       idempotency_key: `ast-card-${intentId.replaceAll('-', '')}`,
       source_id: 'cnon:token',
-      card: { customer_id: 'cust-1', reference_id: intentId },
+      card: { customer_id: 'cust-1', reference_id: intentId, billing_address: { postal_code: '94103' } },
     });
     expect(String(card.idempotency_key)).toHaveLength(41);
     const subscription = calls.find((call) => call.url.endsWith('/v2/subscriptions'))!.body as any;
