@@ -441,8 +441,6 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
           customerInitiated: true,
           sellerKeyedIn: false,
           billingContact: { email: squareState.email },
-          amount: String(connection.planAmount ?? 0),
-          currencyCode: connection.currency ?? "JPY",
         });
         if (tokenized.status !== "OK" || !tokenized.token) {
           throw new Error(tokenized.errors?.[0]?.code || tokenized.errors?.[0]?.message || "SQUARE_TOKENIZATION_FAILED");
