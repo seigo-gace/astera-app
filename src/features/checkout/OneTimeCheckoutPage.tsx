@@ -4,7 +4,7 @@ import { openExternalUrl } from '../../platform/external-navigation';
 import { resolvedApiBase } from '../../platform/api-client';
 import type { RouteMatch } from '../../platform/route-registry';
 import { ResponsivePageShell } from '../../platform/ResponsivePageShell';
-import { isAllowedCheckoutUrl, readCheckoutResponseError } from './checkout-security';
+import { isAllowedOneTimeCheckoutUrl, readCheckoutResponseError } from './checkout-security';
 import { CHECKOUT_TEXT } from './checkout-text';
 import './checkout-page.css';
 
@@ -192,7 +192,7 @@ export default function OneTimeCheckoutPage({ route, kind }: { route: RouteMatch
       }
       const payload: unknown = await response.json();
       const destination = checkoutUrl(payload);
-      if (!destination || !isAllowedCheckoutUrl(destination)) throw new Error('CHECKOUT_URL_REJECTED');
+      if (!destination || !isAllowedOneTimeCheckoutUrl(destination)) throw new Error('CHECKOUT_URL_REJECTED');
       await openExternalUrl(destination);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'CHECKOUT_INTENT_FAILED');
