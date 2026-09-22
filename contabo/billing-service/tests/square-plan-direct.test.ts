@@ -14,8 +14,18 @@ function response(body: unknown) {
   return { status: 200, ok: true, headers: {}, body: JSON.stringify(body) };
 }
 
-function vaultFor(options: { references?: unknown[]; emails?: unknown[]; cardMismatch?: boolean; subscriptionMismatch?: boolean } = {}) {
+type SubscriptionPage = { subscriptions?: unknown[]; cursor?: string };
+type VaultOptions = {
+  references?: unknown[];
+  emails?: unknown[];
+  cardMismatch?: boolean;
+  subscriptionMismatch?: boolean;
+  subscriptionPages?: SubscriptionPage[];
+};
+
+function vaultFor(options: VaultOptions = {}) {
   const calls: VaultActionsHttpInput[] = [];
+  let subscriptionSearchIndex = 0;
   const vault: LibralVaultClient = {
     hmacVerify: vi.fn(),
     actionsHttp: vi.fn(async (input) => {
@@ -23,6 +33,9 @@ function vaultFor(options: { references?: unknown[]; emails?: unknown[]; cardMis
       if (input.url.endsWith('/v2/customers/search')) {
         const filter = (input.body as any).query.filter;
         return response({ customers: filter.reference_id ? (options.references ?? []) : (options.emails ?? []) });
+      }
+      if (input.url.endsWith('/v2/subscriptions/search')) {
+        return response(options.subscriptionPages?.[subscriptionSearchIndex++] ?? { subscriptions: [] });
       }
       if (input.url.endsWith('/v2/customers')) {
         return response({ customer: { id: 'cust-1', reference_id: 'tenant-1', email_address: 'verified@example.com' } });
@@ -57,6 +70,8 @@ describe('direct Square Plan subscription', () => {
     const { vault, calls } = vaultFor({ references: [{ id: 'cust-1', reference_id: 'tenant-1' }] });
     await expect(create(vault)).resolves.toMatchObject({ subscriptionId: 'sub-1', cardId: 'card-1', status: 'pending' });
     expect(calls.some((call) => call.url.endsWith('/v2/customers'))).toBe(false);
+    const search = calls.find((call) => call.url.endsWith('/v2/subscriptions/search'))!.body as any;
+    expect(search).toEqual({ query: { filter: { customer_ids: ['cust-1'] } }, limit: 100 });
     const card = calls.find((call) => call.url.endsWith('/v2/cards'))!.body as any;
     expect(card).toEqual({
       idempotency_key: `ast-card-${intentId.replaceAll('-', '')}`,
@@ -96,6 +111,52 @@ describe('direct Square Plan subscription', () => {
       { id: 'cust-2', reference_id: 'tenant-1' },
     ] });
     await expect(create(vault)).rejects.toMatchObject({ code: 'DUPLICATE_CUSTOMER_REFERENCE', status: 409 });
+    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
+  });
+
+  it('blocks a live Square subscription before creating a card', async () => {
+    const { vault, calls } = vaultFor({
+      references: [{ id: 'cust-1', reference_id: 'tenant-1' }],
+      subscriptionPages: [{ subscriptions: [{ id: 'existing-1', customer_id: 'cust-1', status: 'ACTIVE' }] }],
+    });
+    await expect(create(vault)).rejects.toMatchObject({ code: 'SQUARE_SUBSCRIPTION_ALREADY_EXISTS', status: 409 });
+    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
+    expect(calls.some((call) => call.url.endsWith('/v2/subscriptions'))).toBe(false);
+  });
+
+  it('allows a new subscription when all Square subscriptions are terminal', async () => {
+    const { vault, calls } = vaultFor({
+      references: [{ id: 'cust-1', reference_id: 'tenant-1' }],
+      subscriptionPages: [{ subscriptions: [
+        { id: 'old-1', customer_id: 'cust-1', status: 'CANCELED' },
+        { id: 'old-2', customer_id: 'cust-1', status: 'COMPLETED' },
+      ] }],
+    });
+    await expect(create(vault)).resolves.toMatchObject({ subscriptionId: 'sub-1' });
+    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(true);
+  });
+
+  it('walks subscription search cursors and blocks a live subscription on a later page', async () => {
+    const { vault, calls } = vaultFor({
+      references: [{ id: 'cust-1', reference_id: 'tenant-1' }],
+      subscriptionPages: [
+        { subscriptions: [{ id: 'old-1', customer_id: 'cust-1', status: 'CANCELED' }], cursor: 'page-2' },
+        { subscriptions: [{ id: 'existing-2', customer_id: 'cust-1', status: 'DEACTIVATED' }] },
+      ],
+    });
+    await expect(create(vault)).rejects.toMatchObject({ code: 'SQUARE_SUBSCRIPTION_ALREADY_EXISTS', status: 409 });
+    const searches = calls.filter((call) => call.url.endsWith('/v2/subscriptions/search'));
+    expect(searches).toHaveLength(2);
+    expect((searches[1]!.body as any).cursor).toBe('page-2');
+    expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
+  });
+
+  it('fails closed when a subscription search row does not match the customer', async () => {
+    const { vault, calls } = vaultFor({
+      references: [{ id: 'cust-1', reference_id: 'tenant-1' }],
+      subscriptionPages: [{ subscriptions: [{ id: 'bad-1', customer_id: 'other-customer', status: 'CANCELED' }] }],
+    });
+    await expect(create(vault)).rejects.toMatchObject({ code: 'SQUARE_SUBSCRIPTION_SEARCH_MISMATCH', status: 502 });
     expect(calls.some((call) => call.url.endsWith('/v2/cards'))).toBe(false);
   });
 
