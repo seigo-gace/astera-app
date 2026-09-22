@@ -13,6 +13,9 @@ type SquareSubscription = {
   start_date?: string;
   charged_through_date?: string;
 };
+type SquareSubscriptionSearch = { subscriptions?: SquareSubscription[]; cursor?: string };
+
+const TERMINAL_SQUARE_SUBSCRIPTION_STATUSES = new Set(['CANCELED', 'COMPLETED']);
 
 function required(value: string | undefined, name: string): string {
   const normalized = value?.trim();
@@ -129,6 +132,40 @@ async function resolveCustomer(
   return customerId;
 }
 
+async function assertNoExistingSquareSubscription(
+  env: BillingServiceEnv,
+  vault: LibralVaultClient,
+  customerId: string,
+): Promise<void> {
+  let cursor = '';
+  const seenCursors = new Set<string>();
+  do {
+    if (cursor) {
+      if (seenCursors.has(cursor)) {
+        throw new FunctionHttpError(502, 'SQUARE_SUBSCRIPTION_SEARCH_CURSOR_LOOP', 'Square subscription search cursor repeated.');
+      }
+      seenCursors.add(cursor);
+    }
+    const payload = await squareJson<SquareSubscriptionSearch>(env, vault, 'POST', '/v2/subscriptions/search', {
+      query: { filter: { customer_ids: [customerId] } },
+      limit: 100,
+      ...(cursor ? { cursor } : {}),
+    });
+    for (const subscription of Array.isArray(payload.subscriptions) ? payload.subscriptions : []) {
+      const subscriptionId = String(subscription.id ?? '').trim();
+      const returnedCustomerId = String(subscription.customer_id ?? '').trim();
+      const status = String(subscription.status ?? '').trim().toUpperCase();
+      if (!subscriptionId || returnedCustomerId !== customerId || !status) {
+        throw new FunctionHttpError(502, 'SQUARE_SUBSCRIPTION_SEARCH_MISMATCH', 'Square subscription search response did not match the customer.');
+      }
+      if (!TERMINAL_SQUARE_SUBSCRIPTION_STATUSES.has(status)) {
+        throw new FunctionHttpError(409, 'SQUARE_SUBSCRIPTION_ALREADY_EXISTS', 'A live Square subscription already exists for this customer.');
+      }
+    }
+    cursor = String(payload.cursor ?? '').trim();
+  } while (cursor);
+}
+
 export type DirectSubscriptionResult = {
   customerId: string;
   cardId: string;
@@ -149,6 +186,7 @@ export async function createDirectPlanSubscription(
     email: input.verifiedEmail,
     intentId: input.intentId,
   });
+  await assertNoExistingSquareSubscription(env, vault, customerId);
 
   const cardPayload = await squareJson<{ card?: SquareCard }>(env, vault, 'POST', '/v2/cards', {
     idempotency_key: idempotencyKey(input.intentId, 'card'),
