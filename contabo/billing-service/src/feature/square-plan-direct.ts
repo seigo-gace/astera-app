@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { FunctionHttpError, type BillingServiceEnv } from '../part/billing-env.js';
 import { createLibralVaultClientFromEnv, squareSandboxOriginOnly, type LibralVaultClient } from './libral-vault.js';
 
 type SquareError = { code?: string; detail?: string };
 type SquareCustomer = { id?: string; reference_id?: string; email_address?: string };
-type SquareCard = { id?: string; customer_id?: string; reference_id?: string };
+type SquareCard = { id?: string; customer_id?: string; reference_id?: string; enabled?: boolean };
+type SquareCardsPage = { cards?: SquareCard[]; cursor?: string };
 type SquareSubscription = {
   id?: string;
   customer_id?: string;
@@ -28,11 +30,19 @@ function errorMessage(errors: SquareError[] | undefined): string {
     || 'Square API request failed.';
 }
 
-function idempotencyKey(intentId: string, operation: 'customer' | 'card' | 'subscription'): string {
+function stableIdempotencyKey(intentId: string, operation: 'customer' | 'subscription'): string {
   const compact = intentId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
-  const prefix = operation === 'customer' ? 'cust' : operation === 'subscription' ? 'sub' : 'card';
+  const prefix = operation === 'customer' ? 'cust' : 'sub';
   const key = `ast-${prefix}-${compact}`;
   if (!compact || key.length > 45) throw new FunctionHttpError(500, 'SQUARE_IDEMPOTENCY_KEY_INVALID', 'Square idempotency key is invalid.');
+  return key;
+}
+
+function cardIdempotencyKey(intentId: string, sourceId: string): string {
+  const compact = intentId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+  const digest = createHash('sha256').update(sourceId, 'utf8').digest('hex').slice(0, 16);
+  const key = `ast-card-${compact}-${digest}`;
+  if (!compact || !sourceId || key.length > 45) throw new FunctionHttpError(500, 'SQUARE_IDEMPOTENCY_KEY_INVALID', 'Square idempotency key is invalid.');
   return key;
 }
 
@@ -57,7 +67,17 @@ async function squareJson<T>(
   });
   const payload = JSON.parse(provider.body || '{}') as T & { errors?: SquareError[] };
   if (!provider.ok) {
-    throw new FunctionHttpError(provider.status >= 500 ? 502 : 422, 'SQUARE_API_REQUEST_FAILED', errorMessage(payload.errors));
+    const endpoint = path.split('?')[0] || path;
+    const errors = Array.isArray(payload.errors)
+      ? payload.errors.map((error) => ({ code: error.code, detail: error.detail }))
+      : [];
+    console.error(JSON.stringify({ event: 'square_api_request_failed', method, endpoint, status: provider.status, errors }));
+    throw new FunctionHttpError(
+      provider.status >= 500 ? 502 : 422,
+      'SQUARE_API_REQUEST_FAILED',
+      errorMessage(payload.errors),
+      { provider: 'square', method, endpoint, status: provider.status, errors },
+    );
   }
   return payload;
 }
@@ -121,7 +141,7 @@ async function resolveCustomer(
   }
 
   const created = await squareJson<{ customer?: SquareCustomer }>(env, vault, 'POST', '/v2/customers', {
-    idempotency_key: idempotencyKey(input.intentId, 'customer'),
+    idempotency_key: stableIdempotencyKey(input.intentId, 'customer'),
     reference_id: input.tenantId,
     email_address: input.email,
   });
@@ -166,6 +186,52 @@ async function assertNoExistingSquareSubscription(
   } while (cursor);
 }
 
+async function findExistingIntentCard(
+  env: BillingServiceEnv,
+  vault: LibralVaultClient,
+  customerId: string,
+  intentId: string,
+): Promise<string | null> {
+  let cursor = '';
+  const seenCursors = new Set<string>();
+  const matches: SquareCard[] = [];
+  do {
+    if (cursor) {
+      if (seenCursors.has(cursor)) {
+        throw new FunctionHttpError(502, 'SQUARE_CARD_SEARCH_CURSOR_LOOP', 'Square card search cursor repeated.');
+      }
+      seenCursors.add(cursor);
+    }
+    const params = new URLSearchParams({
+      customer_id: customerId,
+      reference_id: intentId,
+      include_disabled: 'true',
+      sort_order: 'DESC',
+    });
+    if (cursor) params.set('cursor', cursor);
+    const payload = await squareJson<SquareCardsPage>(env, vault, 'GET', `/v2/cards?${params.toString()}`);
+    for (const card of Array.isArray(payload.cards) ? payload.cards : []) {
+      const cardId = String(card.id ?? '').trim();
+      const returnedCustomerId = String(card.customer_id ?? '').trim();
+      const referenceId = String(card.reference_id ?? '').trim();
+      if (!cardId || returnedCustomerId !== customerId || referenceId !== intentId) {
+        throw new FunctionHttpError(502, 'SQUARE_CARD_SEARCH_MISMATCH', 'Square card search response did not match the intent.');
+      }
+      matches.push(card);
+    }
+    cursor = String(payload.cursor ?? '').trim();
+  } while (cursor);
+
+  if (matches.length > 1) {
+    throw new FunctionHttpError(409, 'DUPLICATE_SQUARE_INTENT_CARD', 'Multiple Square cards exist for the same Billing Intent.');
+  }
+  if (matches.length === 0) return null;
+  if (matches[0]?.enabled !== true) {
+    throw new FunctionHttpError(409, 'SQUARE_INTENT_CARD_DISABLED', 'The Square card for this Billing Intent is disabled.');
+  }
+  return String(matches[0]?.id ?? '').trim();
+}
+
 export type DirectSubscriptionResult = {
   customerId: string;
   cardId: string;
@@ -188,19 +254,28 @@ export async function createDirectPlanSubscription(
   });
   await assertNoExistingSquareSubscription(env, vault, customerId);
 
-  const cardPayload = await squareJson<{ card?: SquareCard }>(env, vault, 'POST', '/v2/cards', {
-    idempotency_key: idempotencyKey(input.intentId, 'card'),
-    source_id: input.sourceId,
-    card: { customer_id: customerId, reference_id: input.intentId, ...(env.SQUARE_ENVIRONMENT?.trim().toLowerCase()==="sandbox" ? { billing_address: { postal_code: "94103" } } : {}) },
-  });
-  const cardId = String(cardPayload.card?.id ?? '').trim();
-  if (!cardId || cardPayload.card?.customer_id !== customerId || cardPayload.card?.reference_id !== input.intentId) {
-    throw new FunctionHttpError(502, 'SQUARE_CARD_RESPONSE_MISMATCH', 'Square card response did not match the request.');
+  let cardId = await findExistingIntentCard(env, vault, customerId, input.intentId);
+  if (!cardId) {
+    const cardPayload = await squareJson<{ card?: SquareCard }>(env, vault, 'POST', '/v2/cards', {
+      idempotency_key: cardIdempotencyKey(input.intentId, input.sourceId),
+      source_id: input.sourceId,
+      card: {
+        customer_id: customerId,
+        reference_id: input.intentId,
+        ...(env.SQUARE_ENVIRONMENT?.trim().toLowerCase() === 'sandbox'
+          ? { billing_address: { postal_code: '94103' } }
+          : {}),
+      },
+    });
+    cardId = String(cardPayload.card?.id ?? '').trim();
+    if (!cardId || cardPayload.card?.customer_id !== customerId || cardPayload.card?.reference_id !== input.intentId) {
+      throw new FunctionHttpError(502, 'SQUARE_CARD_RESPONSE_MISMATCH', 'Square card response did not match the request.');
+    }
   }
 
   const locationId = required(env.SQUARE_LOCATION_ID, 'SQUARE_LOCATION_ID');
   const subscriptionPayload = await squareJson<{ subscription?: SquareSubscription }>(env, vault, 'POST', '/v2/subscriptions', {
-    idempotency_key: idempotencyKey(input.intentId, 'subscription'),
+    idempotency_key: stableIdempotencyKey(input.intentId, 'subscription'),
     location_id: locationId,
     plan_variation_id: input.planVariationId,
     customer_id: customerId,
