@@ -333,8 +333,8 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
           fetch(BILLING_PUBLIC_CONFIG_ENDPOINT, { credentials: "include", headers: { Accept: "application/json" } }),
           fetch(ACCOUNT_ENDPOINT, { credentials: "include", headers: { Accept: "application/json" } }),
         ]);
-        if (!configResponse.ok) throw new Error(`SQUARE_CONFIG_HTTP_${configResponse.status}`);
-        if (!accountResponse.ok) throw new Error(`ACCOUNT_HTTP_${accountResponse.status}`);
+        if (!configResponse.ok) { const f=await readCheckoutResponseError(configResponse,`SQUARE_CONFIG_HTTP_${configResponse.status}`); if(f.authentication){setConnection({status:f.authentication});return;} throw new Error(f.code); }
+        if (!accountResponse.ok) { const f=await readCheckoutResponseError(accountResponse,`ACCOUNT_HTTP_${accountResponse.status}`); if(f.authentication){setConnection({status:f.authentication});return;} throw new Error(f.code); }
         const config = await configResponse.json() as unknown;
         const accountPayload = await accountResponse.json() as unknown;
         if (!isRecord(config) || !isRecord(accountPayload) || !isRecord(accountPayload.account)) throw new Error("SQUARE_CONFIG_INVALID");
