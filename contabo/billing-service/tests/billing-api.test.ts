@@ -62,6 +62,54 @@ function mockVault(valid: boolean): LibralVaultClient {
   };
 }
 
+
+const ROUTING_INTENT_ID =
+  '11111111-1111-4111-8111-111111111111';
+
+function mockPaidInvoiceVault(): LibralVaultClient {
+  return {
+    hmacVerify: vi.fn().mockResolvedValue({
+      valid: true,
+    }),
+    actionsHttp: vi.fn(async (input: any) => {
+      if (input.url.endsWith('/v2/customers/customer-1')) {
+        return {
+          status: 200,
+          ok: true,
+          headers: {},
+          body: JSON.stringify({
+            customer: {
+              id: 'customer-1',
+              reference_id: 'tenant-1',
+            },
+          }),
+        };
+      }
+
+      if (input.url.endsWith('/v2/subscriptions/subscription-1')) {
+        return {
+          status: 200,
+          ok: true,
+          headers: {},
+          body: JSON.stringify({
+            subscription: {
+              id: 'subscription-1',
+              customer_id: 'customer-1',
+              card_id: 'card-1',
+              status: 'ACTIVE',
+              plan_variation_id: 'square-plan-1',
+              start_date: '2026-09-22',
+              charged_through_date: '2026-10-22',
+            },
+          }),
+        };
+      }
+
+      throw new Error(`UNEXPECTED_SQUARE_URL:${input.url}`);
+    }),
+  };
+}
+
 function mockProjection(db?: ReturnType<typeof createMemoryD1>): AsteraProjectionClient & { postBillingEvent: ReturnType<typeof vi.fn> } {
   const getEventFromDb = (eventId: string) => {
     const row = db?.tables.get('billing_events')?.find((entry) => entry.provider_event_id === eventId);
@@ -117,6 +165,82 @@ function mockProjection(db?: ReturnType<typeof createMemoryD1>): AsteraProjectio
     postWebhookInvoiceProjection: vi.fn().mockResolvedValue({ processing_status: 'recorded', billing_intent_id: null }),
     postWebhookPayoutRecorded: vi.fn().mockResolvedValue({ processing_status: 'recorded', billing_intent_id: null }),
   };
+}
+
+
+function configurePaidInvoiceProjection(
+  projection: AsteraProjectionClient,
+): void {
+  projection.getBillingIntentLookup = vi.fn().mockResolvedValue({
+    id: ROUTING_INTENT_ID,
+    tenant_id: 'tenant-1',
+    user_id: 'user-1',
+    catalog_version: 'catalog-v1',
+    product_id: 'pro',
+    product_kind: 'plan',
+    billing_cycle: 'monthly',
+    amount: 1000,
+    currency: 'JPY',
+  });
+
+  projection.getCatalog = vi.fn().mockResolvedValue({
+    catalog_version: 'catalog-v1',
+    plans: [{
+      plan_id: 'pro',
+      active: true,
+      currency: 'JPY',
+      included_credits: 1000,
+      billing_variants: [{
+        billing_cycle: 'monthly',
+        recurring_amount: 1000,
+        included_credits: 1000,
+        square_plan_variation_id: 'square-plan-1',
+        active: true,
+      }],
+    }],
+    creditProducts: [],
+  });
+
+  projection.getActor = vi.fn().mockResolvedValue({
+    profile: {
+      tenant_id: 'tenant-1',
+      user_id: 'user-1',
+    },
+    credit: {
+      id: 'credit-1',
+      tenant_id: 'tenant-1',
+      available_balance: 0,
+      reserved_balance: 0,
+      version: 1,
+      updated_at: '2026-09-22T00:00:00Z',
+    },
+  });
+
+  projection.getSubscription = vi.fn().mockResolvedValue({
+    tenant_id: 'tenant-1',
+    catalog_version: 'catalog-v1',
+    plan_id: 'pro',
+    billing_cycle: 'monthly',
+    provider_subscription_id: 'subscription-1',
+    status: 'active',
+  });
+  projection.listPendingPlanIntents = vi.fn().mockResolvedValue([{
+    id: ROUTING_INTENT_ID,
+    tenant_id: 'tenant-1',
+    user_id: 'user-1',
+    catalog_version: 'catalog-v1',
+    product_id: 'pro',
+    product_kind: 'plan',
+    billing_cycle: 'monthly',
+    amount: 1000,
+    currency: 'JPY',
+    status: 'checkout_created',
+  }]);
+
+  projection.postWebhookInvoicePayment =
+    vi.fn().mockResolvedValue({
+      processing_status: 'processed',
+    });
 }
 
 function testEnv(
@@ -250,7 +374,22 @@ describe('square event routing', () => {
 
   it.each(SQUARE_SUPPORTED_EVENT_TYPES)('routes event type %s', async (eventType) => {
     const eventId = crypto.randomUUID();
-    const payload = JSON.stringify(squareEvent(eventId, eventType));
+    const event = squareEvent(eventId, eventType);
+
+    if (eventType === 'invoice.payment_made') {
+      event.data.object = {
+        invoice: {
+          id: 'invoice-1',
+          order_id: 'invoice-order-1',
+          subscription_id: 'subscription-1',
+          payment_requests: [{
+            total_completed_amount_money: { amount: 1000, currency: 'JPY' },
+          }],
+        },
+      };
+    }
+
+    const payload = JSON.stringify(event);
     const request = new Request('http://127.0.0.1/webhooks/square', {
       method: 'POST',
       headers: {
@@ -259,9 +398,21 @@ describe('square event routing', () => {
       },
       body: payload,
     });
+    const db = createMemoryD1();
+    const projection = mockProjection(db);
+
+    if (eventType === 'invoice.payment_made') {
+      configurePaidInvoiceProjection(projection);
+    }
+
+    const vault =
+      eventType === 'invoice.payment_made'
+        ? mockPaidInvoiceVault()
+        : mockVault(true);
+
     const response = await handleSquareWebhook(
       request,
-      testEnv(createMemoryD1(), mockVault(true), mockProjection(createMemoryD1())),
+      testEnv(db, vault, projection),
     );
     expect([200, 202]).toContain(response.status);
   });

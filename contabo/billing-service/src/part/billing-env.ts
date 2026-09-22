@@ -16,6 +16,7 @@ export type D1Database = {
 export type BillingServiceEnv = {
   PORT?: string;
   SQUARE_LOCATION_ID?: string;
+  SQUARE_APPLICATION_ID?: string;
   SQUARE_ENVIRONMENT?: string;
   SQUARE_VERSION?: string;
   SQUARE_WEBHOOK_NOTIFICATION_URL?: string;
@@ -61,6 +62,7 @@ export class D1LiveWriteBlockedError extends Error {
 export type SessionUser = {
   id: string;
   email: string;
+  emailVerified?: boolean;
   name?: string | null;
 };
 

@@ -27,7 +27,8 @@ export async function requireBillingActor(request: Request, env: BillingServiceE
   assertBillingApiAuth(request, env);
   const tenantId = headerValue(request, 'x-astera-tenant-id');
   const userId = headerValue(request, 'x-astera-user-id');
-  const userEmail = headerValue(request, 'x-astera-user-email') || 'billing-proxy@internal.local';
+  const userEmail = headerValue(request, 'x-astera-user-email');
+  const emailVerified = headerValue(request, 'x-astera-user-email-verified') === 'true';
   if (!tenantId || !userId) {
     throw new FunctionHttpError(400, 'BILLING_ACTOR_HEADERS_REQUIRED', 'x-astera-tenant-id と x-astera-user-id が必要です。');
   }
@@ -36,7 +37,7 @@ export async function requireBillingActor(request: Request, env: BillingServiceE
   const { profile, credit } = await projection.getActor(tenantId, userId);
 
   return {
-    user: { id: userId, email: userEmail, name: profile.nickname },
+    user: { id: userId, email: userEmail, emailVerified, name: profile.nickname },
     profile,
     credit,
   };

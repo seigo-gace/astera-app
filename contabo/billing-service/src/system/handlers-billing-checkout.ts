@@ -94,6 +94,21 @@ export async function handleBillingCheckoutIntents(request: Request, env: Billin
       if (existing.tenant_id !== actor.profile.tenant_id || existing.user_id !== actor.user.id) {
         throw new FunctionHttpError(409, 'IDEMPOTENCY_KEY_OWNERSHIP_MISMATCH', 'このIdempotency-Keyは別Contextで使用されています。');
       }
+      if (planId) {
+        if (existing.product_kind !== 'plan' || existing.product_id !== planId || existing.billing_cycle !== billingCycle) {
+          throw new FunctionHttpError(409, 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH', 'このIdempotency-Keyは別のCheckout内容で使用されています。');
+        }
+        if (existing.status === 'reconciliation_required') {
+          throw new FunctionHttpError(409, 'PLAN_CHECKOUT_RECONCILIATION_REQUIRED', '既存の支払い済みPlan請求は再照合中です。');
+        }
+        return Response.json({
+          intent_id: existing.id,
+          status: existing.status,
+          expires_at: existing.expires_at,
+          reused: true,
+          payment_method: 'square_card',
+        }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
+      }
       if (existing.checkout_url) {
         return Response.json({
           intent_id: existing.id,
@@ -153,11 +168,9 @@ export async function handleBillingCheckoutIntents(request: Request, env: Billin
         return Response.json({
           intent_id: String(intent['id'] ?? ''),
           status: String(intent['status'] ?? 'checkout_created'),
-          checkout_url: intent['checkout_url'] ?? null,
-          provider_checkout_id: intent['provider_checkout_id'] ?? null,
-          provider_order_id: intent['provider_order_id'] ?? null,
           expires_at: intent['expires_at'] ?? null,
           reused: true,
+          payment_method: 'square_card',
         }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
       }
     }
@@ -240,6 +253,15 @@ export async function handleBillingCheckoutIntents(request: Request, env: Billin
         billingCycle,
         amount,
       });
+      if (productKind === 'plan') {
+        return Response.json({
+          intent_id: authoritative.id,
+          status: authoritative.status,
+          expires_at: authoritative.expires_at,
+          reused: true,
+          payment_method: 'square_card',
+        }, { headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
+      }
       if (authoritative.checkout_url) {
         return Response.json({
           intent_id: authoritative.id,
@@ -261,6 +283,18 @@ export async function handleBillingCheckoutIntents(request: Request, env: Billin
       displayName = authoritativeSquareInput.displayName;
       amount = authoritativeSquareInput.amount;
       subscriptionPlanVariationId = authoritativeSquareInput.subscriptionPlanVariationId;
+    }
+
+    if (productKind === 'plan') {
+      return Response.json({
+        intent_id: intentId,
+        status: 'creating_checkout',
+        return_context_id: contextId,
+        expires_at: expiresAt,
+        catalog_version: catalog.catalog_version,
+        billing_cycle: billingCycle,
+        payment_method: 'square_card',
+      }, { status: 201, headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
     }
 
     const square = await runSquareBillingCheckout(

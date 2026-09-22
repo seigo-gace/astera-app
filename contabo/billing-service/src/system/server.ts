@@ -7,6 +7,7 @@ import { handleBillingCheckoutIntents } from './handlers-billing-checkout.js';
 import { handleStorageCheckoutIntents } from './handlers-storage-checkout.js';
 import { handleBillingStatus } from './handlers-billing-status.js';
 import { handleEnsureGrants } from './handlers-ensure-grants.js';
+import { handlePlanSubscription, handlePublicBillingConfig } from './handlers-plan-subscription.js';
 import { withResolvedBillingSecrets } from '../part/load-billing-secrets.js';
 
 function loadEnv(): BillingServiceEnv {
@@ -95,6 +96,14 @@ export function createServer(env: BillingServiceEnv): http.Server {
           }
           if (webRequest.method === 'POST' && pathname === '/api/billing/checkout-intents') {
             await sendResponse(nodeResponse, await handleBillingCheckoutIntents(webRequest, env));
+            return;
+          }
+          if (webRequest.method === 'POST' && pathname === '/api/billing/plan-subscriptions') {
+            await sendResponse(nodeResponse, await handlePlanSubscription(webRequest, env));
+            return;
+          }
+          if (webRequest.method === 'GET' && pathname === '/api/billing/public-config') {
+            await sendResponse(nodeResponse, await handlePublicBillingConfig(webRequest, env));
             return;
           }
           if (webRequest.method === 'POST' && pathname === '/api/billing/ensure-grants') {

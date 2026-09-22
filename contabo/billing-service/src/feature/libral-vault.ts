@@ -111,8 +111,7 @@ export function createLibralVaultClientFromEnv(env: {
 
 export function squareSandboxOriginOnly(environment: string | undefined): string {
   const normalized = environment?.trim().toLowerCase();
-  if (normalized && normalized !== 'sandbox') {
-    throw new FunctionHttpError(503, 'SQUARE_PRODUCTION_FORBIDDEN', 'Production Square APIは禁止されています。');
-  }
+  if (normalized === 'production') return 'https://connect.squareup.com';
+  if (normalized && normalized !== 'sandbox') throw new FunctionHttpError(503, 'SQUARE_ENVIRONMENT_INVALID', 'Square environment is invalid.');
   return 'https://connect.squareupsandbox.com';
 }

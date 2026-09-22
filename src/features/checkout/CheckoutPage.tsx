@@ -21,7 +21,7 @@ type StorageContext = {
 };
 type ConnectionState =
   | { status: "checking" }
-  | { status: "ready"; currentPlan?: string; productId?: string; storage?: StorageContext }
+  | { status: "ready"; currentPlan?: string; productId?: string; storage?: StorageContext; planAmount?: number; currency?: string }
   | { status: "login-required" }
   | { status: "reauth-required" }
   | { status: "error"; message: string };
@@ -29,12 +29,31 @@ type SubmitState =
   | { status: "idle" }
   | { status: "submitting" }
   | { status: "error"; message: string };
+type SquareCard = {
+  attach(selector: string): Promise<void>;
+  tokenize(details: Record<string, unknown>): Promise<{ status: string; token?: string; errors?: Array<{ code?: string; message?: string }> }>;
+  destroy?: () => Promise<void>;
+};
+type SquareGlobal = {
+  payments(applicationId: string, locationId: string): Promise<{ card(): Promise<SquareCard> }>;
+};
+type SquareState =
+  | { status: "idle" | "loading" }
+  | { status: "ready"; email: string }
+  | { status: "error"; message: string };
+
+declare global {
+  interface Window { Square?: SquareGlobal }
+}
 
 const API_BASE = resolvedApiBase();
 const ACCOUNT_CATALOG_ENDPOINT = `${API_BASE}/api/account/catalog`;
 const STORAGE_CATALOG_ENDPOINT = `${API_BASE}/api/storage/catalog`;
 const CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/billing/checkout-intents`;
 const STORAGE_CHECKOUT_INTENT_ENDPOINT = `${API_BASE}/api/storage/checkout-intents`;
+const PLAN_SUBSCRIPTION_ENDPOINT = `${API_BASE}/api/billing/plan-subscriptions`;
+const BILLING_PUBLIC_CONFIG_ENDPOINT = `${API_BASE}/api/billing/public-config`;
+const ACCOUNT_ENDPOINT = `${API_BASE}/api/account`;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -95,7 +114,7 @@ function planSupportsCycle(plan: JsonRecord, cycle: BillingCycle): boolean {
   });
 }
 
-function validateServerPlan(payload: unknown, planId: string, cycle: BillingCycle): { currentPlan: string } | null {
+function validateServerPlan(payload: unknown, planId: string, cycle: BillingCycle): { currentPlan: string; amount: number; currency: string } | null {
   if (!isRecord(payload)) return null;
   const data = isRecord(payload.data) ? payload.data : {};
   const account = isRecord(payload.account) ? payload.account : {};
@@ -103,12 +122,18 @@ function validateServerPlan(payload: unknown, planId: string, cycle: BillingCycl
     (item) => isRecord(item) && firstText(item, ["plan_id", "id", "key", "slug"]) === planId,
   );
   if (!isRecord(selected) || !planSupportsCycle(selected, cycle)) return null;
+  const variant = Array.isArray(selected.billing_variants)
+    ? selected.billing_variants.find((item) => isRecord(item) && firstText(item, ["billing_cycle"]) === cycle && item.active !== false)
+    : selected;
+  if (!isRecord(variant)) return null;
   return {
     currentPlan:
       firstText(account, ["current_plan_name", "current_plan_id"]) ||
       firstText(data, ["current_plan_name", "current_plan_id"]) ||
       firstText(payload, ["current_plan_name", "current_plan_id"]) ||
       "未契約",
+    amount: firstNumber(variant, ["recurring_amount", "amount"]),
+    currency: firstText(selected, ["currency"]) || "JPY",
   };
 }
 
@@ -172,9 +197,11 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
   const [cycle, setCycle] = useState<BillingCycle>(() => parseBillingCycle(params.get("billing")));
   const [connection, setConnection] = useState<ConnectionState>({ status: "checking" });
   const [submit, setSubmit] = useState<SubmitState>({ status: "idle" });
+  const [squareState, setSquareState] = useState<SquareState>({ status: "idle" });
   const [accepted, setAccepted] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
   const checkoutRef = useRef<AbortController | null>(null);
+  const squareCardRef = useRef<SquareCard | null>(null);
 
   const selectedPrice = selectedPlan
     ? cycle === "annual"
@@ -237,7 +264,7 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
       if (kind === "plan") {
         const serverPlan = validateServerPlan(payload, planId, cycle);
         if (!serverPlan) throw new Error("PLAN_BILLING_VARIANT_NOT_AVAILABLE");
-        setConnection({ status: "ready", currentPlan: serverPlan.currentPlan });
+        setConnection({ status: "ready", currentPlan: serverPlan.currentPlan, planAmount: serverPlan.amount, currency: serverPlan.currency });
         return;
       }
 
@@ -296,6 +323,65 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
     };
   }, [loadCheckoutContext]);
 
+  useEffect(() => {
+    if (kind !== "plan" || connection.status !== "ready") return;
+    let cancelled = false;
+    setSquareState({ status: "loading" });
+    void (async () => {
+      try {
+        const [configResponse, accountResponse] = await Promise.all([
+          fetch(BILLING_PUBLIC_CONFIG_ENDPOINT, { credentials: "include", headers: { Accept: "application/json" } }),
+          fetch(ACCOUNT_ENDPOINT, { credentials: "include", headers: { Accept: "application/json" } }),
+        ]);
+        if (!configResponse.ok) throw new Error(`SQUARE_CONFIG_HTTP_${configResponse.status}`);
+        if (!accountResponse.ok) throw new Error(`ACCOUNT_HTTP_${accountResponse.status}`);
+        const config = await configResponse.json() as unknown;
+        const accountPayload = await accountResponse.json() as unknown;
+        if (!isRecord(config) || !isRecord(accountPayload) || !isRecord(accountPayload.account)) throw new Error("SQUARE_CONFIG_INVALID");
+        const applicationId = firstText(config, ["application_id"]);
+        const locationId = firstText(config, ["location_id"]);
+        const scriptUrl = firstText(config, ["script_url"]);
+        const email = firstText(accountPayload.account, ["email"]);
+        if (!applicationId || !locationId || !scriptUrl || !email || accountPayload.account.email_verified !== true) {
+          throw new Error("VERIFIED_EMAIL_REQUIRED");
+        }
+        if (!window.Square) {
+          await new Promise<void>((resolve, reject) => {
+            const existing = document.querySelector<HTMLScriptElement>(`script[src="${scriptUrl}"]`);
+            const script = existing ?? document.createElement("script");
+            const loaded = () => resolve();
+            const failed = () => reject(new Error("SQUARE_SDK_LOAD_FAILED"));
+            script.addEventListener("load", loaded, { once: true });
+            script.addEventListener("error", failed, { once: true });
+            if (!existing) {
+              script.src = scriptUrl;
+              script.async = true;
+              document.head.appendChild(script);
+            } else if (window.Square) resolve();
+          });
+        }
+        if (cancelled || !window.Square) return;
+        const payments = await window.Square.payments(applicationId, locationId);
+        const card = await payments.card();
+        await card.attach("#square-card-container");
+        if (cancelled) {
+          await card.destroy?.();
+          return;
+        }
+        squareCardRef.current = card;
+        setSquareState({ status: "ready", email });
+      } catch (error) {
+        if (!cancelled) setSquareState({ status: "error", message: error instanceof Error ? error.message : "SQUARE_CARD_INITIALIZATION_FAILED" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+      const card = squareCardRef.current;
+      squareCardRef.current = null;
+      if (card?.destroy) void card.destroy();
+    };
+  }, [connection.status, cycle, kind, planId]);
+
   const createCheckoutIntent = async () => {
     if (connection.status !== "ready" || !accepted || checkoutRef.current) return;
     if (kind === "plan" && !selectedPlan) return;
@@ -346,6 +432,35 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
         throw new Error(failure.code);
       }
       const payload: unknown = await response.json();
+      if (kind === "plan") {
+        const intentId = isRecord(payload) ? firstText(payload, ["intent_id"]) : "";
+        const card = squareCardRef.current;
+        if (!intentId || !card || squareState.status !== "ready") throw new Error("SQUARE_CARD_NOT_READY");
+        const tokenized = await card.tokenize({
+          intent: "STORE",
+          customerInitiated: true,
+          sellerKeyedIn: false,
+          billingContact: { email: squareState.email },
+          amount: String(connection.planAmount ?? 0),
+          currencyCode: connection.currency ?? "JPY",
+        });
+        if (tokenized.status !== "OK" || !tokenized.token) {
+          throw new Error(tokenized.errors?.[0]?.code || tokenized.errors?.[0]?.message || "SQUARE_TOKENIZATION_FAILED");
+        }
+        const subscribeResponse = await fetch(PLAN_SUBSCRIPTION_ENDPOINT, {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json", "Content-Type": "application/json", "X-Request-ID": idempotencyKey },
+          body: JSON.stringify({ billing_intent_id: intentId, source_id: tokenized.token }),
+          signal: controller.signal,
+        });
+        if (!subscribeResponse.ok) {
+          const failure = await readCheckoutResponseError(subscribeResponse, `PLAN_SUBSCRIPTION_HTTP_${subscribeResponse.status}`);
+          throw new Error(failure.code);
+        }
+        window.location.assign(`/account/billing/status?intent=${encodeURIComponent(intentId)}`);
+        return;
+      }
       const destination = checkoutUrl(payload);
       if (!destination || !isAllowedCheckoutUrl(destination)) throw new Error("CHECKOUT_URL_REJECTED");
       await openExternalUrl(destination);
@@ -368,7 +483,8 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
     : kind === "credit"
       ? Boolean(creditAmount && creditValue)
       : Boolean(storageProductId && storageCapacity && storageAmount);
-  const canPay = hasSelection && connection.status === "ready" && accepted && submit.status !== "submitting";
+  const canPay = hasSelection && connection.status === "ready" && accepted && submit.status !== "submitting"
+    && (kind !== "plan" || squareState.status === "ready");
   const cycleLabel = cycle === "annual" ? text.annualValue : text.monthlyValue;
   const renewalLabel = cycle === "annual" ? text.annualRenewal : text.monthlyRenewal;
   const showConnection = connection.status !== "ready" || submit.status === "error";
@@ -461,6 +577,14 @@ export default function CheckoutPage({ route }: { route: RouteMatch }) {
                   <div><dt>{text.afterCapacity}</dt><dd>{storageContext ? gb(storageContext.currentCapacityGb + storageContext.capacityGb) : "—"}</dd></div>
                   <div><dt>{text.planLimit}</dt><dd>{storageContext ? gb(storageContext.planMaxCapacityGb) : "—"}</dd></div>
                 </dl>
+              </section>
+            )}
+
+            {kind === "plan" && (
+              <section className="checkout-card" aria-label="Square card payment">
+                <div id="square-card-container" />
+                {squareState.status === "loading" && <span>{text.connectionChecking}</span>}
+                {squareState.status === "error" && <code role="alert">{squareState.message}</code>}
               </section>
             )}
 

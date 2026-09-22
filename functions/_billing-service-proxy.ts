@@ -23,6 +23,7 @@ function actorHeaders(actor: AsteraActorProjection): Record<string, string> {
     'x-astera-tenant-id': actor.profile.tenant_id,
     'x-astera-user-id': actor.user.id,
     'x-astera-user-email': actor.user.email ?? '',
+    'x-astera-user-email-verified': actor.user.emailVerified === true ? 'true' : 'false',
   };
 }
 

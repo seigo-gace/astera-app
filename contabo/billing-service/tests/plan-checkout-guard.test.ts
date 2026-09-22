@@ -45,6 +45,9 @@ describe('assertOrReusePlanCheckout', () => {
   it('reuses genuine pending checkout when no live subscription', async () => {
     const pending = {
       id: 'pending-2',
+      user_id: 'u1',
+      product_id: 'basic',
+      billing_cycle: 'monthly',
       status: 'checkout_created',
       checkout_url: 'https://sandbox.square.link/u/y',
       provider_checkout_id: 'CHK',

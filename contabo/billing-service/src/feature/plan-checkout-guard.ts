@@ -112,15 +112,19 @@ export async function assertOrReusePlanCheckout(
     );
   }
 
-  if (checkoutUrl && (status === 'checkout_created' || status === 'payment_pending')) {
-    return { reuse: true, intent: pending };
-  }
-
-  if (status === 'creating_checkout' && !checkoutUrl) {
-    throw new FunctionHttpError(409, 'CHECKOUT_INTENT_IN_PROGRESS', '同じCheckout Intentを作成中です。', {
+  if (
+    text(pending['user_id']) !== input.userId
+    || text(pending['product_id']) !== input.planId
+    || (text(pending['billing_cycle']) || 'monthly') !== input.billingCycle
+  ) {
+    throw new FunctionHttpError(409, 'PLAN_CHECKOUT_ALREADY_PENDING', '別のPlan契約処理が完了していません。', {
       intent_id: id,
       status,
     });
+  }
+
+  if ((checkoutUrl && (status === 'checkout_created' || status === 'payment_pending')) || status === 'creating_checkout') {
+    return { reuse: true, intent: pending };
   }
 
   // Genuine active checkout without URL should not soft-lock the user forever.

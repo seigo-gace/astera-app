@@ -1,7 +1,7 @@
 import { FunctionHttpError, type BillingServiceEnv } from '../part/billing-env.js';
-import { ensureMonthlyIncludedGrantForTenant } from './credit-grants-projection.js';
 import { handleStoragePaymentIfMatched } from './storage-square.js';
 import { requireProjectionClient } from './astera-projection.js';
+import { reconcilePaidPlanInvoice } from './square-plan-reconcile.js';
 import type { SquareEnv } from './square.js';
 import {
   SQUARE_SUPPORTED_EVENT_TYPES as SUPPORTED_EVENT_TYPES,
@@ -95,33 +95,39 @@ async function handlePaymentEvent(env: SquareHandlerEnv, event: SquareEvent): Pr
   return applyResult.processing_status;
 }
 
-async function handleInvoicePaymentEvent(env: SquareHandlerEnv, event: SquareEvent): Promise<string> {
+async function handleInvoicePaymentEvent(
+  env: SquareHandlerEnv,
+  event: SquareEvent,
+  correlationId: string,
+): Promise<string> {
   const projection = requireProjectionClient(env);
   const eventId = event.event_id as string;
-  const invoice = asRecord(asRecord(event.data?.object).invoice);
-  const orderId = text(invoice, 'order_id');
-  const subscriptionId = text(invoice, 'subscription_id');
-  const result = await projection.postWebhookInvoicePayment({
-    provider_event_id: eventId,
-    provider_order_id: orderId,
-    provider_subscription_id: subscriptionId,
-  }) as {
-    processing_status: string;
-    grant_monthly?: boolean;
-    tenant_id?: string;
-    user_id?: string;
-    credit_account_id?: string | null;
-  };
-  if (result.grant_monthly && result.tenant_id && result.user_id && result.credit_account_id) {
-    await ensureMonthlyIncludedGrantForTenant(
-      projection,
-      result.tenant_id,
-      result.user_id,
-      result.credit_account_id,
-      { eventId },
-    ).catch(() => false);
+  const invoice = asRecord(
+    asRecord(event.data?.object).invoice,
+  );
+  const subscriptionId = text(
+    invoice,
+    'subscription_id',
+  );
+
+  if (!subscriptionId) {
+    throw new FunctionHttpError(
+      502,
+      'SQUARE_INVOICE_REFERENCE_INCOMPLETE',
+      'Square invoice reference is incomplete.',
+    );
   }
-  return result.processing_status;
+
+  return reconcilePaidPlanInvoice(
+    env,
+    projection,
+    {
+      eventId,
+      invoice,
+      subscriptionId,
+      correlationId,
+    },
+  );
 }
 
 async function handleSubscriptionEvent(env: SquareHandlerEnv, event: SquareEvent): Promise<string> {
@@ -230,7 +236,11 @@ export async function processSquareWebhookEvent(
   if (eventType === 'payment.created' || eventType === 'payment.updated') {
     processingStatus = await handlePaymentEvent(env, event);
   } else if (eventType === 'invoice.payment_made') {
-    processingStatus = await handleInvoicePaymentEvent(env, event);
+    processingStatus = await handleInvoicePaymentEvent(
+      env,
+      event,
+      correlationId,
+    );
   } else if (eventType === 'subscription.created' || eventType === 'subscription.updated') {
     processingStatus = await handleSubscriptionEvent(env, event);
   } else if (eventType === 'refund.created' || eventType === 'refund.updated') {
