@@ -65,9 +65,19 @@ export function isAllowedCheckoutUrl(value: string): boolean {
     const host = url.hostname.toLowerCase();
     return host === 'square.link'
       || host === 'sandbox.square.link'
-      || host.endsWith('.squareupsandbox.com')
       || host.endsWith('.square.site')
       || host.endsWith('.squareup.com');
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedOneTimeCheckoutUrl(value: string): boolean {
+  if (isAllowedCheckoutUrl(value)) return true;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return false;
+    return url.hostname.toLowerCase().endsWith('.squareupsandbox.com');
   } catch {
     return false;
   }
