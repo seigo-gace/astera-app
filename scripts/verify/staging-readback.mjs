@@ -176,11 +176,12 @@ async function main() {
         "url.protocol !== 'https:'",
         "host === 'square.link'",
         "host === 'sandbox.square.link'",
+        "host.endsWith('.squareupsandbox.com')",
         "host.endsWith('.square.site')",
         "host.endsWith('.squareup.com')",
       ]);
       validatorOk
-        ? pass('CHECKOUT_URL_VALIDATOR', 'HTTPS-only Square allowlist including sandbox.square.link is present')
+        ? pass('CHECKOUT_URL_VALIDATOR', 'HTTPS-only Square allowlist includes sandbox and production checkout hosts')
         : fail('CHECKOUT_URL_VALIDATOR', 'expected HTTPS-only Square allowlist is incomplete');
 
       const classifierOk = containsAll(security, [
@@ -211,12 +212,14 @@ async function main() {
 
       const contractOk = containsAll(contractTest, [
         'https://sandbox.square.link/u/test',
+        'https://checkout.squareupsandbox.com/pay/test',
         'http://sandbox.square.link/u/test',
+        'https://squareupsandbox.com.evil.example/pay/test',
         'https://square.link.evil.example/u/test',
         'FRESH_SESSION_REQUIRED',
       ]);
       contractOk
-        ? pass('CHECKOUT_CONTRACT_TEST', 'allowlist and auth classification contract cases are present')
+        ? pass('CHECKOUT_CONTRACT_TEST', 'sandbox/production allowlist and auth classification contract cases are present')
         : fail('CHECKOUT_CONTRACT_TEST', 'expected checkout security contract cases are incomplete');
 
       const storiesOk = ['STORY-CHECKOUT-003', 'STORY-CHECKOUT-004', 'STORY-CHECKOUT-005', 'STORY-CHECKOUT-006']
