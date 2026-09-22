@@ -325,3 +325,77 @@ iframe {
     max-width: 100%;
   }
 }
+
+/* Billing completion is intentionally minimal. Payment/Billing behavior is untouched. */
+html[data-route-path="/account/billing/status"] .platform-page-head,
+html[data-route-path="/account/billing/status"] section[aria-labelledby="billing-summary-heading"],
+html[data-route-path="/account/billing/status"] section[aria-labelledby="billing-summary-heading"] + p,
+html[data-route-path="/account/billing/status"] a[href="/account/subscription"],
+html[data-route-path="/account/billing/status"] a[href="/account/credit"] {
+  display: none !important;
+}
+
+html[data-route-path="/account/billing/status"] .platform-page-content > div {
+  width: min(100%, 680px) !important;
+  max-width: 680px !important;
+  margin: clamp(24px, 6vh, 64px) auto 0 !important;
+  gap: 20px !important;
+}
+
+html[data-route-path="/account/billing/status"] .platform-page-content > div > section:first-child {
+  width: 100%;
+  padding: 40px 32px !important;
+}
+
+html[data-route-path="/account/billing/status"] .platform-page-content > div > div:last-child {
+  display: flex !important;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px !important;
+}
+
+html[data-route-path="/account/billing/status"] .platform-page-content > div > div:last-child .platform-button {
+  width: min(320px, 100%);
+  max-width: 320px;
+}
+
+@media (min-width: 721px) and (max-width: 1024px) {
+  html[data-route-path="/account/billing/status"] .platform-page-content > div {
+    width: min(100%, 620px) !important;
+    max-width: 620px !important;
+    margin-top: 32px !important;
+  }
+
+  html[data-route-path="/account/billing/status"] .platform-page-content > div > section:first-child {
+    padding: 36px 28px !important;
+  }
+}
+
+@media (max-width: 720px) {
+  html[data-route-path="/account/billing/status"] .platform-page-content > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 12px !important;
+    gap: 14px !important;
+  }
+
+  html[data-route-path="/account/billing/status"] .platform-page-content > div > section:first-child {
+    padding: 28px 16px !important;
+    border-radius: 18px !important;
+  }
+
+  html[data-route-path="/account/billing/status"] .platform-page-content > div > section:first-child h2 {
+    font-size: clamp(22px, 7vw, 28px) !important;
+  }
+
+  html[data-route-path="/account/billing/status"] .platform-page-content > div > section:first-child p {
+    font-size: 14px;
+    line-height: 1.6 !important;
+  }
+
+  html[data-route-path="/account/billing/status"] .platform-page-content > div > div:last-child,
+  html[data-route-path="/account/billing/status"] .platform-page-content > div > div:last-child .platform-button {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
