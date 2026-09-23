@@ -87,7 +87,7 @@ jobs:
         id: install
         run: npm install --no-audit
 
-      - name: Apply Account, Storage, and Credit D1 migrations
+      - name: Apply Account, Storage, Credit, and Coupon D1 migrations
         id: d1_runtime_migrations
         shell: bash
         run: |
@@ -95,6 +95,7 @@ jobs:
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0016_storage_buyout_packs.sql
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0017_account_registration_state_repair.sql
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0018_active_credit_formula_v1.sql
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0019_coupon_rewards.sql
 
       - name: Verify active Credit Policy
         id: credit_policy
