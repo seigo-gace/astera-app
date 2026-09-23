@@ -10,10 +10,10 @@ services:
       ASTERA_STORAGE_UPLOAD_TMP_DIR: /var/lib/astera-storage-upload
     volumes:
       - astera-storage-upload-tmp:/var/lib/astera-storage-upload
-    ports:
-      - "8788:8788"
-    networks:
-      - astera-app
+    # Vault and TGserver are intentionally bound to host loopback only.
+    # Run the API on the host network so those internal services stay private
+    # while remaining reachable from the API runtime.
+    network_mode: host
     restart: unless-stopped
     healthcheck:
       test:
