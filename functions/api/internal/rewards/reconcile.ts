@@ -43,6 +43,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const campaign = await context.env.ASTERA_DB.prepare(`SELECT id,name,purpose,reward_package_id,status,distribution_mode,starts_at,expires_at,total_limit,per_account_limit,redeemed_count,created_at,updated_at FROM coupon_campaign_projection WHERE id=?1 LIMIT 1`).bind(campaignId).first<CampaignRow>();
     if (!campaign) throw new FunctionHttpError(404, 'CAMPAIGN_NOT_FOUND', 'App側のCampaign Projectionが見つかりません。');
 
+    const codeStates = await rows<Record<string, unknown>>(context, `SELECT code_digest,masked_hint,status,redemption_limit,redeemed_count,bound_user_id,created_at,updated_at FROM coupon_code_projection WHERE campaign_id=?1 ORDER BY created_at ASC LIMIT 100000`, campaignId);
     const codeSummary = await context.env.ASTERA_DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active, SUM(CASE WHEN status='revoked' THEN 1 ELSE 0 END) AS revoked, COALESCE(SUM(redeemed_count),0) AS redeemed FROM coupon_code_projection WHERE campaign_id=?1`).bind(campaignId).first<{ total:number; active:number; revoked:number; redeemed:number }>();
     const redemptionSummary = await context.env.ASTERA_DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN state='applied' THEN 1 ELSE 0 END) AS applied, SUM(CASE WHEN state='reconcile_required' THEN 1 ELSE 0 END) AS reconcile_required, SUM(CASE WHEN state='failed' THEN 1 ELSE 0 END) AS failed FROM coupon_redemptions WHERE campaign_id=?1`).bind(campaignId).first<{ total:number; applied:number; reconcile_required:number; failed:number }>();
 
@@ -58,6 +59,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         active: Number(codeSummary?.active ?? 0),
         revoked: Number(codeSummary?.revoked ?? 0),
         redeemed: Number(codeSummary?.redeemed ?? 0),
+        states: codeStates,
       },
       redemption_summary: {
         total: Number(redemptionSummary?.total ?? 0),
