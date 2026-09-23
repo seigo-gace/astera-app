@@ -5,7 +5,7 @@ export type CouponProgramEnv = AsteraFunctionEnv;
 export type RewardItem =
   | { type: 'credit_grant'; amount: number; label?: string }
   | { type: 'credit_schedule'; amount: number; grants: number; cadence_months?: number; label?: string }
-  | { type: 'access_tier' | 'feature' | 'seat_limit' | 'benefit'; key: string; value: unknown; duration_days?: number; label?: string };
+  | { type: 'access_tier' | 'feature' | 'seat_limit' | 'benefit'; key: string; value: unknown; duration_days?: number; duration_months?: number; label?: string };
 
 export type CouponProjection = {
   code_digest: string;
@@ -92,9 +92,11 @@ export function parseRewardItems(raw: string): RewardItem[] {
       continue;
     }
     if (type === 'access_tier' || type === 'feature' || type === 'seat_limit' || type === 'benefit') {
-      const key = typeof item.key === 'string' ? item.key.trim() : ''; const duration = item.duration_days === undefined ? undefined : Number(item.duration_days);
-      if (!key || (duration !== undefined && (!Number.isSafeInteger(duration) || duration <= 0))) throw new FunctionHttpError(500, 'REWARD_ENTITLEMENT_INVALID', '利用権Reward定義が不正です。');
-      items.push({ type, key, value: item.value ?? true, duration_days: duration, label: typeof item.label === 'string' ? item.label : undefined });
+      const key = typeof item.key === 'string' ? item.key.trim() : '';
+      const durationDays = item.duration_days === undefined ? undefined : Number(item.duration_days);
+      const durationMonths = item.duration_months === undefined ? undefined : Number(item.duration_months);
+      if (!key || (durationDays !== undefined && (!Number.isSafeInteger(durationDays) || durationDays <= 0)) || (durationMonths !== undefined && (!Number.isSafeInteger(durationMonths) || durationMonths <= 0)) || (durationDays !== undefined && durationMonths !== undefined)) throw new FunctionHttpError(500, 'REWARD_ENTITLEMENT_INVALID', '利用権Reward定義が不正です。');
+      items.push({ type, key, value: item.value ?? true, duration_days: durationDays, duration_months: durationMonths, label: typeof item.label === 'string' ? item.label : undefined });
       continue;
     }
     throw new FunctionHttpError(500, 'REWARD_ITEM_TYPE_UNSUPPORTED', '未対応のReward定義です。');
@@ -107,7 +109,7 @@ export function rewardSummary(items: RewardItem[]): Array<Record<string, unknown
     ? { type: item.type, amount: item.amount, label: item.label ?? `${item.amount.toLocaleString()} Credit` }
     : item.type === 'credit_schedule'
       ? { type: item.type, amount: item.amount, grants: item.grants, cadence_months: item.cadence_months ?? 1, label: item.label ?? `${item.amount.toLocaleString()} Credit × ${item.grants}回` }
-      : { type: item.type, key: item.key, value: item.value, duration_days: item.duration_days ?? null, label: item.label ?? item.key });
+      : { type: item.type, key: item.key, value: item.value, duration_days: item.duration_days ?? null, duration_months: item.duration_months ?? null, label: item.label ?? item.key });
 }
 
 export function rewardDescription(items: RewardItem[]): string {
@@ -176,7 +178,8 @@ export async function applyCouponRewardItems(db: D1Database, actor: AsteraActorP
       await db.prepare(`INSERT INTO reward_credit_schedules (id,tenant_id,user_id,amount,remaining_grants,grants_applied,cadence_months,next_grant_at,status,reference_type,reference_id,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,1,?6,?7,?8,'coupon_redemption',?9,?10,?10) ON CONFLICT(reference_type,reference_id) DO NOTHING`).bind(scheduleId,actor.profile.tenant_id,actor.user.id,item.amount,remaining,item.cadence_months??1,nextGrantAt,status,`${input.referenceId}:schedule:${index}`,now).run();
       scheduleIds.push(scheduleId); continue;
     }
-    const entitlementId=`coupon_redemption:${input.referenceId}:entitlement:${index}`; const expiresAt=item.duration_days?addDays(now,item.duration_days):null;
+    const entitlementId=`coupon_redemption:${input.referenceId}:entitlement:${index}`;
+    const expiresAt=item.duration_months?addMonths(now,item.duration_months):item.duration_days?addDays(now,item.duration_days):null;
     await db.prepare(`INSERT INTO reward_entitlements (id,tenant_id,user_id,entitlement_type,entitlement_key,value_json,starts_at,expires_at,status,reference_type,reference_id,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'active','coupon_redemption',?9,?10,?10) ON CONFLICT(reference_type,reference_id,entitlement_type,entitlement_key) DO UPDATE SET value_json=excluded.value_json,expires_at=excluded.expires_at,updated_at=excluded.updated_at`).bind(entitlementId,actor.profile.tenant_id,actor.user.id,item.type,item.key,JSON.stringify(item.value),now,expiresAt,input.referenceId,now).run();
     entitlementIds.push(entitlementId);
   }
