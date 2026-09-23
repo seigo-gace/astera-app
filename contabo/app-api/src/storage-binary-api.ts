@@ -10,6 +10,7 @@ import { createStorageEncryptedUpload, decryptStorageObjectToFile, type StorageV
 import { StorageApiError, MAX_FILE_BYTES } from './storage-api-types.js';
 import { internalAuthorized, responseError, correlationId } from './storage-api-auth.js';
 import {
+  acquireStorageUploadCompletionLock,
   openStorageUploadPlaintext,
   readStorageUploadCompletion,
   removeStorageUploadSession,
@@ -167,14 +168,23 @@ export function registerStorageBinaryApi(
       if (previous) {
         return c.json({ ...previous.response, idempotent: true }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
       }
-      const source = await openStorageUploadPlaintext(config, { objectId, userId, fileSize });
-      const stored = await encryptAndStore({ objectId, userId, fileName, fileSize, expectedSha256: expected, plaintext: source.body, signal: c.req.raw.signal, tgs, vault });
+      const release = await acquireStorageUploadCompletionLock(config, { objectId, userId, fileSize });
       try {
-        const receipt = await writeStorageUploadCompletion(config, { objectId, userId, fileSize, response: stored.response });
-        return c.json({ ...receipt.response, idempotent: false }, 201, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
-      } catch (error) {
-        await tgs.delete({ userId: stored.ref.userId, topicId: stored.ref.topicId, messageId: stored.ref.messageId, telegramFileId: stored.ref.telegramFileId }).catch(() => undefined);
-        throw error;
+        const raced = await readStorageUploadCompletion(config, { objectId, userId, fileSize });
+        if (raced) {
+          return c.json({ ...raced.response, idempotent: true }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
+        }
+        const source = await openStorageUploadPlaintext(config, { objectId, userId, fileSize });
+        const stored = await encryptAndStore({ objectId, userId, fileName, fileSize, expectedSha256: expected, plaintext: source.body, signal: c.req.raw.signal, tgs, vault });
+        try {
+          const receipt = await writeStorageUploadCompletion(config, { objectId, userId, fileSize, response: stored.response });
+          return c.json({ ...receipt.response, idempotent: false }, 201, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
+        } catch (error) {
+          await tgs.delete({ userId: stored.ref.userId, topicId: stored.ref.topicId, messageId: stored.ref.messageId, telegramFileId: stored.ref.telegramFileId }).catch(() => undefined);
+          throw error;
+        }
+      } finally {
+        await release();
       }
     } catch (error) {
       return responseError(error, requestId);
