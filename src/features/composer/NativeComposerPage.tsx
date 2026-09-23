@@ -21,7 +21,7 @@ type CreditState = 'normal' | 'low' | 'critical' | 'insufficient' | 'purchase_pe
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type DocumentTemplateSource = 'official' | 'personal';
 type AgentMode = 'low' | 'medium' | 'high';
-type PickerKind = 'add' | 'context' | null;
+type PickerKind = 'purpose' | 'add' | 'context' | null;
 
 type UploadedFile = {
   localId: string;
@@ -687,7 +687,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       const end = event.currentTarget.selectionEnd ?? start;
       if (start === end && (start === 0 || /\s/.test(event.currentTarget.value[start - 1] ?? ''))) {
         event.preventDefault();
-        if (event.key === '/') setPicker('add');
+        if (event.key === '/') setPicker('purpose');
         else openContextPicker();
         return;
       }
@@ -776,16 +776,31 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     );
   });
 
+  const pickerTitle = picker === 'purpose' ? '/ Purpose' : picker === 'add' ? '追加' : 'Option・対象';
   const pickerBody = picker && (
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) setPicker(null);
     }}>
-      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加' : 'Option・対象選択'}>
+      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'purpose' ? 'Purposeを選択' : picker === 'add' ? '追加' : 'Option・対象選択'}>
         <header>
-          <strong>{picker === 'add' ? '追加' : 'Option・対象'}</strong>
+          <strong>{pickerTitle}</strong>
           <button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button>
         </header>
         <div className="native-picker-body">
+          {picker === 'purpose' && (
+            <>
+              <button type="button" className={purpose === 'auto' ? 'is-selected' : ''} aria-pressed={purpose === 'auto'} onClick={() => { setPurpose('auto'); setPicker(null); }}><span>/自動</span>{purpose === 'auto' && <b aria-hidden="true">✓</b>}</button>
+              {PURPOSE_CHOICES.map((item) => {
+                const active = purpose === item.key;
+                return (
+                  <button key={item.key} type="button" className={active ? 'is-selected' : ''} aria-pressed={active} onClick={() => { setPurpose(item.key); setPicker(null); }}>
+                    <span>/{item.label}</span>
+                    {active && <b aria-hidden="true">✓</b>}
+                  </button>
+                );
+              })}
+            </>
+          )}
           {picker === 'add' && (
             <>
               <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
