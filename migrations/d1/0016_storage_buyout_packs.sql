@@ -1,6 +1,8 @@
--- Buy-once Astera Storage packs and plan capacity limits.
+-- Buy-once Astera Storage packs and plan-included capacity entitlements.
 -- Canon: 1GB=480 JPY, 10GB=1,980 JPY, 50GB=5,980 JPY; purchases accumulate.
--- Current plan caps: free=0, basic=10GB, pro=100GB, business=500GB, enterprise=1000GB.
+-- Current plan-included Storage: free=1GB, basic=5GB, pro=20GB, business=50GB, enterprise=150GB.
+-- The legacy column name max_capacity_gb is retained for compatibility; it stores
+-- the plan-included/base capacity and is not a hard cap on buy-once additions.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS astera_storage_plan_limits (
@@ -12,15 +14,15 @@ CREATE TABLE IF NOT EXISTS astera_storage_plan_limits (
 );
 
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'free', 0, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'free', 1, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'basic', 10, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'basic', 5, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'pro', 100, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'pro', 20, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'business', 500, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'business', 50, 1 FROM catalog_versions WHERE status='active';
 INSERT OR REPLACE INTO astera_storage_plan_limits (catalog_version, plan_id, max_capacity_gb, active)
-SELECT version, 'enterprise', 1000, 1 FROM catalog_versions WHERE status='active';
+SELECT version, 'enterprise', 150, 1 FROM catalog_versions WHERE status='active';
 
 CREATE TABLE IF NOT EXISTS astera_storage_pack_catalog (
   catalog_version TEXT NOT NULL REFERENCES catalog_versions(version),
@@ -85,3 +87,17 @@ CREATE TABLE IF NOT EXISTS astera_storage_pack_purchases (
 
 CREATE INDEX IF NOT EXISTS astera_storage_pack_purchases_tenant
   ON astera_storage_pack_purchases(tenant_id, purchased_at DESC);
+
+-- Emit the active plan entitlement rows into deployment evidence/logs.
+SELECT plan_id, max_capacity_gb
+FROM astera_storage_plan_limits
+WHERE catalog_version IN (SELECT version FROM catalog_versions WHERE status='active')
+  AND active=1
+ORDER BY CASE plan_id
+  WHEN 'free' THEN 1
+  WHEN 'basic' THEN 2
+  WHEN 'pro' THEN 3
+  WHEN 'business' THEN 4
+  WHEN 'enterprise' THEN 5
+  ELSE 99
+END, plan_id;
