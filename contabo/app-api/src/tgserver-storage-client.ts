@@ -11,6 +11,7 @@ type UploadResult = {
   file_id: string;
   topic_id: number;
   message_id: number;
+  telegram_file_id: string;
   file_size: number;
   status: string;
   waited_in_queue?: boolean;
@@ -82,18 +83,34 @@ export class TgserverStorageClient {
     userId: string;
     topicId: number;
     messageId: number;
+    telegramFileId: string;
     fileName: string;
     signal?: AbortSignal;
   }): Promise<Response> {
-    const query = new URLSearchParams({ user_id: input.userId, topic_id: String(input.topicId), file_name: input.fileName });
+    const query = new URLSearchParams({
+      user_id: input.userId,
+      topic_id: String(input.topicId),
+      telegram_file_id: input.telegramFileId,
+      file_name: input.fileName,
+    });
     return this.request(`/internal/storage/files/${input.messageId}?${query.toString()}`, { method: 'GET' }, input.signal);
   }
 
-  async delete(input: { userId: string; topicId: number; messageId: number; signal?: AbortSignal }): Promise<void> {
+  async delete(input: {
+    userId: string;
+    topicId: number;
+    messageId: number;
+    telegramFileId: string;
+    signal?: AbortSignal;
+  }): Promise<void> {
     await this.request(`/internal/storage/files/${input.messageId}`, {
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ user_id: input.userId, topic_id: input.topicId }),
+      body: JSON.stringify({
+        user_id: input.userId,
+        topic_id: input.topicId,
+        telegram_file_id: input.telegramFileId,
+      }),
     }, input.signal);
   }
 }

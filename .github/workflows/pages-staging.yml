@@ -97,6 +97,17 @@ jobs:
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0018_active_credit_formula_v1.sql
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0019_coupon_rewards.sql
 
+          telegram_file_id_count="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT COUNT(*) AS count FROM pragma_table_info('astera_storage_objects') WHERE name = 'telegram_file_id';" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s);const r=p.flatMap(x=>x.results||[]);process.stdout.write(String(r[0]?.count ?? 0));})")"
+
+          if [ "$telegram_file_id_count" = "0" ]; then
+            npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0020_storage_telegram_file_id.sql
+          elif [ "$telegram_file_id_count" = "1" ]; then
+            echo "telegram_file_id already present; skipping 0020"
+          else
+            echo "Unexpected telegram_file_id column count: $telegram_file_id_count" >&2
+            exit 1
+          fi
+
       - name: Verify active Credit Policy
         id: credit_policy
         shell: bash

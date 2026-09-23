@@ -102,6 +102,13 @@ function responseMessage(payload: unknown): string {
     || firstString(root, ['message', 'error_description', 'detail', 'title']);
 }
 
+async function responsePayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get('content-type') ?? '';
+  return contentType.toLowerCase().includes('json')
+    ? response.json().catch(() => null)
+    : response.text().catch(() => '');
+}
+
 function waitFor(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
@@ -168,8 +175,38 @@ export async function apiRequest<T = unknown>(path: string, options: ApiRequestO
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
     });
-    const contentType = response.headers.get('content-type') ?? '';
-    const payload: unknown = contentType.toLowerCase().includes('json') ? await response.json().catch(() => null) : await response.text().catch(() => '');
+    const payload = await responsePayload(response);
+    if (!response.ok) {
+      throw new ApiError(responseMessage(payload) || `Astera API request failed (${response.status})`, response.status, responseCode(payload) || `HTTP_${response.status}`, payload);
+    }
+    return payload as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (controller.signal.aborted) throw new ApiError('通信がTimeoutまたは取消されました。', 0, 'REQUEST_ABORTED');
+    throw new ApiError(error instanceof Error ? error.message : '通信に失敗しました。', 0, 'NETWORK_ERROR');
+  } finally {
+    window.clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', abortListener);
+  }
+}
+
+export async function apiBinaryRequest<T = unknown>(path: string, body: BodyInit, options: {
+  method?: 'POST' | 'PUT';
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  headers?: Record<string, string>;
+} = {}): Promise<T> {
+  const method = options.method ?? 'PUT';
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort('timeout'), options.timeoutMs ?? 300_000);
+  const abortListener = () => controller.abort(options.signal?.reason ?? 'cancelled');
+  options.signal?.addEventListener('abort', abortListener, { once: true });
+  const headers: Record<string, string> = { Accept: 'application/json', 'Content-Type': 'application/octet-stream', ...options.headers };
+  const csrf = csrfToken();
+  if (csrf) headers['X-CSRF-Token'] = csrf;
+  try {
+    const response = await fetch(apiUrl(path), { method, credentials: 'include', headers, body, signal: controller.signal });
+    const payload = await responsePayload(response);
     if (!response.ok) {
       throw new ApiError(responseMessage(payload) || `Astera API request failed (${response.status})`, response.status, responseCode(payload) || `HTTP_${response.status}`, payload);
     }

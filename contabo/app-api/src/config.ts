@@ -15,6 +15,7 @@ export type RuntimeConfig = {
   tgserverStorageOrigin: string;
   tgserverStorageToken: string;
   tgserverStorageTimeoutMs: number;
+  storageUploadTmpDir?: string;
 };
 
 function required(value: string | undefined, name: string): string {
@@ -70,6 +71,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     tgserverStorageOrigin,
     tgserverStorageToken: tgserverStorageOrigin ? required(env.TGS_STORAGE_INTERNAL_TOKEN, 'TGS_STORAGE_INTERNAL_TOKEN') : '',
     tgserverStorageTimeoutMs: integer(env.TGS_STORAGE_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
+    storageUploadTmpDir: env.ASTERA_STORAGE_UPLOAD_TMP_DIR?.trim() || '/var/lib/astera-storage-upload',
   };
 }
 

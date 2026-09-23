@@ -24,7 +24,8 @@ FROM node:22.14.0-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     PORT=8788
 WORKDIR /app
-RUN useradd --system --uid 10001 --create-home appuser
+RUN useradd --system --uid 10001 --create-home appuser \
+    && install -d -o appuser -g appuser -m 0700 /var/lib/astera-storage-upload
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
