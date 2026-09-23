@@ -20,6 +20,15 @@ type SessionMeta = Readonly<{
   created_at: string;
 }>;
 
+export type StorageUploadCompletion = Readonly<{
+  schema: 'astera.storage.upload-completion.v1';
+  response: {
+    binary: Record<string, unknown>;
+    queue: string;
+  };
+  completed_at: string;
+}>;
+
 function root(config: RuntimeConfig): string {
   return config.storageUploadTmpDir?.trim() || join(tmpdir(), 'astera-storage-upload');
 }
@@ -54,6 +63,10 @@ function sessionDir(config: RuntimeConfig, objectId: string): string {
 
 function metaPath(config: RuntimeConfig, objectId: string): string {
   return join(sessionDir(config, objectId), 'session.json');
+}
+
+function completionPath(config: RuntimeConfig, objectId: string): string {
+  return join(sessionDir(config, objectId), 'completion.json');
 }
 
 function chunkPath(config: RuntimeConfig, objectId: string, index: number): string {
@@ -129,6 +142,8 @@ export async function cleanupExpiredStorageUploads(config: RuntimeConfig, now = 
     if (!entry.isDirectory()) continue;
     const dir = join(base, entry.name);
     try {
+      const completion = await stat(join(dir, 'completion.json')).then(() => true).catch(() => false);
+      if (completion) continue;
       const info = await stat(join(dir, 'session.json')).catch(() => stat(dir));
       if (now - info.mtimeMs <= STORAGE_UPLOAD_TTL_MS) continue;
       await rm(dir, { recursive: true, force: true });
@@ -146,6 +161,10 @@ export async function writeStorageUploadChunk(
 ): Promise<{ chunkIndex: number; bytes: number; idempotent: boolean }> {
   await cleanupExpiredStorageUploads(config).catch(() => undefined);
   await ensureSession(config, input);
+  if (await readStorageUploadCompletion(config, input)) {
+    await input.body.cancel().catch(() => undefined);
+    throw new StorageApiError(409, 'STORAGE_UPLOAD_ALREADY_COMPLETED', 'Upload has already completed.');
+  }
   const expectedBytes = storageUploadExpectedChunkBytes(input.fileSize, input.index);
   const finalPath = chunkPath(config, input.objectId, input.index);
   try {
@@ -217,6 +236,56 @@ export async function openStorageUploadPlaintext(
     }
   })());
   return { body: Readable.toWeb(node) as ReadableStream<Uint8Array>, chunkCount: meta.chunk_count };
+}
+
+export async function readStorageUploadCompletion(
+  config: RuntimeConfig,
+  input: { objectId: string; userId: string; fileSize: number },
+): Promise<StorageUploadCompletion | null> {
+  const session = await readSession(config, input);
+  if (!session) return null;
+  let text: string;
+  try {
+    text = await readFile(completionPath(config, input.objectId), 'utf8');
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    if (code === 'ENOENT') return null;
+    throw error;
+  }
+  let parsed: StorageUploadCompletion;
+  try {
+    parsed = JSON.parse(text) as StorageUploadCompletion;
+  } catch {
+    throw new StorageApiError(500, 'STORAGE_UPLOAD_COMPLETION_CORRUPT', 'Upload completion receipt is unreadable.');
+  }
+  if (parsed.schema !== 'astera.storage.upload-completion.v1' || !parsed.response || typeof parsed.response !== 'object') {
+    throw new StorageApiError(500, 'STORAGE_UPLOAD_COMPLETION_CORRUPT', 'Upload completion receipt is invalid.');
+  }
+  return parsed;
+}
+
+export async function writeStorageUploadCompletion(
+  config: RuntimeConfig,
+  input: { objectId: string; userId: string; fileSize: number; response: { binary: Record<string, unknown>; queue: string } },
+): Promise<StorageUploadCompletion> {
+  await ensureSession(config, input);
+  const existing = await readStorageUploadCompletion(config, input);
+  if (existing) return existing;
+  const receipt: StorageUploadCompletion = {
+    schema: 'astera.storage.upload-completion.v1',
+    response: input.response,
+    completed_at: new Date().toISOString(),
+  };
+  try {
+    await writeFile(completionPath(config, input.objectId), JSON.stringify(receipt), { flag: 'wx', mode: 0o600 });
+    return receipt;
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    if (code !== 'EEXIST') throw error;
+  }
+  const raced = await readStorageUploadCompletion(config, input);
+  if (!raced) throw new StorageApiError(500, 'STORAGE_UPLOAD_COMPLETION_WRITE_FAILED', 'Upload completion receipt could not be persisted.');
+  return raced;
 }
 
 export async function removeStorageUploadSession(
