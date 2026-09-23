@@ -19,8 +19,13 @@ class CookieJar {
   header() { return [...this.values].map(([k, v]) => `${k}=${v}`).join('; '); }
 }
 
-function jsonOrNull(text) {
-  try { return JSON.parse(text); } catch { return null; }
+function jsonOrNull(text) { try { return JSON.parse(text); } catch { return null; } }
+function collection(body) {
+  if (Array.isArray(body)) return body;
+  for (const key of ['hydra:member', 'member', '@graph', 'items', 'data']) {
+    if (Array.isArray(body?.[key])) return body[key];
+  }
+  return [];
 }
 
 async function request(url, init = {}, jar) {
@@ -56,23 +61,17 @@ async function mailJson(path, init = {}, token = '') {
   const text = await response.text();
   const body = jsonOrNull(text);
   if (!response.ok) throw new Error(`MAIL_TM_${path.replaceAll('/', '_')}_${response.status}:${text.slice(0, 200)}`);
+  if (body === null) throw new Error(`MAIL_TM_NON_JSON_${path.replaceAll('/', '_')}:${response.headers.get('content-type') || 'missing'}`);
   return body;
 }
 
 function decodeHtmlEntities(value) {
-  return String(value)
-    .replaceAll('&amp;', '&')
-    .replaceAll('&#38;', '&')
-    .replaceAll('&#x26;', '&')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'");
+  return String(value).replaceAll('&amp;', '&').replaceAll('&#38;', '&').replaceAll('&#x26;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'");
 }
 
 function verificationUrl(message) {
   const sources = [message?.text, ...(Array.isArray(message?.html) ? message.html : []), message?.intro]
-    .filter(Boolean)
-    .map(decodeHtmlEntities)
-    .join('\n');
+    .filter(Boolean).map(decodeHtmlEntities).join('\n');
   const urls = sources.match(/https?:\/\/[^\s"'<>]+/g) || [];
   for (const candidate of urls) {
     let parsed;
@@ -93,23 +92,18 @@ console.log(`::add-mask::${mailPassword}`);
 console.log(`::add-mask::${asteraPassword}`);
 
 try {
-  const domains = await mailJson('/domains');
-  const domain = domains?.['hydra:member']?.find((item) => item?.isActive !== false)?.domain;
+  const domainsBody = await mailJson('/domains');
+  const domainItems = collection(domainsBody);
+  console.log(`MAIL_TM_DOMAINS_SHAPE=${Object.keys(domainsBody || {}).sort().join(',') || 'array'} COUNT=${domainItems.length}`);
+  const domain = domainItems.find((item) => item?.isActive !== false && item?.is_active !== false && item?.domain)?.domain;
   if (!domain) throw new Error('MAIL_TM_ACTIVE_DOMAIN_NOT_FOUND');
   email = `astera-e2e-${nonce}@${domain}`;
   console.log(`::add-mask::${email}`);
 
-  const account = await mailJson('/accounts', {
-    method: 'POST',
-    body: JSON.stringify({ address: email, password: mailPassword }),
-  });
+  const account = await mailJson('/accounts', { method: 'POST', body: JSON.stringify({ address: email, password: mailPassword }) });
   mailAccountId = String(account?.id || '');
   if (!mailAccountId) throw new Error('MAIL_TM_ACCOUNT_ID_MISSING');
-
-  const token = await mailJson('/token', {
-    method: 'POST',
-    body: JSON.stringify({ address: email, password: mailPassword }),
-  });
+  const token = await mailJson('/token', { method: 'POST', body: JSON.stringify({ address: email, password: mailPassword }) });
   mailToken = String(token?.token || '');
   if (!mailToken) throw new Error('MAIL_TM_TOKEN_MISSING');
   console.log(`::add-mask::${mailToken}`);
@@ -117,8 +111,7 @@ try {
 
   const jar = new CookieJar();
   const signup = await request(`${APP}/api/auth/sign-up/email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: APP, Accept: 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: APP, Accept: 'application/json' },
     body: JSON.stringify({ email, name: email, password: asteraPassword, callbackURL: `${APP}/app/new` }),
   }, jar);
   const signupText = await signup.text();
@@ -127,8 +120,8 @@ try {
 
   let message = null;
   for (let attempt = 1; attempt <= 60; attempt += 1) {
-    const messages = await mailJson('/messages', {}, mailToken);
-    const item = messages?.['hydra:member']?.find((candidate) => candidate?.id);
+    const messages = collection(await mailJson('/messages', {}, mailToken));
+    const item = messages.find((candidate) => candidate?.id);
     if (item?.id) {
       message = await mailJson(`/messages/${encodeURIComponent(item.id)}`, {}, mailToken);
       console.log(`VERIFICATION_EMAIL=RECEIVED ATTEMPT=${attempt}`);
@@ -138,15 +131,13 @@ try {
     await sleep(2000);
   }
 
-  const verifyUrl = verificationUrl(message);
-  const verify = await follow(verifyUrl, { method: 'GET', headers: { Accept: 'text/html,application/json' } }, jar);
+  const verify = await follow(verificationUrl(message), { method: 'GET', headers: { Accept: 'text/html,application/json' } }, jar);
   const verifyText = await verify.text();
   if (!verify.ok) throw new Error(`ASTERA_EMAIL_VERIFY_FAILED_${verify.status}:${verifyText.slice(0, 300)}`);
   console.log(`ASTERA_EMAIL_VERIFY=PASS HTTP=${verify.status}`);
 
   const signIn = await request(`${APP}/api/auth/sign-in/email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: APP, Accept: 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: APP, Accept: 'application/json' },
     body: JSON.stringify({ email, password: asteraPassword, rememberMe: true, callbackURL: `${APP}/app/new` }),
   }, jar);
   const signInText = await signIn.text();
@@ -156,25 +147,16 @@ try {
   if (!jar.header()) throw new Error('ASTERA_SESSION_COOKIE_MISSING');
   console.log(`ASTERA_SIGNIN=PASS HTTP=${signIn.status}`);
 
-  const sessionResponse = await request(`${APP}/api/auth/get-session`, {
-    method: 'GET',
-    headers: { Origin: APP, Accept: 'application/json' },
-  }, jar);
+  const sessionResponse = await request(`${APP}/api/auth/get-session`, { method: 'GET', headers: { Origin: APP, Accept: 'application/json' } }, jar);
   const sessionText = await sessionResponse.text();
   const session = jsonOrNull(sessionText);
   const sessionUser = session?.user || session?.data?.user;
-  if (!sessionResponse.ok || !sessionUser?.id || !sessionUser?.email) {
-    throw new Error(`ASTERA_SESSION_INVALID_${sessionResponse.status}:${sessionText.slice(0, 300)}`);
-  }
+  if (!sessionResponse.ok || !sessionUser?.id || !sessionUser?.email) throw new Error(`ASTERA_SESSION_INVALID_${sessionResponse.status}:${sessionText.slice(0, 300)}`);
   console.log(`ASTERA_SESSION=PASS HTTP=${sessionResponse.status}`);
 
-  const accountResponse = await request(`${APP}/api/account`, {
-    method: 'GET',
-    headers: { Origin: APP, Accept: 'application/json' },
-  }, jar);
+  const accountResponse = await request(`${APP}/api/account`, { method: 'GET', headers: { Origin: APP, Accept: 'application/json' } }, jar);
   const accountText = await accountResponse.text();
-  const accountBody = jsonOrNull(accountText);
-  const projection = accountBody?.account;
+  const projection = jsonOrNull(accountText)?.account;
   if (!accountResponse.ok) throw new Error(`ASTERA_ACCOUNT_FAILED_${accountResponse.status}:${accountText.slice(0, 300)}`);
   if (projection?.account_status !== 'active') throw new Error(`ASTERA_ACCOUNT_NOT_ACTIVE:${projection?.account_status || 'missing'}`);
   if (projection?.email_verified !== true) throw new Error('ASTERA_ACCOUNT_EMAIL_NOT_VERIFIED');
@@ -183,10 +165,7 @@ try {
   console.log('REAL_BETTER_AUTH_STAGING_E2E=PASS');
 } finally {
   if (mailToken && mailAccountId) {
-    const response = await fetch(`${MAIL}/accounts/${encodeURIComponent(mailAccountId)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${mailToken}` },
-    }).catch(() => null);
+    const response = await fetch(`${MAIL}/accounts/${encodeURIComponent(mailAccountId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${mailToken}` } }).catch(() => null);
     console.log(`MAILBOX_CLEANUP=${response?.status === 204 ? 'PASS' : 'BEST_EFFORT'}`);
   }
 }
