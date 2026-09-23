@@ -85,6 +85,7 @@ export async function onRequestPost(c: C) {
     const cleanupHeaders = new Headers({
       'X-Astera-User-ID': owner.userId,
       'X-Astera-File-Size': String(fileSize),
+      'X-Astera-Upload-Finalized': '1',
       'X-Correlation-ID': cid,
     });
     void storageBinaryFetch(
