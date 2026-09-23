@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, readFile, readdir, rm, stat, writeFile, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -40,6 +41,20 @@ function safeObjectId(value: string): string {
     throw new StorageApiError(422, 'STORAGE_UPLOAD_OBJECT_ID_INVALID', 'Upload object id is invalid.');
   }
   return id;
+}
+
+function normalizedSha256(value: string): string {
+  const digest = value.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SHA256_INVALID', 'Chunk SHA-256 is invalid.');
+  }
+  return digest;
+}
+
+async function fileSha256(path: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  return hash.digest('hex');
 }
 
 export function storageUploadChunkCount(fileSize: number): number {
@@ -162,10 +177,11 @@ export async function cleanupExpiredStorageUploads(config: RuntimeConfig, now = 
 
 export async function writeStorageUploadChunk(
   config: RuntimeConfig,
-  input: { objectId: string; userId: string; fileSize: number; index: number; body: ReadableStream<Uint8Array> },
-): Promise<{ chunkIndex: number; bytes: number; idempotent: boolean }> {
+  input: { objectId: string; userId: string; fileSize: number; index: number; expectedSha256: string; body: ReadableStream<Uint8Array> },
+): Promise<{ chunkIndex: number; bytes: number; sha256: string; idempotent: boolean }> {
   await cleanupExpiredStorageUploads(config).catch(() => undefined);
   await ensureSession(config, input);
+  const expectedSha256 = normalizedSha256(input.expectedSha256);
   if (await readStorageUploadCompletion(config, input)) {
     await input.body.cancel().catch(() => undefined);
     throw new StorageApiError(409, 'STORAGE_UPLOAD_ALREADY_COMPLETED', 'Upload has already completed.');
@@ -177,8 +193,12 @@ export async function writeStorageUploadChunk(
     if (existing.size !== expectedBytes) {
       throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Existing chunk size does not match the expected size.');
     }
+    const existingSha256 = await fileSha256(finalPath);
+    if (existingSha256 !== expectedSha256) {
+      throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Existing chunk SHA-256 does not match the retry.');
+    }
     await input.body.cancel().catch(() => undefined);
-    return { chunkIndex: input.index, bytes: existing.size, idempotent: true };
+    return { chunkIndex: input.index, bytes: existing.size, sha256: existingSha256, idempotent: true };
   } catch (error) {
     if (error instanceof StorageApiError) throw error;
     const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
@@ -187,6 +207,7 @@ export async function writeStorageUploadChunk(
 
   const tempPath = `${finalPath}.part-${crypto.randomUUID()}`;
   let bytes = 0;
+  const hash = createHash('sha256');
   const limiter = new Transform({
     transform(chunk, _encoding, callback) {
       bytes += Buffer.byteLength(chunk);
@@ -194,6 +215,7 @@ export async function writeStorageUploadChunk(
         callback(new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_TOO_LARGE', 'Chunk exceeds the expected size.'));
         return;
       }
+      hash.update(chunk);
       callback(null, chunk);
     },
   });
@@ -206,21 +228,24 @@ export async function writeStorageUploadChunk(
     if (bytes !== expectedBytes) {
       throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SIZE_MISMATCH', 'Chunk size does not match the expected size.');
     }
+    const receivedSha256 = hash.digest('hex');
+    if (receivedSha256 !== expectedSha256) {
+      throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SHA256_MISMATCH', 'Chunk SHA-256 does not match the declared digest.');
+    }
     try {
       await link(tempPath, finalPath);
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
       if (code !== 'EEXIST') throw error;
       const existing = await stat(finalPath);
-      if (existing.size !== expectedBytes) {
-        throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Concurrent chunk differs from the expected size.');
+      if (existing.size !== expectedBytes || await fileSha256(finalPath) !== expectedSha256) {
+        throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Concurrent chunk differs from the requested chunk.');
       }
-      await input.body.cancel().catch(() => undefined);
-      return { chunkIndex: input.index, bytes: existing.size, idempotent: true };
+      return { chunkIndex: input.index, bytes: existing.size, sha256: expectedSha256, idempotent: true };
     } finally {
       await rm(tempPath, { force: true }).catch(() => undefined);
     }
-    return { chunkIndex: input.index, bytes, idempotent: false };
+    return { chunkIndex: input.index, bytes, sha256: receivedSha256, idempotent: false };
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw error;
