@@ -43,14 +43,6 @@ function safeObjectId(value: string): string {
   return id;
 }
 
-function normalizedSha256(value: string): string {
-  const digest = value.trim().toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(digest)) {
-    throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SHA256_INVALID', 'Chunk SHA-256 is invalid.');
-  }
-  return digest;
-}
-
 async function fileSha256(path: string): Promise<string> {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
@@ -177,34 +169,17 @@ export async function cleanupExpiredStorageUploads(config: RuntimeConfig, now = 
 
 export async function writeStorageUploadChunk(
   config: RuntimeConfig,
-  input: { objectId: string; userId: string; fileSize: number; index: number; expectedSha256: string; body: ReadableStream<Uint8Array> },
+  input: { objectId: string; userId: string; fileSize: number; index: number; body: ReadableStream<Uint8Array> },
 ): Promise<{ chunkIndex: number; bytes: number; sha256: string; idempotent: boolean }> {
   await cleanupExpiredStorageUploads(config).catch(() => undefined);
   await ensureSession(config, input);
-  const expectedSha256 = normalizedSha256(input.expectedSha256);
   if (await readStorageUploadCompletion(config, input)) {
     await input.body.cancel().catch(() => undefined);
     throw new StorageApiError(409, 'STORAGE_UPLOAD_ALREADY_COMPLETED', 'Upload has already completed.');
   }
+
   const expectedBytes = storageUploadExpectedChunkBytes(input.fileSize, input.index);
   const finalPath = chunkPath(config, input.objectId, input.index);
-  try {
-    const existing = await stat(finalPath);
-    if (existing.size !== expectedBytes) {
-      throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Existing chunk size does not match the expected size.');
-    }
-    const existingSha256 = await fileSha256(finalPath);
-    if (existingSha256 !== expectedSha256) {
-      throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Existing chunk SHA-256 does not match the retry.');
-    }
-    await input.body.cancel().catch(() => undefined);
-    return { chunkIndex: input.index, bytes: existing.size, sha256: existingSha256, idempotent: true };
-  } catch (error) {
-    if (error instanceof StorageApiError) throw error;
-    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
-    if (code !== 'ENOENT') throw error;
-  }
-
   const tempPath = `${finalPath}.part-${crypto.randomUUID()}`;
   let bytes = 0;
   const hash = createHash('sha256');
@@ -219,6 +194,7 @@ export async function writeStorageUploadChunk(
       callback(null, chunk);
     },
   });
+
   try {
     await pipeline(
       Readable.fromWeb(input.body as never),
@@ -229,19 +205,17 @@ export async function writeStorageUploadChunk(
       throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SIZE_MISMATCH', 'Chunk size does not match the expected size.');
     }
     const receivedSha256 = hash.digest('hex');
-    if (receivedSha256 !== expectedSha256) {
-      throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SHA256_MISMATCH', 'Chunk SHA-256 does not match the declared digest.');
-    }
     try {
       await link(tempPath, finalPath);
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
       if (code !== 'EEXIST') throw error;
       const existing = await stat(finalPath);
-      if (existing.size !== expectedBytes || await fileSha256(finalPath) !== expectedSha256) {
-        throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Concurrent chunk differs from the requested chunk.');
+      const existingSha256 = existing.size === expectedBytes ? await fileSha256(finalPath) : '';
+      if (existing.size !== expectedBytes || existingSha256 !== receivedSha256) {
+        throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Retry chunk content differs from the existing chunk.');
       }
-      return { chunkIndex: input.index, bytes: existing.size, sha256: expectedSha256, idempotent: true };
+      return { chunkIndex: input.index, bytes: existing.size, sha256: existingSha256, idempotent: true };
     } finally {
       await rm(tempPath, { force: true }).catch(() => undefined);
     }
