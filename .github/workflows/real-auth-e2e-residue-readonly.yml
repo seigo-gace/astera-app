@@ -25,20 +25,19 @@ jobs:
         run: |
           set -euo pipefail
           npm install --no-audit --ignore-scripts >/dev/null 2>&1
-          q() {
-            npx wrangler d1 execute astera-app-staging --remote --json --command "$1"
-          }
-          echo '=== USER_ROWS ==='
-          q 'SELECT COUNT(*) AS count, MIN("createdAt") AS min_created, MAX("createdAt") AS max_created, SUM(CASE WHEN "emailVerified"=0 THEN 1 ELSE 0 END) AS unverified FROM "user" WHERE email LIKE "astera-e2e-%";'
-          echo '=== RECENT_USER_ROWS ==='
-          q 'SELECT COUNT(*) AS count, SUM(CASE WHEN "emailVerified"=0 THEN 1 ELSE 0 END) AS unverified FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240));'
+          q() { npx wrangler d1 execute astera-app-staging --remote --json --command "$1"; }
+          selector='email LIKE "astera-e2e-%" AND "emailVerified"=0 AND "createdAt" BETWEEN "2026-09-23T12:13:00.000Z" AND "2026-09-23T12:24:00.000Z"'
+          echo '=== TARGET_USER_ROWS ==='
+          q "SELECT COUNT(*) AS count, MIN(\"createdAt\") AS min_created, MAX(\"createdAt\") AS max_created FROM \"user\" WHERE ${selector};"
           echo '=== ACCOUNT_ROWS ==='
-          q 'SELECT COUNT(*) AS count FROM "account" WHERE "userId" IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
+          q "SELECT COUNT(*) AS count FROM \"account\" WHERE \"userId\" IN (SELECT id FROM \"user\" WHERE ${selector});"
           echo '=== SESSION_ROWS ==='
-          q 'SELECT COUNT(*) AS count FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
+          q "SELECT COUNT(*) AS count FROM \"session\" WHERE \"userId\" IN (SELECT id FROM \"user\" WHERE ${selector});"
           echo '=== PROFILE_ROWS ==='
-          q 'SELECT COUNT(*) AS count FROM user_profiles WHERE user_id IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
-          echo '=== VERIFICATION_ROWS ==='
-          q 'SELECT COUNT(*) AS count FROM verification WHERE identifier LIKE "astera-e2e-%";'
+          q "SELECT COUNT(*) AS count FROM user_profiles WHERE user_id IN (SELECT id FROM \"user\" WHERE ${selector});"
+          echo '=== CREDIT_ACCOUNT_ROWS ==='
+          q "SELECT COUNT(*) AS count FROM credit_accounts WHERE tenant_id IN (SELECT 'personal:' || id FROM \"user\" WHERE ${selector});"
           echo '=== REDEMPTION_ROWS ==='
-          q 'SELECT COUNT(*) AS count FROM coupon_redemptions WHERE user_id IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
+          q "SELECT COUNT(*) AS count FROM coupon_redemptions WHERE user_id IN (SELECT id FROM \"user\" WHERE ${selector});"
+          echo '=== VERIFICATION_ROWS_BY_EMAIL ==='
+          q 'SELECT COUNT(*) AS count FROM verification WHERE identifier LIKE "astera-e2e-%";'
