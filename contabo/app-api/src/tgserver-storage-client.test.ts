@@ -36,7 +36,7 @@ test('upload adds service auth and forwards only technical storage metadata', as
 
 test('service auth and Telegram manifest reference are attached to download and delete', async () => {
   const originalFetch = globalThis.fetch;
-  const captured: Array<{ input: string; init?: RequestInit }> = [];
+  const captured: Array<{ input: string; init: RequestInit | undefined }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     captured.push({ input: String(input), init });
     return new Response(new Uint8Array([1]), { status: 200 });
