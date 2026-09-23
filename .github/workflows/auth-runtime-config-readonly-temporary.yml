@@ -1,0 +1,50 @@
+name: Temporary Auth Runtime Config Readonly Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/auth-runtime-config-readonly-temporary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      PROJECT: 'astera-app-staging'
+    steps:
+      - name: Read auth binding shape only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'CLOUDFLAREACCOUNTAPI unavailable'; exit 1; }
+          node <<'NODE'
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const account=process.env.CLOUDFLARE_ACCOUNT_ID;
+          const project=process.env.PROJECT;
+          const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/pages/projects/${project}`,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}});
+          const b=await r.json().catch(()=>({}));
+          if(!r.ok||b.success===false) throw new Error(`PAGES_PROJECT_READ_FAILED:${r.status}`);
+          const env=b.result?.deployment_configs?.production?.env_vars||{};
+          const wanted=['BETTER_AUTH_URL','BETTER_AUTH_SECRET','AUTH_EMAIL_ENDPOINT','AUTH_EMAIL_TOKEN','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GITHUB_CLIENT_ID','GITHUB_CLIENT_SECRET','ADMINI_INTERNAL_SECRET'];
+          for(const key of wanted){
+            const entry=env[key];
+            if(!entry){console.log(`${key}=MISSING`);continue;}
+            const type=String(entry.type||'unknown');
+            if(key==='AUTH_EMAIL_ENDPOINT'&&typeof entry.value==='string'){
+              let safe='PRESENT';
+              try{const u=new URL(entry.value);safe=`${u.protocol}//${u.hostname}${u.pathname}`;}catch{}
+              console.log(`${key}=PRESENT TYPE=${type} TARGET=${safe}`);
+            }else if(key==='BETTER_AUTH_URL'&&typeof entry.value==='string'){
+              let safe='PRESENT';
+              try{const u=new URL(entry.value);safe=`${u.protocol}//${u.hostname}${u.pathname}`;}catch{}
+              console.log(`${key}=PRESENT TYPE=${type} TARGET=${safe}`);
+            }else{
+              console.log(`${key}=PRESENT TYPE=${type}`);
+            }
+          }
+          NODE
