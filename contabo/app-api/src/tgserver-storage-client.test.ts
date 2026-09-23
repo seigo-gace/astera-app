@@ -14,13 +14,14 @@ test('upload adds service auth and forwards only technical storage metadata', as
   let captured: { input: string; init?: RequestInit & { duplex?: string } } | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     captured = { input: String(input), init: init as RequestInit & { duplex?: string } };
-    return Response.json({ file_id: 'object-1', topic_id: 10, message_id: 20, file_size: 3, status: 'stored' }, { status: 201 });
+    return Response.json({ file_id: 'object-1', topic_id: 10, message_id: 20, telegram_file_id: 'manifest-file', file_size: 3, status: 'stored' }, { status: 201 });
   }) as typeof fetch;
   try {
     const body = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array([1,2,3])); controller.close(); } });
     const client = new TgserverStorageClient(config);
     const result = await client.upload({ objectId: 'object-1', userId: 'user-1', fileName: 'a b.txt', fileSize: 3, body });
     assert.equal(result.topic_id, 10);
+    assert.equal(result.telegram_file_id, 'manifest-file');
     assert.ok(captured);
     const request = captured as { input: string; init?: RequestInit & { duplex?: string } };
     const headers = new Headers(request.init?.headers);
@@ -33,18 +34,25 @@ test('upload adds service auth and forwards only technical storage metadata', as
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('service auth is attached to download and delete', async () => {
+test('service auth and Telegram manifest reference are attached to download and delete', async () => {
   const originalFetch = globalThis.fetch;
-  const auth: string[] = [];
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    auth.push(new Headers(init?.headers).get('authorization') || '');
+  const captured: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    captured.push({ input: String(input), init });
     return new Response(new Uint8Array([1]), { status: 200 });
   }) as typeof fetch;
   try {
     const client = new TgserverStorageClient(config);
-    await client.download({ userId: 'u', topicId: 1, messageId: 2, fileName: 'x' });
-    await client.delete({ userId: 'u', topicId: 1, messageId: 2 });
-    assert.deepEqual(auth, ['Bearer storage-secret', 'Bearer storage-secret']);
+    await client.download({ userId: 'u', topicId: 1, messageId: 2, telegramFileId: 'manifest-file', fileName: 'x' });
+    await client.delete({ userId: 'u', topicId: 1, messageId: 2, telegramFileId: 'manifest-file' });
+    assert.deepEqual(captured.map((item) => new Headers(item.init?.headers).get('authorization')), ['Bearer storage-secret', 'Bearer storage-secret']);
+    const downloadUrl = new URL(captured[0]!.input);
+    assert.equal(downloadUrl.searchParams.get('telegram_file_id'), 'manifest-file');
+    assert.deepEqual(JSON.parse(String(captured[1]!.init?.body)), {
+      user_id: 'u',
+      topic_id: 1,
+      telegram_file_id: 'manifest-file',
+    });
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -59,7 +67,7 @@ test('upstream error code is preserved without response body or token leakage', 
   try {
     const client = new TgserverStorageClient(config);
     await assert.rejects(
-      () => client.delete({ userId: 'u', topicId: 1, messageId: 2 }),
+      () => client.delete({ userId: 'u', topicId: 1, messageId: 2, telegramFileId: 'manifest-file' }),
       (error: unknown) => error instanceof TgserverStorageError
         && error.code === 'STORAGE_AUTHENTICATION_FAILED'
         && error.message === 'STORAGE_AUTHENTICATION_FAILED'
