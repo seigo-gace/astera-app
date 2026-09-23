@@ -1,0 +1,22 @@
+name: Temporary Real Better Auth Staging E2E
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/real-auth-staging-e2e-temporary.yml'
+      - 'scripts/verify/real-auth-staging-e2e.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  real-auth-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - name: Execute real staging Better Auth registration and session proof
+        run: node scripts/verify/real-auth-staging-e2e.mjs
