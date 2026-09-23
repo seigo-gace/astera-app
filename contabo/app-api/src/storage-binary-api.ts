@@ -40,7 +40,7 @@ export function registerStorageBinaryApi(
 ): void {
   app.post('/internal/v1/storage-binary/objects/:object/upload', async (c) => {
     const requestId = correlationId(c.req.raw.headers);
-    let ref: { topicId: number; messageId: number; userId: string } | null = null;
+    let ref: { topicId: number; messageId: number; telegramFileId: string; userId: string } | null = null;
     let completion: Promise<{ plaintextSha256: string; authTagBase64: string }> | null = null;
     let stream: ReadableStream<Uint8Array> | null = null;
     try {
@@ -50,7 +50,7 @@ export function registerStorageBinaryApi(
       const userId = requiredHeader(c.req.raw.headers, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
       const fileName = requiredHeader(c.req.raw.headers, 'x-astera-file-name', 'STORAGE_FILE_NAME_REQUIRED').slice(0, 240);
       const fileSize = nonNegativeInt(requiredHeader(c.req.raw.headers, 'x-astera-file-size', 'STORAGE_FILE_SIZE_REQUIRED'), 'STORAGE_FILE_SIZE_INVALID');
-      if (fileSize > MAX_FILE_BYTES) throw new StorageApiError(413, 'STORAGE_FILE_TOO_LARGE', 'File exceeds 4 GiB.');
+      if (fileSize > MAX_FILE_BYTES) throw new StorageApiError(413, 'STORAGE_FILE_TOO_LARGE', 'File exceeds 1 GiB.');
       const expected = c.req.header('x-astera-sha256')?.trim() ? sha(c.req.header('x-astera-sha256')!) : '';
       const body = c.req.raw.body;
       if (!body) throw new StorageApiError(422, 'STORAGE_FILE_BODY_REQUIRED', 'File body is required.');
@@ -59,11 +59,13 @@ export function registerStorageBinaryApi(
       stream = encrypted.stream;
       const stored = await tgs.upload({ objectId, userId, fileName, fileSize, body: encrypted.stream, signal: c.req.raw.signal });
       stream = null;
-      ref = { topicId: stored.topic_id, messageId: stored.message_id, userId };
+      const telegramFileId = stored.telegram_file_id?.trim() || '';
+      if (!telegramFileId) throw new StorageApiError(502, 'TGS_STORAGE_MANIFEST_REF_MISSING', 'TGserver did not return the Telegram manifest reference.');
+      ref = { topicId: stored.topic_id, messageId: stored.message_id, telegramFileId, userId };
       const completed = await encrypted.completion;
       completion = null;
       if (expected && expected !== completed.plaintextSha256) {
-        await tgs.delete({ userId, topicId: stored.topic_id, messageId: stored.message_id }).catch(() => undefined);
+        await tgs.delete({ userId, topicId: stored.topic_id, messageId: stored.message_id, telegramFileId }).catch(() => undefined);
         ref = null;
         throw new StorageApiError(422, 'STORAGE_SHA256_MISMATCH', 'Uploaded SHA-256 does not match the declared checksum.');
       }
@@ -72,6 +74,7 @@ export function registerStorageBinaryApi(
         binary: {
           topic_id: String(stored.topic_id),
           message_id: String(stored.message_id),
+          telegram_file_id: telegramFileId,
           checksum_sha256: completed.plaintextSha256,
           encryption_profile: encrypted.metadata.encryptionProfile,
           dek_wrap_ciphertext: encrypted.metadata.wrappedDek.ciphertext,
@@ -87,7 +90,7 @@ export function registerStorageBinaryApi(
     } catch (error) {
       if (stream) await stream.cancel().catch(() => undefined);
       if (completion) void completion.catch(() => undefined);
-      if (ref) await tgs.delete({ userId: ref.userId, topicId: ref.topicId, messageId: ref.messageId }).catch(() => undefined);
+      if (ref) await tgs.delete({ userId: ref.userId, topicId: ref.topicId, messageId: ref.messageId, telegramFileId: ref.telegramFileId }).catch(() => undefined);
       return responseError(error, requestId);
     }
   });
@@ -102,6 +105,7 @@ export function registerStorageBinaryApi(
       const userId = requiredHeader(h, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
       const topicId = positiveInt(requiredHeader(h, 'x-astera-topic-id', 'STORAGE_TOPIC_ID_REQUIRED'), 'STORAGE_TOPIC_ID_INVALID');
       const messageId = positiveInt(requiredHeader(h, 'x-astera-message-id', 'STORAGE_MESSAGE_ID_REQUIRED'), 'STORAGE_MESSAGE_ID_INVALID');
+      const telegramFileId = requiredHeader(h, 'x-astera-telegram-file-id', 'STORAGE_TELEGRAM_FILE_ID_REQUIRED');
       const fileName = requiredHeader(h, 'x-astera-file-name', 'STORAGE_FILE_NAME_REQUIRED').slice(0, 240);
       const mimeHeader = h.get('x-astera-mime-type') || 'application/octet-stream';
       const mimeType = (mimeHeader.split(';')[0] ?? 'application/octet-stream').trim().slice(0, 160);
@@ -111,7 +115,7 @@ export function registerStorageBinaryApi(
       const wrappedDek = { ciphertext: requiredHeader(h, 'x-astera-dek-wrap-ciphertext', 'STORAGE_DEK_WRAP_REQUIRED'), iv: requiredHeader(h, 'x-astera-dek-wrap-iv', 'STORAGE_DEK_WRAP_IV_REQUIRED') };
       const contentIvBase64 = requiredHeader(h, 'x-astera-content-iv-base64', 'STORAGE_CONTENT_IV_REQUIRED');
       const authTagBase64 = requiredHeader(h, 'x-astera-auth-tag-base64', 'STORAGE_AUTH_TAG_REQUIRED');
-      const upstream = await tgs.download({ userId, topicId, messageId, fileName, signal: c.req.raw.signal });
+      const upstream = await tgs.download({ userId, topicId, messageId, telegramFileId, fileName, signal: c.req.raw.signal });
       if (!upstream.body) throw new StorageApiError(502, 'TGS_STORAGE_EMPTY_BODY', 'TGserver returned an empty body.');
       const dir = join(tmpdir(), 'astera-storage-download');
       await mkdir(dir, { recursive: true });
@@ -138,7 +142,8 @@ export function registerStorageBinaryApi(
       const userId = requiredHeader(h, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
       const topicId = positiveInt(requiredHeader(h, 'x-astera-topic-id', 'STORAGE_TOPIC_ID_REQUIRED'), 'STORAGE_TOPIC_ID_INVALID');
       const messageId = positiveInt(requiredHeader(h, 'x-astera-message-id', 'STORAGE_MESSAGE_ID_REQUIRED'), 'STORAGE_MESSAGE_ID_INVALID');
-      await tgs.delete({ userId, topicId, messageId, signal: c.req.raw.signal });
+      const telegramFileId = requiredHeader(h, 'x-astera-telegram-file-id', 'STORAGE_TELEGRAM_FILE_ID_REQUIRED');
+      await tgs.delete({ userId, topicId, messageId, telegramFileId, signal: c.req.raw.signal });
       return c.json({ deleted: true, object_id: c.req.param('object') }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
     } catch (error) {
       return responseError(error, requestId);
