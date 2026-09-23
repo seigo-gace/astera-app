@@ -11,7 +11,7 @@
 
 .plan-credit-storage-metrics {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -21,13 +21,9 @@
   min-width: 0;
 }
 
-/* Storage purchase surface intentionally shows only the authoritative current
-   Max Storage. Usage / plan-base / remaining capacity belong to other account
-   surfaces and must not clutter this purchase section. */
-.plan-credit-storage-metrics > div:first-child,
-.plan-credit-storage-metrics > div:nth-child(3),
-.plan-credit-storage-gauge,
-.plan-credit-storage-remaining {
+/* The purchase surface keeps usage, current Max Storage, the usage gauge and
+   remaining capacity. Only the obsolete plan-limit metric is hidden. */
+.plan-credit-storage-metrics > div:nth-child(3) {
   display: none;
 }
 
@@ -179,6 +175,10 @@
 }
 
 @media (max-width: 700px) {
+  .plan-credit-storage-metrics {
+    grid-template-columns: 1fr;
+  }
+
   .plan-credit-storage-pack-grid {
     grid-template-columns: 1fr;
   }

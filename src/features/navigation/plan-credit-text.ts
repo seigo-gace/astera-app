@@ -33,6 +33,7 @@ export const PLAN_CREDIT_TEXT = {
             },
           ],
         },
+        features: ['Storage：1GB'],
       },
       {
         id: 'basic',
@@ -48,6 +49,7 @@ export const PLAN_CREDIT_TEXT = {
           'Private Mode',
           '外部Storage転送',
           'Astera Storage',
+          'Storage：5GB',
         ],
       },
       {
@@ -66,6 +68,7 @@ export const PLAN_CREDIT_TEXT = {
           'Astera Storage',
           'Astera公式／個別書類テンプレート',
           'API',
+          'Storage：20GB',
         ],
       },
       {
@@ -84,6 +87,7 @@ export const PLAN_CREDIT_TEXT = {
           'Astera Storage',
           'Astera公式／個別書類テンプレート',
           'API',
+          'Storage：50GB',
         ],
       },
       {
@@ -102,6 +106,7 @@ export const PLAN_CREDIT_TEXT = {
           'Astera Storage',
           'Astera公式／個別書類テンプレート',
           'API',
+          'Storage：150GB',
         ],
       },
     ],
@@ -153,6 +158,7 @@ export const PLAN_CREDIT_TEXT = {
             },
           ],
         },
+        features: ['Storage: 1GB'],
       },
       {
         id: 'basic',
@@ -168,6 +174,7 @@ export const PLAN_CREDIT_TEXT = {
           'Private Mode',
           'External storage transfer',
           'Astera Storage',
+          'Storage: 5GB',
         ],
       },
       {
@@ -186,6 +193,7 @@ export const PLAN_CREDIT_TEXT = {
           'Astera Storage',
           'Astera official / custom document templates',
           'API',
+          'Storage: 20GB',
         ],
       },
       {
@@ -204,6 +212,7 @@ export const PLAN_CREDIT_TEXT = {
           'Astera Storage',
           'Astera official / custom document templates',
           'API',
+          'Storage: 50GB',
         ],
       },
       {
@@ -222,6 +231,7 @@ export const PLAN_CREDIT_TEXT = {
           'Astera Storage',
           'Astera official / custom document templates',
           'API',
+          'Storage: 150GB',
         ],
       },
     ],
