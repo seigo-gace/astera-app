@@ -3,6 +3,7 @@ import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { RuntimeDatabase, type RuntimeJobRow } from './database.js';
 import { translateAsteraResult } from './translation-runtime.js';
 import { VaultClient } from './vault-client.js';
+import { buildCoreProcessRequest, parseCoreMain8Response, parseCoreProcessError } from './core-process-adapter.js';
 
 const PURPOSES = ['auto', 'review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
 const OPTIONS = ['translation', 'agent-mode', 'document', 'external-storage-transfer'] as const;
@@ -239,47 +240,23 @@ export class AsteraRuntimeService {
     const abort = () => controller.abort(signal.reason || 'cancelled');
     signal.addEventListener('abort', abort, { once: true });
     try {
+      const coreRequest = buildCoreProcessRequest(input);
       const response = await fetch(`${this.config.processOrigin}/process`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.config.processToken}`,
-          Accept: 'application/json',
+          'X-API-Key': this.config.processToken,
+          Accept: 'text/plain',
           'Content-Type': 'application/json',
           'Idempotency-Key': input.job_id,
           'X-Request-ID': input.request_id,
           'X-Correlation-ID': input.correlation_id,
         },
-        body: JSON.stringify({
-          actor: {
-            user_id: input.user_id,
-            tenant_id: input.tenant_id,
-            account_status: 'active',
-            auth_stage: 'authenticated',
-          },
-          job: {
-            job_id: input.job_id,
-            request_id: input.request_id,
-            prompt: input.prompt,
-            purpose: input.purpose,
-            options: input.options,
-            files: input.files,
-            private_mode: input.private_mode,
-            project_id: input.project_id,
-            policy_version: input.policy_version,
-          },
-        }),
+        body: JSON.stringify(coreRequest),
         signal: controller.signal,
       });
-      const payload = await response.json().catch(() => null) as ProcessResponse | null;
-      if (!response.ok) {
-        const runtimeError = payload?.error;
-        throw Object.assign(new Error(runtimeError?.message || `Astera Process APIに失敗しました (${response.status})`), {
-          code: runtimeError?.code || `ASTERA_PROCESS_HTTP_${response.status}`,
-          retryable: runtimeError?.retryable ?? response.status >= 500,
-        });
-      }
-      if (!payload) throw Object.assign(new Error('Astera Process ResponseがJSONではありません。'), { code: 'ASTERA_PROCESS_RESPONSE_INVALID', retryable: true });
-      return payload;
+      const raw = await response.text();
+      if (!response.ok) throw parseCoreProcessError(raw, response.status);
+      return parseCoreMain8Response(raw);
     } catch (error) {
       if (controller.signal.aborted) {
         const cancelled = signal.aborted && signal.reason !== 'process_timeout';
