@@ -4,7 +4,7 @@ import type { CouponProgramEnv } from '../../../_coupon-program';
 
 type Env = CouponProgramEnv & AdminiSignatureEnv;
 type PagesContext = { request: Request; env: Env };
-type Payload = { campaign_id?: unknown };
+type Payload = { campaign_id?: unknown; code_cursor?: unknown; code_limit?: unknown };
 
 type CampaignRow = {
   id: string;
@@ -18,6 +18,17 @@ type CampaignRow = {
   total_limit: number | null;
   per_account_limit: number;
   redeemed_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type CodeState = {
+  code_digest: string;
+  masked_hint: string;
+  status: string;
+  redemption_limit: number;
+  redeemed_count: number;
+  bound_user_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -39,11 +50,21 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const signed = await requireAdminiSignedBody(context.request, context.env);
     const body = signed.parsed as Payload;
     const campaignId = requiredText(body.campaign_id, 'CAMPAIGN_ID');
+    const cursor = typeof body.code_cursor === 'string' && body.code_cursor.trim() ? body.code_cursor.trim() : null;
+    const requestedLimit = body.code_limit == null ? 1000 : Number(body.code_limit);
+    if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 1000) throw new FunctionHttpError(400, 'CODE_LIMIT_INVALID', 'Code取得件数が不正です。');
+    const limit = requestedLimit as number;
 
     const campaign = await context.env.ASTERA_DB.prepare(`SELECT id,name,purpose,reward_package_id,status,distribution_mode,starts_at,expires_at,total_limit,per_account_limit,redeemed_count,created_at,updated_at FROM coupon_campaign_projection WHERE id=?1 LIMIT 1`).bind(campaignId).first<CampaignRow>();
     if (!campaign) throw new FunctionHttpError(404, 'CAMPAIGN_NOT_FOUND', 'App側のCampaign Projectionが見つかりません。');
 
-    const codeStates = await rows<Record<string, unknown>>(context, `SELECT code_digest,masked_hint,status,redemption_limit,redeemed_count,bound_user_id,created_at,updated_at FROM coupon_code_projection WHERE campaign_id=?1 ORDER BY created_at ASC LIMIT 100000`, campaignId);
+    const page = cursor
+      ? await rows<CodeState>(context, `SELECT code_digest,masked_hint,status,redemption_limit,redeemed_count,bound_user_id,created_at,updated_at FROM coupon_code_projection WHERE campaign_id=?1 AND code_digest>?2 ORDER BY code_digest ASC LIMIT ?3`, campaignId, cursor, limit + 1)
+      : await rows<CodeState>(context, `SELECT code_digest,masked_hint,status,redemption_limit,redeemed_count,bound_user_id,created_at,updated_at FROM coupon_code_projection WHERE campaign_id=?1 ORDER BY code_digest ASC LIMIT ?2`, campaignId, limit + 1);
+    const hasMore = page.length > limit;
+    const codeStates = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? codeStates[codeStates.length - 1]?.code_digest ?? null : null;
+
     const codeSummary = await context.env.ASTERA_DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active, SUM(CASE WHEN status='revoked' THEN 1 ELSE 0 END) AS revoked, COALESCE(SUM(redeemed_count),0) AS redeemed FROM coupon_code_projection WHERE campaign_id=?1`).bind(campaignId).first<{ total:number; active:number; revoked:number; redeemed:number }>();
     const redemptionSummary = await context.env.ASTERA_DB.prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN state='applied' THEN 1 ELSE 0 END) AS applied, SUM(CASE WHEN state='reconcile_required' THEN 1 ELSE 0 END) AS reconcile_required, SUM(CASE WHEN state='failed' THEN 1 ELSE 0 END) AS failed FROM coupon_redemptions WHERE campaign_id=?1`).bind(campaignId).first<{ total:number; applied:number; reconcile_required:number; failed:number }>();
 
@@ -60,6 +81,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         revoked: Number(codeSummary?.revoked ?? 0),
         redeemed: Number(codeSummary?.redeemed ?? 0),
         states: codeStates,
+        next_cursor: nextCursor,
       },
       redemption_summary: {
         total: Number(redemptionSummary?.total ?? 0),
