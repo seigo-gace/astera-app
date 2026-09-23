@@ -35,9 +35,11 @@ test('parseCoreMain8Response maps current Main8 to App result without restoring 
     'true_purpose', 'missing_assumptions', 'fact_check', 'risk_detection',
     'counter_view', 'alternatives', 'recommendation', 'next_prompt',
   ]);
-  assert.equal(sections.recommendation.title, '07 根拠成立状態');
-  assert.equal(sections.recommendation.body, '- 根拠');
-  assert.equal(sections.recommendation.canonical_key, '07_evidence_status');
+  const evidenceStatus = sections.recommendation;
+  assert.ok(evidenceStatus);
+  assert.equal(evidenceStatus.title, '07 根拠成立状態');
+  assert.equal(evidenceStatus.body, '- 根拠');
+  assert.equal(evidenceStatus.canonical_key, '07_evidence_status');
   assert.equal(parsed.result.completion_state, 'complete');
 });
 
