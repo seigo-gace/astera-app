@@ -4,10 +4,10 @@ import {
   requestCorrelationId,
   requireAsteraActor,
   type AsteraFunctionEnv,
-} from '../../../../_account-projection';
-import { binaryError, storageBinaryFetch, type StorageBinaryEnv } from '../../../../_storage-binary-client';
-import { getObject, StorageStoreError } from '../../../../_storage-store';
-import { storageExpectedChunkBytes, storageFileSize } from '../../../../_storage-upload';
+} from '../../../../../_account-projection';
+import { binaryError, storageBinaryFetch, type StorageBinaryEnv } from '../../../../../_storage-binary-client';
+import { getObject, StorageStoreError } from '../../../../../_storage-store';
+import { storageExpectedChunkBytes, storageFileSize } from '../../../../../_storage-upload';
 
 type Env = AsteraFunctionEnv & StorageBinaryEnv;
 type C = { request: Request; env: Env; params: { object?: string; index?: string } };
