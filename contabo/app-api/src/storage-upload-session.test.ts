@@ -108,6 +108,32 @@ test('chunk upload reassembles in order and completion removes payload chunks', 
   }
 });
 
+test('retried chunk is idempotent only when the content is identical', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'astera-upload-retry-test-'));
+  const runtime = config(dir);
+  const input = { objectId: 'upl_1111111111111111111111111111111111111111111111111111111111111111', userId: 'user-retry', fileSize: 7 };
+  try {
+    const first = await writeStorageUploadChunk(runtime, { ...input, index: 0, body: byteStream(7, 0x44) });
+    assert.equal(first.idempotent, false);
+    assert.match(first.sha256, /^[a-f0-9]{64}$/);
+
+    const retry = await writeStorageUploadChunk(runtime, { ...input, index: 0, body: byteStream(7, 0x44) });
+    assert.equal(retry.idempotent, true);
+    assert.equal(retry.sha256, first.sha256);
+
+    await assert.rejects(
+      () => writeStorageUploadChunk(runtime, { ...input, index: 0, body: byteStream(7, 0x45) }),
+      (error: unknown) => error instanceof StorageApiError && error.status === 409 && error.code === 'STORAGE_UPLOAD_CHUNK_CONFLICT',
+    );
+
+    const opened = await openStorageUploadPlaintext(runtime, input);
+    const assembled = await readAll(opened.body);
+    assert.deepEqual(assembled, Buffer.alloc(7, 0x44));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('completion lock prevents concurrent duplicate storage', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'astera-upload-lock-test-'));
   const runtime = config(dir);
