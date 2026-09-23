@@ -1,4 +1,4 @@
-name: Temporary Real Auth E2E Residue Readonly Audit
+name: Temporary Real Auth E2E Residue Cleanup
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  audit:
+  cleanup:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -20,24 +20,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.2'
-      - name: Read only E2E residue
+      - name: Delete only this audit's unverified E2E accounts and verify zero residue
         shell: bash
         run: |
           set -euo pipefail
           npm install --no-audit --ignore-scripts >/dev/null 2>&1
           q() { npx wrangler d1 execute astera-app-staging --remote --json --command "$1"; }
           selector='email LIKE "astera-e2e-%" AND "emailVerified"=0 AND "createdAt" BETWEEN "2026-09-23T12:13:00.000Z" AND "2026-09-23T12:24:00.000Z"'
-          echo '=== TARGET_USER_ROWS ==='
-          q "SELECT COUNT(*) AS count, MIN(\"createdAt\") AS min_created, MAX(\"createdAt\") AS max_created FROM \"user\" WHERE ${selector};"
-          echo '=== ACCOUNT_ROWS ==='
-          q "SELECT COUNT(*) AS count FROM \"account\" WHERE \"userId\" IN (SELECT id FROM \"user\" WHERE ${selector});"
-          echo '=== SESSION_ROWS ==='
-          q "SELECT COUNT(*) AS count FROM \"session\" WHERE \"userId\" IN (SELECT id FROM \"user\" WHERE ${selector});"
-          echo '=== PROFILE_ROWS ==='
-          q "SELECT COUNT(*) AS count FROM user_profiles WHERE user_id IN (SELECT id FROM \"user\" WHERE ${selector});"
-          echo '=== CREDIT_ACCOUNT_ROWS ==='
-          q "SELECT COUNT(*) AS count FROM credit_accounts WHERE tenant_id IN (SELECT 'personal:' || id FROM \"user\" WHERE ${selector});"
-          echo '=== REDEMPTION_ROWS ==='
-          q "SELECT COUNT(*) AS count FROM coupon_redemptions WHERE user_id IN (SELECT id FROM \"user\" WHERE ${selector});"
-          echo '=== VERIFICATION_ROWS_BY_EMAIL ==='
-          q 'SELECT COUNT(*) AS count FROM verification WHERE identifier LIKE "astera-e2e-%";'
+          before="$(q "SELECT COUNT(*) AS count FROM \"user\" WHERE ${selector};")"
+          count="$(BEFORE="$before" node -e "const x=JSON.parse(process.env.BEFORE);process.stdout.write(String(x.flatMap(v=>v.results||[])[0]?.count??-1))")"
+          echo "TARGET_BEFORE=${count}"
+          test "$count" = '3' || { echo "Refusing cleanup: expected exactly 3 target users, found ${count}" >&2; exit 1; }
+          q "DELETE FROM \"account\" WHERE \"userId\" IN (SELECT id FROM \"user\" WHERE ${selector}); DELETE FROM \"user\" WHERE ${selector};"
+          after="$(q "SELECT COUNT(*) AS users FROM \"user\" WHERE email LIKE 'astera-e2e-%'; SELECT COUNT(*) AS accounts FROM \"account\" WHERE \"userId\" NOT IN (SELECT id FROM \"user\");")"
+          AFTER="$after" node <<'NODE'
+          const x=JSON.parse(process.env.AFTER);
+          const rows=x.flatMap(v=>v.results||[]);
+          const users=Number(rows.find(r=>Object.hasOwn(r,'users'))?.users ?? -1);
+          const orphanAccounts=Number(rows.find(r=>Object.hasOwn(r,'accounts'))?.accounts ?? -1);
+          console.log(`TARGET_PREFIX_USERS_AFTER=${users}`);
+          console.log(`ORPHAN_ACCOUNTS_AFTER=${orphanAccounts}`);
+          if(users!==0) throw new Error(`E2E_RESIDUE_REMAINS:${users}`);
+          if(orphanAccounts!==0) throw new Error(`ORPHAN_ACCOUNT_ROWS:${orphanAccounts}`);
+          console.log('E2E_RESIDUE_CLEANUP=PASS');
+          NODE
