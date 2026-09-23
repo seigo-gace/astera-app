@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
@@ -9,6 +9,7 @@ import { StorageApiError, MAX_FILE_BYTES } from './storage-api-types.js';
 
 export const STORAGE_UPLOAD_CHUNK_BYTES = 32 * 1024 * 1024;
 export const STORAGE_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+const STORAGE_UPLOAD_COMPLETE_LOCK_STALE_MS = 60 * 60 * 1000;
 
 type SessionMeta = Readonly<{
   schema: 'astera.storage.upload.v1';
@@ -67,6 +68,10 @@ function metaPath(config: RuntimeConfig, objectId: string): string {
 
 function completionPath(config: RuntimeConfig, objectId: string): string {
   return join(sessionDir(config, objectId), 'completion.json');
+}
+
+function completionLockPath(config: RuntimeConfig, objectId: string): string {
+  return join(sessionDir(config, objectId), 'complete.lock');
 }
 
 function chunkPath(config: RuntimeConfig, objectId: string, index: number): string {
@@ -201,7 +206,20 @@ export async function writeStorageUploadChunk(
     if (bytes !== expectedBytes) {
       throw new StorageApiError(422, 'STORAGE_UPLOAD_CHUNK_SIZE_MISMATCH', 'Chunk size does not match the expected size.');
     }
-    await rename(tempPath, finalPath);
+    try {
+      await link(tempPath, finalPath);
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+      if (code !== 'EEXIST') throw error;
+      const existing = await stat(finalPath);
+      if (existing.size !== expectedBytes) {
+        throw new StorageApiError(409, 'STORAGE_UPLOAD_CHUNK_CONFLICT', 'Concurrent chunk differs from the expected size.');
+      }
+      await input.body.cancel().catch(() => undefined);
+      return { chunkIndex: input.index, bytes: existing.size, idempotent: true };
+    } finally {
+      await rm(tempPath, { force: true }).catch(() => undefined);
+    }
     return { chunkIndex: input.index, bytes, idempotent: false };
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
@@ -264,13 +282,46 @@ export async function readStorageUploadCompletion(
   return parsed;
 }
 
+export async function acquireStorageUploadCompletionLock(
+  config: RuntimeConfig,
+  input: { objectId: string; userId: string; fileSize: number },
+): Promise<() => Promise<void>> {
+  await ensureSession(config, input);
+  const path = completionLockPath(config, input.objectId);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await writeFile(path, JSON.stringify({ acquired_at: new Date().toISOString() }), { flag: 'wx', mode: 0o600 });
+      return async () => { await rm(path, { force: true }).catch(() => undefined); };
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+      if (code !== 'EEXIST') throw error;
+      const info = await stat(path).catch(() => null);
+      if (info && Date.now() - info.mtimeMs > STORAGE_UPLOAD_COMPLETE_LOCK_STALE_MS) {
+        await rm(path, { force: true }).catch(() => undefined);
+        continue;
+      }
+      throw new StorageApiError(409, 'STORAGE_UPLOAD_COMPLETION_IN_PROGRESS', 'Upload completion is already in progress.');
+    }
+  }
+  throw new StorageApiError(409, 'STORAGE_UPLOAD_COMPLETION_IN_PROGRESS', 'Upload completion is already in progress.');
+}
+
+async function removeChunkPayloads(config: RuntimeConfig, objectId: string, chunkCount: number): Promise<void> {
+  for (let index = 0; index < chunkCount; index += 1) {
+    await rm(chunkPath(config, objectId, index), { force: true }).catch(() => undefined);
+  }
+}
+
 export async function writeStorageUploadCompletion(
   config: RuntimeConfig,
   input: { objectId: string; userId: string; fileSize: number; response: { binary: Record<string, unknown>; queue: string } },
 ): Promise<StorageUploadCompletion> {
-  await ensureSession(config, input);
+  const session = await ensureSession(config, input);
   const existing = await readStorageUploadCompletion(config, input);
-  if (existing) return existing;
+  if (existing) {
+    await removeChunkPayloads(config, input.objectId, session.chunk_count);
+    return existing;
+  }
   const receipt: StorageUploadCompletion = {
     schema: 'astera.storage.upload-completion.v1',
     response: input.response,
@@ -278,6 +329,7 @@ export async function writeStorageUploadCompletion(
   };
   try {
     await writeFile(completionPath(config, input.objectId), JSON.stringify(receipt), { flag: 'wx', mode: 0o600 });
+    await removeChunkPayloads(config, input.objectId, session.chunk_count);
     return receipt;
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
@@ -285,6 +337,7 @@ export async function writeStorageUploadCompletion(
   }
   const raced = await readStorageUploadCompletion(config, input);
   if (!raced) throw new StorageApiError(500, 'STORAGE_UPLOAD_COMPLETION_WRITE_FAILED', 'Upload completion receipt could not be persisted.');
+  await removeChunkPayloads(config, input.objectId, session.chunk_count);
   return raced;
 }
 
