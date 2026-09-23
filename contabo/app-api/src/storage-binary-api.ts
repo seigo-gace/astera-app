@@ -198,6 +198,10 @@ export function registerStorageBinaryApi(
       const objectId = c.req.param('object');
       const userId = requiredHeader(c.req.raw.headers, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
       const fileSize = fileSizeValue(requiredHeader(c.req.raw.headers, 'x-astera-file-size', 'STORAGE_FILE_SIZE_REQUIRED'));
+      const finalized = c.req.raw.headers.get('x-astera-upload-finalized') === '1';
+      if (!finalized && await readStorageUploadCompletion(config, { objectId, userId, fileSize })) {
+        throw new StorageApiError(409, 'STORAGE_UPLOAD_ALREADY_COMPLETED', 'Upload binary is already stored; complete the D1 commit instead of cancelling.');
+      }
       const removed = await removeStorageUploadSession(config, { objectId, userId, fileSize });
       return c.json({ removed }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
     } catch (error) {
