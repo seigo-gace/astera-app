@@ -77,21 +77,25 @@ export function parseCoreMain8Response(raw: string): {
   }
 
   const sections: Record<string, { title: string; body: string; canonical_key: string; source_ids: string[] }> = {};
-  for (let index = 0; index < blocks.length; index += 1) {
-    const lines = blocks[index].split('\n');
+  for (let index = 0; index < APP_SECTION_KEYS.length; index += 1) {
+    const block = blocks[index]!;
+    const appKey = APP_SECTION_KEYS[index]!;
+    const canonicalKey = CANONICAL_SECTION_KEYS[index]!;
+    const expectedPrefix = EXPECTED_SECTION_PREFIXES[index]!;
+    const lines = block.split('\n');
     const title = (lines.shift() ?? '').trim();
     const body = lines.join('\n').trim();
-    if (!title.startsWith(EXPECTED_SECTION_PREFIXES[index]) || !body) {
+    if (!title.startsWith(expectedPrefix) || !body) {
       throw adapterError(
         'ASTERA_MAIN8_RESPONSE_INVALID',
         `Astera Core Main8のSection ${index + 1} を検証できません。`,
         false,
       );
     }
-    sections[APP_SECTION_KEYS[index]] = {
+    sections[appKey] = {
       title,
       body,
-      canonical_key: CANONICAL_SECTION_KEYS[index],
+      canonical_key: canonicalKey,
       source_ids: [],
     };
   }
