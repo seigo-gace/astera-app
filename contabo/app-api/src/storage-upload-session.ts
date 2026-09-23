@@ -74,7 +74,29 @@ function assertMeta(actual: SessionMeta, expected: { objectId: string; userId: s
   }
 }
 
+async function readSession(config: RuntimeConfig, input: { objectId: string; userId: string; fileSize: number }): Promise<SessionMeta | null> {
+  const path = metaPath(config, input.objectId);
+  let text: string;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
+    if (code === 'ENOENT') return null;
+    throw error;
+  }
+  let parsed: SessionMeta;
+  try {
+    parsed = JSON.parse(text) as SessionMeta;
+  } catch {
+    throw new StorageApiError(500, 'STORAGE_UPLOAD_SESSION_CORRUPT', 'Upload session metadata is unreadable.');
+  }
+  assertMeta(parsed, input);
+  return parsed;
+}
+
 async function ensureSession(config: RuntimeConfig, input: { objectId: string; userId: string; fileSize: number }): Promise<SessionMeta> {
+  const existing = await readSession(config, input);
+  if (existing) return existing;
   const dir = sessionDir(config, input.objectId);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const path = metaPath(config, input.objectId);
@@ -94,14 +116,9 @@ async function ensureSession(config: RuntimeConfig, input: { objectId: string; u
     const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
     if (code !== 'EEXIST') throw error;
   }
-  let parsed: SessionMeta;
-  try {
-    parsed = JSON.parse(await readFile(path, 'utf8')) as SessionMeta;
-  } catch {
-    throw new StorageApiError(500, 'STORAGE_UPLOAD_SESSION_CORRUPT', 'Upload session metadata is unreadable.');
-  }
-  assertMeta(parsed, input);
-  return parsed;
+  const raced = await readSession(config, input);
+  if (!raced) throw new StorageApiError(500, 'STORAGE_UPLOAD_SESSION_CREATE_FAILED', 'Upload session could not be created.');
+  return raced;
 }
 
 export async function cleanupExpiredStorageUploads(config: RuntimeConfig, now = Date.now()): Promise<number> {
@@ -202,6 +219,12 @@ export async function openStorageUploadPlaintext(
   return { body: Readable.toWeb(node) as ReadableStream<Uint8Array>, chunkCount: meta.chunk_count };
 }
 
-export async function removeStorageUploadSession(config: RuntimeConfig, objectId: string): Promise<void> {
-  await rm(sessionDir(config, objectId), { recursive: true, force: true });
+export async function removeStorageUploadSession(
+  config: RuntimeConfig,
+  input: { objectId: string; userId: string; fileSize: number },
+): Promise<boolean> {
+  const existing = await readSession(config, input);
+  if (!existing) return false;
+  await rm(sessionDir(config, input.objectId), { recursive: true, force: true });
+  return true;
 }
