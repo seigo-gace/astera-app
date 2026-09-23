@@ -120,19 +120,20 @@ export async function onRequestPost(context: Context): Promise<Response> {
     };
 
     for (const candidate of candidates) {
-      if (storagePrimaryDeletionAgeMs(candidate, startedAt.getTime()) >= STORAGE_PRIMARY_DELETE_MAX_MS) {
-        result.overdue_24h += 1;
-      }
-
-      const existingReceipt = await readPrimaryDeletionReceipt(context.env.ASTERA_DB, candidate.id);
-      if (existingReceipt) {
-        await completeStoragePrimaryDeletion(context.env.ASTERA_DB, candidate, existingReceipt);
-        result.finalized_from_receipt += 1;
-        continue;
-      }
-
       let purgeCompleted = false;
       try {
+        if (storagePrimaryDeletionAgeMs(candidate, startedAt.getTime()) >= STORAGE_PRIMARY_DELETE_MAX_MS) {
+          result.overdue_24h += 1;
+        }
+
+        const existingReceipt = await readPrimaryDeletionReceipt(context.env.ASTERA_DB, candidate.id);
+        if (existingReceipt) {
+          purgeCompleted = true;
+          await completeStoragePrimaryDeletion(context.env.ASTERA_DB, candidate, existingReceipt);
+          result.finalized_from_receipt += 1;
+          continue;
+        }
+
         const upstream = await storageBinaryFetch(
           context.env,
           `/internal/v1/storage-binary/objects/${encodeURIComponent(candidate.id)}/purge`,
