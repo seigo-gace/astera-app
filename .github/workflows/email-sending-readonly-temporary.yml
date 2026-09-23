@@ -1,0 +1,46 @@
+name: Temporary Cloudflare Email Sending Readonly Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/email-sending-readonly-temporary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      ZONE_NAME: 'asterav8.jp'
+    steps:
+      - name: Read Email Sending readiness only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'CLOUDFLAREACCOUNTAPI unavailable'; exit 1; }
+          node <<'NODE'
+          const h={Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,Accept:'application/json'};
+          const api='https://api.cloudflare.com/client/v4';
+          const zr=await fetch(`${api}/zones?account.id=${encodeURIComponent(process.env.ACCOUNT_ID)}&name=${encodeURIComponent(process.env.ZONE_NAME)}`,{headers:h});
+          const zb=await zr.json().catch(()=>({}));
+          if(!zr.ok||zb.success===false||!zb.result?.[0]?.id) throw new Error(`ZONE_LOOKUP_FAILED:${zr.status}`);
+          const zone=zb.result[0];
+          console.log(`ZONE=PASS STATUS=${zone.status||'unknown'}`);
+          const sr=await fetch(`${api}/zones/${zone.id}/email/sending/subdomains`,{headers:h});
+          const text=await sr.text();
+          let sb={}; try{sb=JSON.parse(text)}catch{}
+          if(!sr.ok||sb.success===false){
+            const codes=(sb.errors||[]).map(e=>e.code).filter(Boolean).join(',')||'-';
+            console.log(`EMAIL_SENDING_SUBDOMAINS=BLOCKED HTTP=${sr.status} CODES=${codes}`);
+            process.exit(0);
+          }
+          const rows=Array.isArray(sb.result)?sb.result:[];
+          console.log(`EMAIL_SENDING_SUBDOMAINS=PASS COUNT=${rows.length}`);
+          for(const row of rows){
+            console.log(`EMAIL_SENDING_SUBDOMAIN NAME=${row.name||'unknown'} ENABLED=${row.enabled===true?'yes':'no'} STATUS=${row.status||row.state||'unknown'}`);
+          }
+          NODE
