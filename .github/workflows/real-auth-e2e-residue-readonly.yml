@@ -1,0 +1,44 @@
+name: Temporary Real Auth E2E Residue Readonly Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/real-auth-e2e-residue-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+      - name: Read only E2E residue
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --ignore-scripts >/dev/null 2>&1
+          q() {
+            npx wrangler d1 execute astera-app-staging --remote --json --command "$1"
+          }
+          echo '=== USER_ROWS ==='
+          q 'SELECT COUNT(*) AS count, MIN("createdAt") AS min_created, MAX("createdAt") AS max_created, SUM(CASE WHEN "emailVerified"=0 THEN 1 ELSE 0 END) AS unverified FROM "user" WHERE email LIKE "astera-e2e-%";'
+          echo '=== RECENT_USER_ROWS ==='
+          q 'SELECT COUNT(*) AS count, SUM(CASE WHEN "emailVerified"=0 THEN 1 ELSE 0 END) AS unverified FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240));'
+          echo '=== ACCOUNT_ROWS ==='
+          q 'SELECT COUNT(*) AS count FROM "account" WHERE "userId" IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
+          echo '=== SESSION_ROWS ==='
+          q 'SELECT COUNT(*) AS count FROM "session" WHERE "userId" IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
+          echo '=== PROFILE_ROWS ==='
+          q 'SELECT COUNT(*) AS count FROM user_profiles WHERE user_id IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
+          echo '=== VERIFICATION_ROWS ==='
+          q 'SELECT COUNT(*) AS count FROM verification WHERE identifier LIKE "astera-e2e-%";'
+          echo '=== REDEMPTION_ROWS ==='
+          q 'SELECT COUNT(*) AS count FROM coupon_redemptions WHERE user_id IN (SELECT id FROM "user" WHERE email LIKE "astera-e2e-%" AND (("createdAt" BETWEEN 1790165580000 AND 1790166240000) OR ("createdAt" BETWEEN 1790165580 AND 1790166240)));'
