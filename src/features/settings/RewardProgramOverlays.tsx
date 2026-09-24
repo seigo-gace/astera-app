@@ -51,6 +51,7 @@ function CouponOverlay({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState('');
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [history, setHistory] = useState<unknown[]>([]);
+  const [balance, setBalance] = useState<number | null>(null);
   const [tab, setTab] = useState<'code'|'history'>('code');
   const [state, setState] = useState<{working:boolean; message:string; error:boolean}>({working:false,message:'',error:false});
 
@@ -61,6 +62,30 @@ function CouponOverlay({ onClose }: { onClose: () => void }) {
     } catch (error) {
       setState({working:false,message:error instanceof Error ? error.message : '利用履歴を取得できませんでした。',error:true});
     }
+  }, []);
+
+  const refreshAfterRedeem = useCallback(async (): Promise<number | null> => {
+    const [balanceResult, historyResult] = await Promise.allSettled([
+      apiRequest('/api/credit/balance'),
+      apiRequest('/api/coupons/redemptions'),
+    ]);
+
+    let currentBalance: number | null = null;
+    if (balanceResult.status === 'fulfilled') {
+      const payload = asRecord(balanceResult.value);
+      const value = Number(payload.available_balance);
+      if (Number.isFinite(value)) {
+        currentBalance = value;
+        setBalance(value);
+      }
+    }
+
+    if (historyResult.status === 'fulfilled') {
+      const payload = asRecord(historyResult.value);
+      setHistory(asArray(payload.redemptions ?? payload.items));
+    }
+
+    return currentBalance;
   }, []);
 
   useEffect(() => { if (tab === 'history') void loadHistory(); }, [tab, loadHistory]);
@@ -83,7 +108,14 @@ function CouponOverlay({ onClose }: { onClose: () => void }) {
     try {
       const requestId = crypto.randomUUID();
       await apiRequest('/api/coupons/redeem', { method:'POST', body:{ code, client_request_id:requestId }, idempotencyKey:requestId });
-      setState({working:false,message:'クーポンを適用しました。',error:false});
+      const currentBalance = await refreshAfterRedeem();
+      setState({
+        working:false,
+        message: currentBalance === null
+          ? 'クーポンは適用されました。最新のCredit残高を確認できなかったため、Credit画面または利用履歴で再確認してください。'
+          : `クーポンを適用しました。現在のCredit残高は ${currentBalance.toLocaleString()} Credit です。`,
+        error:false,
+      });
       setPreview(null);
       setCode('');
     } catch (error) {
@@ -113,6 +145,7 @@ function CouponOverlay({ onClose }: { onClose: () => void }) {
             </section>
           )}
           {state.message && <p className={`reward-message ${state.error?'is-error':'is-success'}`} role={state.error?'alert':'status'}>{state.message}</p>}
+          {balance !== null && <div className="reward-credit-value"><strong>{balance.toLocaleString()}</strong><span>現在のCredit残高</span></div>}
         </form>
       ) : (
         <div className="reward-history">
