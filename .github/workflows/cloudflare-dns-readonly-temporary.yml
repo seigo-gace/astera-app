@@ -1,0 +1,60 @@
+name: Temporary Cloudflare DNS Readonly Audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cloudflare-dns-readonly-temporary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      ZONE_ID: '98ccd50bba28d659fecf6d3fc9b99057'
+      HOST: 'runtime.asterav8.jp'
+
+    steps:
+      - name: Read DNS record only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node <<'NODE'
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const zone = process.env.ZONE_ID;
+          const host = process.env.HOST;
+
+          if (!token) {
+            console.log('DNS_RECORD_SECRET=MISSING');
+            process.exit(1);
+          }
+
+          const url =
+            `https://api.cloudflare.com/client/v4/zones/${zone}/dns_records` +
+            `?type=CNAME&name=${encodeURIComponent(host)}`;
+
+          const r = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json'
+            }
+          });
+
+          const b = await r.json().catch(() => ({}));
+
+          console.log(`DNS_RECORD_READ_HTTP=${r.status}`);
+          console.log(`DNS_RECORD_READ_SUCCESS=${b.success === true}`);
+          console.log(`DNS_RECORD_READ_COUNT=${Array.isArray(b.result) ? b.result.length : -1}`);
+
+          const codes = Array.isArray(b.errors)
+            ? b.errors.map(x => x.code).filter(Boolean).join(',')
+            : '';
+
+          if (codes) console.log(`DNS_RECORD_READ_ERROR_CODES=${codes}`);
+
+          console.log('DNS_RECORD_SECRET_VALUE=NOT_PRINTED');
+          NODE
