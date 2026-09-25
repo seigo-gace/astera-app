@@ -318,8 +318,8 @@ export function calculateRequiredCredits(
     throw new FunctionHttpError(422, 'CREDIT_ESTIMATE_OVERFLOW', '予定Creditを安全に計算できません。');
   }
   const required = Math.floor(numerator / (MILLI * MILLI));
-  if (!Number.isSafeInteger(required) || required <= 0 || required > policy.maxEstimate) {
-    throw new FunctionHttpError(422, 'JOB_ESTIMATE_OUT_OF_POLICY', '予定CreditがPolicyの上限を超えています。', { required, max: policy.maxEstimate });
+  if (!Number.isSafeInteger(required) || required <= 0) {
+    throw new FunctionHttpError(422, 'CREDIT_ESTIMATE_INVALID', '予定Creditを安全に計算できません。', { required });
   }
   return required;
 }
