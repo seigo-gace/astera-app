@@ -8,6 +8,7 @@ on:
       - '.github/workflows/pages-runtime-binding-verify.yml'
       - '.github/workflows/pages-staging.yml'
       - 'functions/_runtime.ts'
+      - 'functions/api/runtime/status.ts'
   workflow_run:
     workflows: ["Pages Staging Deploy"]
     types: [completed]
@@ -45,8 +46,19 @@ jobs:
           if (/ASTERA_RUNTIME_SERVICE_TOKEN\s*=/.test(source)) {
             throw new Error('RUNTIME_SERVICE_TOKEN_MUST_NOT_BE_STORED_IN_WRANGLER');
           }
+          const statusSource = fs.readFileSync('functions/api/runtime/status.ts', 'utf8');
+          for (const marker of [
+            'context.env.ASTERA_RUNTIME_ORIGIN',
+            'context.env.ASTERA_RUNTIME_SERVICE_TOKEN',
+            'runtime_origin_configured',
+            'runtime_service_token_configured',
+            'runtime_health_http',
+          ]) {
+            if (!statusSource.includes(marker)) throw new Error(`LIVE_RUNTIME_STATUS_MARKER_MISSING:${marker}`);
+          }
           console.log('WRANGLER_RUNTIME_ORIGIN=PASS');
           console.log('WRANGLER_RUNTIME_SERVICE_TOKEN=SECRET_ONLY');
+          console.log('LIVE_RUNTIME_STATUS_SOURCE=PASS');
           console.log('PAGES_RUNTIME_SOURCE_AUTHORITY_GATE=PASS');
           NODE
 
@@ -62,17 +74,19 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
       CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      STAGING_DOMAIN: 'staging.asterav8.jp'
       EXPECTED_RUNTIME_ORIGIN: 'https://runtime.asterav8.jp'
       EXPECTED_BRANCH: 'main'
       EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
     steps:
-      - name: Verify Cloudflare project and active deployment bindings
+      - name: Verify Cloudflare metadata and live Function bindings
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
           const projectName = process.env.CLOUDFLARE_PAGES_PROJECT;
+          const stagingDomain = process.env.STAGING_DOMAIN;
           const token = process.env.CLOUDFLARE_API_TOKEN || '';
           const expectedOrigin = process.env.EXPECTED_RUNTIME_ORIGIN;
           const expectedBranch = process.env.EXPECTED_BRANCH;
@@ -81,14 +95,18 @@ jobs:
           if (!token) throw new Error('CLOUDFLARE_API_TOKEN_MISSING');
           const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
 
-          const [projectResponse, deploymentsResponse, runtimeHealthResponse] = await Promise.all([
+          const [projectResponse, deploymentsResponse, runtimeHealthResponse, liveFunctionResponse] = await Promise.all([
             fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`, { headers }),
             fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/deployments?env=production&per_page=1`, { headers }),
             fetch(`${expectedOrigin}/health`, { headers: { Accept: 'application/json' } }),
+            fetch(`https://${stagingDomain}/api/runtime/status?sha=${encodeURIComponent(expectedSha || 'manual')}`, {
+              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+            }),
           ]);
 
           const projectBody = await projectResponse.json().catch(() => ({}));
           const deploymentsBody = await deploymentsResponse.json().catch(() => ({}));
+          const liveFunctionBody = await liveFunctionResponse.json().catch(() => ({}));
           const latest = Array.isArray(deploymentsBody.result) ? deploymentsBody.result[0] : null;
 
           if (!projectResponse.ok || projectBody.success === false) {
@@ -130,6 +148,17 @@ jobs:
           if (expectedSha && commitHash !== expectedSha) throw new Error(`ACTIVE_DEPLOYMENT_SHA_MISMATCH:${commitHash || 'missing'}`);
           if (stageStatus && stageStatus !== 'success') throw new Error(`ACTIVE_DEPLOYMENT_STAGE_NOT_SUCCESS:${stageStatus}`);
 
+          const liveOrigin = liveFunctionBody.runtime_origin_configured === true;
+          const liveToken = liveFunctionBody.runtime_service_token_configured === true;
+          const liveRuntimeHealth = Number(liveFunctionBody.runtime_health_http || 0);
+          if (!liveFunctionResponse.ok || !liveOrigin || !liveToken || liveRuntimeHealth !== 200) {
+            console.error(`LIVE_FUNCTION_HTTP=${liveFunctionResponse.status}`);
+            console.error(`LIVE_FUNCTION_RUNTIME_ORIGIN=${liveOrigin ? 'PRESENT' : 'MISSING'}`);
+            console.error(`LIVE_FUNCTION_RUNTIME_SERVICE_TOKEN=${liveToken ? 'PRESENT' : 'MISSING'}`);
+            console.error(`LIVE_FUNCTION_RUNTIME_HEALTH_HTTP=${liveRuntimeHealth}`);
+            throw new Error('LIVE_FUNCTION_RUNTIME_BINDING_FAILED');
+          }
+
           console.log('PROJECT_RUNTIME_ORIGIN=PRESENT TYPE=plain_text');
           console.log('PROJECT_RUNTIME_SERVICE_TOKEN=PRESENT TYPE=secret_text');
           console.log('ACTIVE_DEPLOYMENT_RUNTIME_ORIGIN=PRESENT TYPE=plain_text');
@@ -137,5 +166,8 @@ jobs:
           console.log(`ACTIVE_DEPLOYMENT_BRANCH=${branch}`);
           console.log(`ACTIVE_DEPLOYMENT_SHA_MATCH=${expectedSha ? String(commitHash === expectedSha) : 'NOT_REQUESTED'}`);
           console.log(`RUNTIME_HEALTH_HTTP=${runtimeHealthResponse.status}`);
+          console.log('LIVE_FUNCTION_RUNTIME_ORIGIN=PRESENT');
+          console.log('LIVE_FUNCTION_RUNTIME_SERVICE_TOKEN=PRESENT');
+          console.log(`LIVE_FUNCTION_RUNTIME_HEALTH_HTTP=${liveRuntimeHealth}`);
           console.log('PAGES_RUNTIME_BINDING_GATE=PASS');
           NODE
