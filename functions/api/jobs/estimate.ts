@@ -17,6 +17,7 @@ import {
   type EstimateInput,
   type RevisionCreditMetric,
 } from '../../_job-policy';
+import { assertRevisionPurposeAuthority } from '../../_purpose-control';
 
 type UploadRow = {
   id: string;
@@ -31,6 +32,7 @@ type RevisionParentRow = {
   id: string;
   state: string;
   private_mode: number;
+  purpose: string;
   prompt_sha256: string | null;
 };
 
@@ -91,7 +93,7 @@ async function revisionBillableCharacters(
 ): Promise<RevisionCreditMetric | null> {
   if (!input.revision) return null;
   const parent = await context.env.ASTERA_DB.prepare(
-    `SELECT j.id, j.state, j.private_mode, e.prompt_sha256
+    `SELECT j.id, j.state, j.private_mode, j.purpose, e.prompt_sha256
      FROM app_jobs j
      JOIN job_estimates e ON e.id = j.estimate_id
      WHERE j.id = ?1 AND j.tenant_id = ?2 AND j.user_id = ?3
@@ -104,6 +106,7 @@ async function revisionBillableCharacters(
   if (Boolean(parent.private_mode) !== input.privateMode) {
     throw new FunctionHttpError(409, 'REVISION_PRIVACY_MODE_MISMATCH', '修整元Jobと再投稿JobのPrivate Modeが一致しません。');
   }
+  assertRevisionPurposeAuthority(parent.purpose, input.purpose);
   if (!parent.prompt_sha256) {
     throw new FunctionHttpError(409, 'REVISION_PROVENANCE_UNAVAILABLE', '修整元本文をServer検証できないため差分Creditを適用できません。');
   }
