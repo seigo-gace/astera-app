@@ -97,7 +97,6 @@ jobs:
               if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) {
                 return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
               }
-
               const jobId = crypto.randomUUID();
               const requestId = `runtime-live-e2e:${jobId}`;
               const correlationId = `runtime-live-e2e:${jobId}`;
@@ -138,9 +137,7 @@ jobs:
           }
 
           export function onRequest(context: PagesContext): Promise<Response> {
-            if (context.request.method !== 'POST') {
-              return Promise.resolve(Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 }));
-            }
+            if (context.request.method !== 'POST') return Promise.resolve(Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 }));
             return onRequestPost(context);
           }
           EOF
@@ -151,13 +148,10 @@ jobs:
         run: |
           set -euo pipefail
           npm run cloudflare:functions:build
-          npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
-
-          latest="$(curl --silent --show-error --fail-with-body \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PAGES_PROJECT}/deployments?env=production&per_page=1" \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --header "Accept: application/json")"
-          deployment_url="$(LATEST="$latest" node -e "const x=JSON.parse(process.env.LATEST||'{}'); const r=Array.isArray(x.result)?x.result[0]:null; if(!r?.url) process.exit(2); process.stdout.write(String(r.url).replace(/\\\/$/,''));")"
+          deploy_output="$(npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main 2>&1)"
+          printf '%s\n' "${deploy_output}"
+          deployment_url="$(printf '%s\n' "${deploy_output}" | grep -Eo 'https://[a-f0-9]+\.astera-app-staging\.pages\.dev' | tail -n 1)"
+          test -n "${deployment_url}"
           printf 'RUNTIME_E2E_DEPLOYMENT_URL=%s\n' "${deployment_url}" >> "${GITHUB_ENV}"
 
       - name: Execute live create get cancel lifecycle
@@ -172,7 +166,6 @@ jobs:
           ];
           const safeText = (value) => String(value || '').replace(/https?:\/\/[^\s"']+/gi, '[url]').slice(0, 300);
           const outcomes = [];
-
           for (const [label, base] of targets) {
             let final = null;
             for (let attempt = 1; attempt <= 8; attempt += 1) {
@@ -208,7 +201,6 @@ jobs:
             outcomes.push(final);
             console.log(`${label}_SAFE_RESULT=${JSON.stringify(final)}`);
           }
-
           const passed = outcomes.find((item) => item?.http === 200 && item?.body?.ok === true);
           if (!passed) throw new Error('RUNTIME_LIVE_CREATE_GET_CANCEL_GATE_FAILED');
           console.log(`RUNTIME_LIVE_CREATE_STATE=${passed.body.create_state}`);
