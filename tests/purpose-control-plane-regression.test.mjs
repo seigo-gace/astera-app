@@ -49,9 +49,9 @@ test('estimate strips revision billing when purpose authority changes', () => {
   const source = readFileSync(new URL('../functions/api/jobs/estimate.ts', import.meta.url), 'utf8');
   assert.match(source, /SELECT j\.id, j\.state, j\.private_mode, j\.purpose, e\.prompt_sha256/);
   const authority = source.indexOf('revisionPurposeAuthority(parent.purpose, input.purpose)');
-  const downgrade = source.indexOf("if (purposeAuthority.mode === 'full')");
-  const parentReset = source.indexOf('effectiveParentJobId: null');
-  const diff = source.indexOf('metric: revisedCreditMetric(input.revision.basePrompt, input.prompt, policy)');
+  const downgrade = source.indexOf("if (purposeAuthority.mode === 'full')", authority);
+  const parentReset = source.indexOf('effectiveParentJobId: null', downgrade);
+  const diff = source.indexOf('metric: revisedCreditMetric(input.revision.basePrompt, input.prompt, policy)', parentReset);
   assert.ok(authority >= 0, 'revision purpose authority check is missing');
   assert.ok(downgrade > authority, 'cross-purpose revision must be downgraded to full analysis');
   assert.ok(parentReset > downgrade, 'cross-purpose full analysis must clear effective revision parent');
