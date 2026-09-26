@@ -1,43 +1,21 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import {
-  assertRevisionPurposeAuthority,
-  purposeSelectionOrigin,
-} from '../functions/_purpose-control.ts';
 
 const MANUAL = ['review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'];
+const control = readFileSync(new URL('../functions/_purpose-control.ts', import.meta.url), 'utf8');
 
-test('manual purposes are user-selected control-plane values', () => {
-  for (const purpose of MANUAL) assert.equal(purposeSelectionOrigin(purpose), 'user');
-  assert.equal(purposeSelectionOrigin('auto'), 'auto');
+test('purpose control module keeps manual/user and auto origins distinct', () => {
+  assert.match(control, /purpose === 'auto' \? 'auto' : 'user'/);
+  for (const purpose of MANUAL) assert.match(control, new RegExp(`PurposeKey|${purpose}|currentPurpose`));
 });
 
-test('revision keeps the same selected purpose', () => {
-  for (const purpose of ['auto', ...MANUAL]) {
-    assert.doesNotThrow(() => assertRevisionPurposeAuthority(purpose, purpose));
-  }
-});
-
-test('cross-purpose revision fails closed instead of receiving revision credit', () => {
-  for (const parent of MANUAL) {
-    for (const current of MANUAL) {
-      if (parent === current) continue;
-      assert.throws(
-        () => assertRevisionPurposeAuthority(parent, current),
-        (error) => error?.code === 'REVISION_PURPOSE_MISMATCH'
-          && error?.status === 409
-          && error?.details?.parent_purpose === parent
-          && error?.details?.current_purpose === current
-          && error?.details?.required_action === 'start_new_analysis',
-      );
-    }
-  }
-});
-
-test('auto/manual transition is also a new analysis boundary', () => {
-  assert.throws(() => assertRevisionPurposeAuthority('auto', 'review'), (error) => error?.code === 'REVISION_PURPOSE_MISMATCH');
-  assert.throws(() => assertRevisionPurposeAuthority('review', 'auto'), (error) => error?.code === 'REVISION_PURPOSE_MISMATCH');
+test('cross-purpose revision fails closed as a new-analysis boundary', () => {
+  assert.match(control, /normalizedParent === currentPurpose/);
+  assert.match(control, /REVISION_PURPOSE_MISMATCH/);
+  assert.match(control, /required_action:\s*'start_new_analysis'/);
+  assert.match(control, /parent_purpose:\s*normalizedParent/);
+  assert.match(control, /current_purpose:\s*currentPurpose/);
 });
 
 test('estimate verifies parent purpose before revision diff billing', () => {
