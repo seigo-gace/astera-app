@@ -17,7 +17,7 @@ import {
   type EstimateInput,
   type RevisionCreditMetric,
 } from '../../_job-policy';
-import { revisionPurposeAuthority } from '../../_purpose-control';
+import { purposeSelectionOrigin, revisionPurposeAuthority } from '../../_purpose-control';
 
 type UploadRow = {
   id: string;
@@ -34,6 +34,12 @@ type RevisionParentRow = {
   private_mode: number;
   purpose: string;
   prompt_sha256: string | null;
+};
+
+type RevisionBillingDecision = {
+  metric: RevisionCreditMetric | null;
+  effectiveParentJobId: string | null;
+  resetReason: 'REVISION_PURPOSE_MISMATCH' | null;
 };
 
 type Env = AsteraFunctionEnv & { PRIVATE_UPLOAD_TTL_SECONDS?: string };
@@ -84,14 +90,14 @@ async function loadUploads(
   return ordered;
 }
 
-async function revisionBillableCharacters(
+async function revisionBillingDecision(
   context: PagesContext,
   tenantId: string,
   userId: string,
   input: EstimateInput,
   policy: CreditPolicy,
-): Promise<RevisionCreditMetric | null> {
-  if (!input.revision) return null;
+): Promise<RevisionBillingDecision> {
+  if (!input.revision) return { metric: null, effectiveParentJobId: null, resetReason: null };
   const parent = await context.env.ASTERA_DB.prepare(
     `SELECT j.id, j.state, j.private_mode, j.purpose, e.prompt_sha256
      FROM app_jobs j
@@ -107,17 +113,12 @@ async function revisionBillableCharacters(
     throw new FunctionHttpError(409, 'REVISION_PRIVACY_MODE_MISMATCH', '修整元Jobと再投稿JobのPrivate Modeが一致しません。');
   }
   const purposeAuthority = revisionPurposeAuthority(parent.purpose, input.purpose);
-  if (!purposeAuthority.ok) {
-    throw new FunctionHttpError(
-      purposeAuthority.status,
-      purposeAuthority.code,
-      '用途を変更した実行は修整再投稿として扱えません。新しい分析として実行してください。',
-      {
-        parent_purpose: purposeAuthority.parent_purpose,
-        current_purpose: purposeAuthority.current_purpose,
-        required_action: purposeAuthority.required_action,
-      },
-    );
+  if (purposeAuthority.mode === 'full') {
+    return {
+      metric: null,
+      effectiveParentJobId: null,
+      resetReason: purposeAuthority.reason,
+    };
   }
   if (!parent.prompt_sha256) {
     throw new FunctionHttpError(409, 'REVISION_PROVENANCE_UNAVAILABLE', '修整元本文をServer検証できないため差分Creditを適用できません。');
@@ -126,7 +127,11 @@ async function revisionBillableCharacters(
   if (suppliedBaseHash !== parent.prompt_sha256) {
     throw new FunctionHttpError(409, 'REVISION_BASE_PROMPT_MISMATCH', '修整前本文が修整元Jobと一致しません。');
   }
-  return revisedCreditMetric(input.revision.basePrompt, input.prompt, policy);
+  return {
+    metric: revisedCreditMetric(input.revision.basePrompt, input.prompt, policy),
+    effectiveParentJobId: input.revision.parentJobId,
+    resetReason: null,
+  };
 }
 
 export async function onRequestPost(context: PagesContext): Promise<Response> {
@@ -144,10 +149,11 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       throw new FunctionHttpError(422, 'UPLOAD_SIZE_TOTAL_INVALID', 'File Size合計を計算できません。');
     }
 
-    const [promptSha256, revisionMetric] = await Promise.all([
+    const [promptSha256, revisionDecision] = await Promise.all([
       promptFingerprint(input.prompt),
-      revisionBillableCharacters(context, actor.profile.tenant_id, actor.user.id, input, policy),
+      revisionBillingDecision(context, actor.profile.tenant_id, actor.user.id, input, policy),
     ]);
+    const revisionMetric = revisionDecision.metric;
     const billableCharacters = revisionMetric?.characters ?? [...input.prompt].length;
     const fingerprint = await requestFingerprint(input, uploads.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
     const requiredCredits = calculateRequiredCredits(policy, input, revisionMetric?.milliCredits);
@@ -180,7 +186,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       expiresAt,
       createdAt.toISOString(),
       promptSha256,
-      input.revision?.parentJobId ?? null,
+      revisionDecision.effectiveParentJobId,
       revisionMetric?.characters ?? null,
     ).run();
 
@@ -203,9 +209,12 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         expires_at: expiresAt,
         expiresAt,
         request_fingerprint: fingerprint,
-        billing_mode: input.revision ? 'revision' : 'full',
+        purpose: input.purpose,
+        purpose_origin: purposeSelectionOrigin(input.purpose),
+        billing_mode: revisionDecision.effectiveParentJobId ? 'revision' : 'full',
         billable_characters: billableCharacters,
-        revision_parent_job_id: input.revision?.parentJobId ?? null,
+        revision_parent_job_id: revisionDecision.effectiveParentJobId,
+        revision_reset_reason: revisionDecision.resetReason,
       },
     }, { status: 201, headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
   } catch (error) {
