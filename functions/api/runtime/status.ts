@@ -115,8 +115,9 @@ async function runtimeAuth(
   if (!configured(origin)) return { ...zeroProbe('OriginNotConfigured'), authenticated: false, response_code: null };
   if (!configured(token)) return { ...zeroProbe('TokenNotConfigured'), authenticated: false, response_code: null };
 
+  const sentinelId = `astera-status-${crypto.randomUUID()}`;
   try {
-    const url = runtimeHttpsUrl(origin, '/internal/v1/jobs/__astera_status_probe_never_created__');
+    const url = runtimeHttpsUrl(origin, `/internal/v1/jobs/${encodeURIComponent(sentinelId)}`);
     if (!url) return { ...zeroProbe('HttpsRequired'), authenticated: false, response_code: null };
 
     const response = await fetch(url.toString(), {
@@ -132,11 +133,24 @@ async function runtimeAuth(
     const root = payload && typeof payload === 'object' && !Array.isArray(payload)
       ? payload as Record<string, unknown>
       : {};
-    const error = root.error && typeof root.error === 'object' && !Array.isArray(root.error)
+    const rootError = root.error && typeof root.error === 'object' && !Array.isArray(root.error)
       ? root.error as Record<string, unknown>
       : {};
-    const responseCode = typeof error.code === 'string' ? error.code.slice(0, 80) : null;
-    const authenticated = response.status === 404 && responseCode === 'RUNTIME_JOB_NOT_FOUND';
+    const job = root.job && typeof root.job === 'object' && !Array.isArray(root.job)
+      ? root.job as Record<string, unknown>
+      : {};
+    const jobError = job.error && typeof job.error === 'object' && !Array.isArray(job.error)
+      ? job.error as Record<string, unknown>
+      : {};
+    const responseCode = typeof rootError.code === 'string'
+      ? rootError.code.slice(0, 80)
+      : typeof jobError.code === 'string'
+        ? jobError.code.slice(0, 80)
+        : null;
+    const jobMatchesSentinel = [job.runtime_job_id, job.job_id, job.id].some((value) => value === sentinelId);
+    const authenticated =
+      (response.status === 404 && responseCode === 'RUNTIME_JOB_NOT_FOUND') ||
+      (response.status === 200 && jobMatchesSentinel && responseCode === 'RUNTIME_STATE_LOST_AFTER_RESTART');
 
     return {
       http_status: response.status,
