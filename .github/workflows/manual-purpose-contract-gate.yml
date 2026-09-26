@@ -8,7 +8,7 @@ on:
       - 'functions/_job-policy.ts'
       - 'functions/_runtime.ts'
       - 'contabo/app-api/src/**'
-      - 'tests/composer-user-stories.spec.ts'
+      - 'tests/manual-purpose-contract.spec.ts'
       - '.github/workflows/manual-purpose-contract-gate.yml'
   push:
     branches: [main]
@@ -18,7 +18,7 @@ on:
       - 'functions/_job-policy.ts'
       - 'functions/_runtime.ts'
       - 'contabo/app-api/src/**'
-      - 'tests/composer-user-stories.spec.ts'
+      - 'tests/manual-purpose-contract.spec.ts'
       - '.github/workflows/manual-purpose-contract-gate.yml'
 
 permissions:
@@ -44,4 +44,4 @@ jobs:
       - name: Install browser representatives
         run: npx playwright install --with-deps chromium webkit
       - name: Run Composer manual-purpose browser contract
-        run: npx playwright test tests/composer-user-stories.spec.ts --project=chromium-desktop --project=webkit-iphone-large --workers=2 --grep 'STORY-COMPOSER-011'
+        run: npx playwright test tests/manual-purpose-contract.spec.ts --project=chromium-desktop --project=webkit-iphone-large --workers=2
