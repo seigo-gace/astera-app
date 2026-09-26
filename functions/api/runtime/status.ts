@@ -11,8 +11,13 @@ type SafeFetchError = {
   cause_code: string | null;
 };
 
-type RuntimeHealthProbe = SafeFetchError & {
+type RuntimeProbe = SafeFetchError & {
   http_status: number;
+};
+
+type RuntimeAuthProbe = RuntimeProbe & {
+  authenticated: boolean;
+  response_code: string | null;
 };
 
 function configured(value: string | undefined): boolean {
@@ -59,28 +64,28 @@ function classifyFetchError(error: unknown, origin: string | undefined): SafeFet
   };
 }
 
-async function runtimeHealth(origin: string | undefined): Promise<RuntimeHealthProbe> {
-  if (!configured(origin)) {
-    return {
-      http_status: 0,
-      error_class: 'OriginNotConfigured',
-      error_message: null,
-      cause_class: null,
-      cause_code: null,
-    };
-  }
+function zeroProbe(errorClassValue: string): RuntimeProbe {
+  return {
+    http_status: 0,
+    error_class: errorClassValue,
+    error_message: null,
+    cause_class: null,
+    cause_code: null,
+  };
+}
+
+function runtimeHttpsUrl(origin: string | undefined, path: string): URL | null {
+  if (!configured(origin)) return null;
+  const url = new URL(path, origin!.trim());
+  return url.protocol === 'https:' ? url : null;
+}
+
+async function runtimeHealth(origin: string | undefined): Promise<RuntimeProbe> {
+  if (!configured(origin)) return zeroProbe('OriginNotConfigured');
 
   try {
-    const url = new URL('/health', origin!.trim());
-    if (url.protocol !== 'https:') {
-      return {
-        http_status: 0,
-        error_class: 'HttpsRequired',
-        error_message: null,
-        cause_class: null,
-        cause_code: null,
-      };
-    }
+    const url = runtimeHttpsUrl(origin, '/health');
+    if (!url) return zeroProbe('HttpsRequired');
 
     const response = await fetch(url.toString(), {
       method: 'GET',
@@ -103,11 +108,63 @@ async function runtimeHealth(origin: string | undefined): Promise<RuntimeHealthP
   }
 }
 
+async function runtimeAuth(
+  origin: string | undefined,
+  token: string | undefined,
+): Promise<RuntimeAuthProbe> {
+  if (!configured(origin)) return { ...zeroProbe('OriginNotConfigured'), authenticated: false, response_code: null };
+  if (!configured(token)) return { ...zeroProbe('TokenNotConfigured'), authenticated: false, response_code: null };
+
+  try {
+    const url = runtimeHttpsUrl(origin, '/internal/v1/jobs/__astera_status_probe_never_created__');
+    if (!url) return { ...zeroProbe('HttpsRequired'), authenticated: false, response_code: null };
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token!.trim()}`,
+        Accept: 'application/json',
+        'X-Correlation-ID': 'astera-runtime-status-probe',
+      },
+      redirect: 'manual',
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    const root = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : {};
+    const error = root.error && typeof root.error === 'object' && !Array.isArray(root.error)
+      ? root.error as Record<string, unknown>
+      : {};
+    const responseCode = typeof error.code === 'string' ? error.code.slice(0, 80) : null;
+    const authenticated = response.status === 404 && responseCode === 'RUNTIME_JOB_NOT_FOUND';
+
+    return {
+      http_status: response.status,
+      authenticated,
+      response_code: responseCode,
+      error_class: null,
+      error_message: null,
+      cause_class: null,
+      cause_code: null,
+    };
+  } catch (error) {
+    return {
+      http_status: 0,
+      authenticated: false,
+      response_code: null,
+      ...classifyFetchError(error, origin),
+    };
+  }
+}
+
 export async function onRequestGet(context: PagesContext): Promise<Response> {
   const originConfigured = configured(context.env.ASTERA_RUNTIME_ORIGIN);
   const tokenConfigured = configured(context.env.ASTERA_RUNTIME_SERVICE_TOKEN);
-  const health = await runtimeHealth(context.env.ASTERA_RUNTIME_ORIGIN);
-  const ready = originConfigured && tokenConfigured && health.http_status === 200;
+  const [health, auth] = await Promise.all([
+    runtimeHealth(context.env.ASTERA_RUNTIME_ORIGIN),
+    runtimeAuth(context.env.ASTERA_RUNTIME_ORIGIN, context.env.ASTERA_RUNTIME_SERVICE_TOKEN),
+  ]);
+  const ready = originConfigured && tokenConfigured && health.http_status === 200 && auth.authenticated;
 
   return Response.json(
     {
@@ -119,6 +176,13 @@ export async function onRequestGet(context: PagesContext): Promise<Response> {
       runtime_health_error_message: health.error_message,
       runtime_health_cause_class: health.cause_class,
       runtime_health_cause_code: health.cause_code,
+      runtime_auth_http: auth.http_status,
+      runtime_auth_authenticated: auth.authenticated,
+      runtime_auth_response_code: auth.response_code,
+      runtime_auth_error_class: auth.error_class,
+      runtime_auth_error_message: auth.error_message,
+      runtime_auth_cause_class: auth.cause_class,
+      runtime_auth_cause_code: auth.cause_code,
     },
     {
       status: ready ? 200 : 503,
