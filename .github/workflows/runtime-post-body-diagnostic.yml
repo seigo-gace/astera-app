@@ -1,0 +1,249 @@
+name: Runtime POST Body Diagnostic
+
+on:
+  workflow_run:
+    workflows: ["Pages Runtime Binding Verify"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-live-lifecycle-gate
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_PAGES_PROJECT: astera-app-staging
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+
+      - name: Build exact deployed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN}"
+          npm install --no-fund --no-audit
+          npm run build
+          printf '{"github_sha":"%s","branch":"main","auth_mode":"real"}\n' "${TARGET_SHA}" > dist/__staging_deployment.json
+
+      - name: Generate ephemeral protected POST diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_key="$(openssl rand -hex 32)"
+          echo "::add-mask::${probe_key}"
+          probe_hash="$(printf '%s' "${probe_key}" | sha256sum | awk '{print $1}')"
+          printf 'RUNTIME_POST_DIAG_KEY=%s\n' "${probe_key}" >> "${GITHUB_ENV}"
+          cat > functions/api/runtime/post-body-diag.ts <<'EOF'
+          import type { RuntimeEnv } from '../../_runtime';
+
+          type PagesContext = { request: Request; env: RuntimeEnv };
+          const EXPECTED_KEY_SHA256 = '__PROBE_HASH__';
+
+          async function sha256Hex(value: string): Promise<string> {
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+            return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+          }
+
+          function object(value: unknown): Record<string, unknown> {
+            return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+          }
+
+          async function callRuntime(
+            env: RuntimeEnv,
+            method: 'GET' | 'POST',
+            path: string,
+            body?: unknown,
+          ): Promise<Record<string, unknown>> {
+            const origin = env.ASTERA_RUNTIME_ORIGIN?.trim() ?? '';
+            const token = env.ASTERA_RUNTIME_SERVICE_TOKEN?.trim() ?? '';
+            if (!origin || !token) return { http: 0, error_code: 'RUNTIME_BINDING_MISSING' };
+            const response = await fetch(new URL(path, origin).toString(), {
+              method,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Correlation-ID': 'runtime-post-body-diagnostic',
+              },
+              ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+              redirect: 'manual',
+            });
+            const raw = await response.text();
+            let payload: unknown = null;
+            try { payload = JSON.parse(raw); } catch {}
+            const root = object(payload);
+            const error = object(root.error);
+            const job = object(root.job);
+            const jobId = typeof (job.runtime_job_id ?? job.job_id ?? job.id) === 'string'
+              ? String(job.runtime_job_id ?? job.job_id ?? job.id)
+              : null;
+            return {
+              http: response.status,
+              content_type: (response.headers.get('content-type') ?? '').slice(0, 120),
+              server: (response.headers.get('server') ?? '').slice(0, 80) || null,
+              cf_mitigated: (response.headers.get('cf-mitigated') ?? '').slice(0, 80) || null,
+              cf_ray_present: Boolean(response.headers.get('cf-ray')),
+              location_present: Boolean(response.headers.get('location')),
+              json: Object.keys(root).length > 0,
+              error_code: typeof error.code === 'string' ? error.code.slice(0, 96) : null,
+              top_level_keys: Object.keys(root).sort().slice(0, 12),
+              job_id: jobId,
+              body_length: raw.length,
+            };
+          }
+
+          function jobInput(jobId: string, privateMode: boolean, reservedCredits: number): Record<string, unknown> {
+            return {
+              job_id: jobId,
+              tenant_id: 'runtime-post-body-diagnostic',
+              user_id: 'runtime-post-body-diagnostic',
+              request_id: `runtime-post-body-diagnostic:${jobId}`,
+              prompt: 'Runtime POST body diagnostic.',
+              purpose: 'verify',
+              options: [],
+              files: [],
+              private_mode: privateMode,
+              project_id: null,
+              reserved_credits: reservedCredits,
+              policy_version: 'runtime-post-body-diagnostic',
+              correlation_id: `runtime-post-body-diagnostic:${jobId}`,
+            };
+          }
+
+          export async function onRequestPost(context: PagesContext): Promise<Response> {
+            const supplied = context.request.headers.get('X-Astera-Runtime-Post-Diag-Key')?.trim() ?? '';
+            if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) {
+              return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
+            }
+
+            const getProbe = await callRuntime(context.env, 'GET', '/internal/v1/jobs/__runtime_post_diag_unknown__');
+            const emptyPost = await callRuntime(context.env, 'POST', '/internal/v1/jobs', {});
+
+            const lateInvalidId = crypto.randomUUID();
+            const lateInvalidPost = await callRuntime(
+              context.env,
+              'POST',
+              '/internal/v1/jobs',
+              jobInput(lateInvalidId, false, 0),
+            );
+
+            const normalId = crypto.randomUUID();
+            const normalPost = await callRuntime(
+              context.env,
+              'POST',
+              '/internal/v1/jobs',
+              jobInput(normalId, false, 1),
+            );
+
+            let normalCancel: Record<string, unknown> | null = null;
+            if (normalPost.http === 201 || normalPost.http === 200) {
+              normalCancel = await callRuntime(context.env, 'POST', `/internal/v1/jobs/${encodeURIComponent(normalId)}/cancel`, {});
+            }
+
+            let privatePost: Record<string, unknown> | null = null;
+            let privateCancel: Record<string, unknown> | null = null;
+            if (!(normalPost.http === 201 || normalPost.http === 200)) {
+              const privateId = crypto.randomUUID();
+              privatePost = await callRuntime(
+                context.env,
+                'POST',
+                '/internal/v1/jobs',
+                jobInput(privateId, true, 1),
+              );
+              if (privatePost.http === 201 || privatePost.http === 200) {
+                privateCancel = await callRuntime(context.env, 'POST', `/internal/v1/jobs/${encodeURIComponent(privateId)}/cancel`, {});
+              }
+            }
+
+            return Response.json({
+              ok: true,
+              get_probe: getProbe,
+              empty_post: emptyPost,
+              late_invalid_post: lateInvalidPost,
+              normal_post: normalPost,
+              normal_cancel: normalCancel,
+              private_post: privatePost,
+              private_cancel: privateCancel,
+            }, { headers: { 'Cache-Control': 'no-store' } });
+          }
+
+          export function onRequest(context: PagesContext): Promise<Response> {
+            if (context.request.method !== 'POST') return Promise.resolve(Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 }));
+            return onRequestPost(context);
+          }
+          EOF
+          sed -i "s/__PROBE_HASH__/${probe_hash}/" functions/api/runtime/post-body-diag.ts
+
+      - name: Deploy ephemeral diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run cloudflare:functions:build
+          deploy_output="$(npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main 2>&1)"
+          printf '%s\n' "${deploy_output}"
+          deployment_url="$(printf '%s\n' "${deploy_output}" | grep -Eo 'https://[a-f0-9]+\.astera-app-staging\.pages\.dev' | tail -n 1)"
+          test -n "${deployment_url}"
+          printf 'RUNTIME_POST_DIAG_DEPLOYMENT_URL=%s\n' "${deployment_url}" >> "${GITHUB_ENV}"
+
+      - name: Run safe POST diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const response = await fetch(`${process.env.RUNTIME_POST_DIAG_DEPLOYMENT_URL}/api/runtime/post-body-diag`, {
+            method: 'POST',
+            headers: {
+              'X-Astera-Runtime-Post-Diag-Key': process.env.RUNTIME_POST_DIAG_KEY,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+            },
+            body: '{}',
+          });
+          const body = await response.json().catch(() => null);
+          console.log(`RUNTIME_POST_DIAG_HTTP=${response.status}`);
+          console.log(`RUNTIME_POST_DIAG_SAFE=${JSON.stringify(body)}`);
+          if (!response.ok || body?.ok !== true) process.exit(1);
+          NODE
+
+      - name: Remove ephemeral diagnostic and redeploy clean source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f functions/api/runtime/post-body-diag.ts
+          npm run cloudflare:functions:build
+          npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
+
+      - name: Verify cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const endpoint = `https://${process.env.CLOUDFLARE_PAGES_PROJECT}.pages.dev/api/runtime/post-body-diag`;
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'X-Astera-Runtime-Post-Diag-Key': process.env.RUNTIME_POST_DIAG_KEY,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+            },
+            body: '{}',
+          });
+          if (response.status !== 404) throw new Error(`RUNTIME_POST_DIAG_CLEANUP_FAILED_HTTP_${response.status}`);
+          console.log('RUNTIME_POST_DIAG_EPHEMERAL_ROUTE_REMOVED=PASS');
+          NODE
