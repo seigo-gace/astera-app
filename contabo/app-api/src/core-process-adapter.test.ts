@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCoreProcessRequest, parseCoreMain8Response, parseCoreProcessError } from './core-process-adapter.js';
+import {
+  MANUAL_PURPOSE_CONTRACTS,
+  buildCoreProcessRequest,
+  parseCoreMain8Response,
+  parseCoreProcessError,
+} from './core-process-adapter.js';
 
 const MAIN8 = [
   ['01 本当の目的', '- 目的'],
@@ -13,12 +18,42 @@ const MAIN8 = [
   ['08 主役AI／利用者への再指示', '- 再指示'],
 ].map(([title, body]) => `${title}\n${body}`).join('\n---\n');
 
-test('buildCoreProcessRequest maps App prompt and selected purpose to current Core contract', () => {
-  assert.deepEqual(buildCoreProcessRequest({ prompt: '比較して', purpose: 'compare', files: [] }), {
-    question: '比較して',
-    context: 'User-selected analysis purpose: compare. Preserve this as analysis intent; do not treat it as evidence.',
-  });
+const MANUAL_PURPOSES = ['review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
+
+test('all seven App manual purposes have complete deterministic contracts', () => {
+  assert.deepEqual(Object.keys(MANUAL_PURPOSE_CONTRACTS), [...MANUAL_PURPOSES]);
+  for (const purpose of MANUAL_PURPOSES) {
+    const contract = MANUAL_PURPOSE_CONTRACTS[purpose];
+    assert.equal(contract.version, 'app-purpose-v1');
+    assert.equal(contract.selected_by, 'user');
+    assert.equal(contract.purpose, purpose);
+    assert.ok(contract.objective.length > 20);
+    assert.ok(contract.required_focus.length >= 7);
+    assert.ok(contract.operating_rules.length >= 5);
+  }
+});
+
+test('buildCoreProcessRequest maps each selected App purpose to a structured contract without changing user prompt', () => {
+  for (const purpose of MANUAL_PURPOSES) {
+    const request = buildCoreProcessRequest({ prompt: '対象本文そのもの', purpose, files: [] });
+    assert.equal(request.question, '対象本文そのもの');
+    assert.ok(request.context);
+    const parsed = JSON.parse(request.context!);
+    assert.deepEqual(parsed, { app_purpose_contract: MANUAL_PURPOSE_CONTRACTS[purpose] });
+    assert.equal(parsed.app_purpose_contract.purpose, purpose);
+    assert.equal(parsed.app_purpose_contract.selected_by, 'user');
+  }
+});
+
+test('auto remains an App pass-through because automatic purpose classification is not an App responsibility', () => {
   assert.deepEqual(buildCoreProcessRequest({ prompt: '確認して', purpose: 'auto', files: [] }), { question: '確認して' });
+});
+
+test('unsupported manual purpose fails closed instead of silently reaching Core', () => {
+  assert.throws(
+    () => buildCoreProcessRequest({ prompt: '確認して', purpose: 'unknown-purpose', files: [] }),
+    (error: unknown) => (error as { code?: string }).code === 'APP_PURPOSE_UNSUPPORTED',
+  );
 });
 
 test('file-bearing jobs fail closed until a real content bridge exists', () => {
