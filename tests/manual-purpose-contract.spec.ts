@@ -123,3 +123,23 @@ test('STORY-COMPOSER-011 all seven manual purposes survive UI selection -> estim
   expect(estimates).toHaveLength(PURPOSES.length);
   expect(jobs).toHaveLength(PURPOSES.length);
 });
+
+test('STORY-COMPOSER-012 auto stays auto so purpose classification remains downstream responsibility', async ({ page }) => {
+  const estimates: Array<Record<string, unknown>> = [];
+  const jobs: Array<Record<string, unknown>> = [];
+  await installRuntime(page, estimates, jobs);
+  await page.goto('/app/new', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByLabel('Astera入力')).toBeVisible();
+
+  const prompt = 'レビューして比較して検証もしてほしい。用途は本体側で自動判定すること。';
+  await page.getByLabel('Astera入力').fill(prompt);
+  await page.getByRole('button', { name: '実行', exact: true }).click();
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+
+  expect(estimates).toHaveLength(1);
+  expect(jobs).toHaveLength(1);
+  expect(estimates[0]?.purpose).toBe('auto');
+  expect(jobs[0]?.purpose).toBe('auto');
+  expect(estimates[0]?.prompt).toBe(prompt);
+  expect(jobs[0]?.prompt).toBe(prompt);
+});
