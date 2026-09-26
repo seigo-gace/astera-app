@@ -18,6 +18,10 @@ export type JobState =
   | 'cancel_requested'
   | 'cancelled';
 
+export const PURPOSE_KEYS = ['auto', 'review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
+export type PurposeKey = (typeof PURPOSE_KEYS)[number];
+export type ManualPurposeKey = Exclude<PurposeKey, 'auto'>;
+
 export type SelectedExecutionOption =
   | { key: 'translation'; profileVersion: string; targetLanguage: string; sourceLanguage?: string; glossaryId?: string }
   | { key: 'agent-mode'; policyVersion: string; mode: 'low' | 'medium' | 'high' }
@@ -37,7 +41,7 @@ export type CreateJobRequest = {
   requestId: string;
   tenantId: string;
   prompt: string;
-  purpose: string;
+  purpose: PurposeKey;
   options: SelectedExecutionOption[];
   fileIds: string[];
   privateMode: boolean;

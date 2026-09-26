@@ -10,6 +10,16 @@ const PURPOSES = [
   ['consider', '検討'],
 ] as const;
 
+const CONFLICTING_PROMPTS: Record<(typeof PURPOSES)[number][0], string> = {
+  review: 'この8候補を比較してくれ。本文は改変するな。',
+  compare: 'この回答をレビューしてくれ。本文は改変するな。',
+  verify: '改善案を出してくれ。本文は改変するな。',
+  improve: '事実を調査してくれ。本文は改変するな。',
+  research: '計画を立ててくれ。本文は改変するな。',
+  plan: 'この案を検討してくれ。本文は改変するな。',
+  consider: 'この主張を検証してくれ。本文は改変するな。',
+};
+
 const RESULT_KEYS = [
   'true_purpose',
   'missing_assumptions',
@@ -95,7 +105,7 @@ test('STORY-COMPOSER-011 all seven manual purposes survive UI selection -> estim
     await dialog.getByLabel('閉じる').click();
     await expect(page.getByText(label, { exact: true })).toBeVisible();
 
-    const prompt = `purpose-contract-${purpose}-原文保持`;
+    const prompt = CONFLICTING_PROMPTS[purpose];
     await page.getByLabel('Astera入力').fill(prompt);
     await page.getByRole('button', { name: '実行', exact: true }).click();
     await expect(page.locator('.native-result-section')).toHaveCount(8);
