@@ -97,7 +97,7 @@ test('STORY-COMPOSER-011 all seven manual purposes survive UI selection -> estim
 
     const prompt = `purpose-contract-${purpose}-原文保持`;
     await page.getByLabel('Astera入力').fill(prompt);
-    await page.getByLabel('実行').click();
+    await page.getByRole('button', { name: '実行', exact: true }).click();
     await expect(page.locator('.native-result-section')).toHaveCount(8);
 
     const estimate = estimates.at(-1);
