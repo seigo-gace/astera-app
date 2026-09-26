@@ -137,7 +137,7 @@ jobs:
                 rawRuntimeProbe(context.env, 'GET'),
                 rawRuntimeProbe(context.env, 'POST'),
               ]);
-              const rawPostReachedRuntime = rawPost.http === 422 && rawPost.error_code === 'JOB_REQUEST_INVALID';
+              const rawPostReachedRuntime = rawPost.http === 422 && rawPost.error_code === 'PURPOSE_INVALID';
               if (!rawPostReachedRuntime) {
                 return Response.json({ ok: false, phase: 'raw_method_probe', raw_get: rawGet, raw_post: rawPost }, { status: 502 });
               }
