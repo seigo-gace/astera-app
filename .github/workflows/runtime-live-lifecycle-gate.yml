@@ -60,7 +60,7 @@ jobs:
           probe_hash="$(printf '%s' "${probe_key}" | sha256sum | awk '{print $1}')"
           printf 'RUNTIME_E2E_PROBE_KEY=%s\n' "${probe_key}" >> "${GITHUB_ENV}"
 
-          cat > functions/api/runtime/live-e2e.ts <<EOF
+          cat > functions/api/runtime/live-e2e.ts <<'EOF'
           import {
             cancelRuntimeJob,
             createRuntimeJob,
@@ -70,7 +70,7 @@ jobs:
           } from '../../_runtime';
 
           type PagesContext = { request: Request; env: RuntimeEnv };
-          const EXPECTED_KEY_SHA256 = '${probe_hash}';
+          const EXPECTED_KEY_SHA256 = '__PROBE_HASH__';
 
           async function sha256Hex(value: string): Promise<string> {
             const bytes = new TextEncoder().encode(value);
@@ -143,6 +143,7 @@ jobs:
             return onRequestPost(context);
           }
           EOF
+          sed -i "s/__PROBE_HASH__/${probe_hash}/" functions/api/runtime/live-e2e.ts
 
       - name: Build and deploy ephemeral probe
         shell: bash
