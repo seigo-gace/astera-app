@@ -36,7 +36,18 @@ test('internal Job API reaches current Astera Core wire contract and returns Mai
     for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
     assert.equal(body.question, 'Main API Contract Test');
-    assert.match(String(body.context ?? ''), /analysis purpose: verify/i);
+    const context = JSON.parse(String(body.context ?? '{}')) as {
+      app_purpose_contract?: {
+        version?: string;
+        selected_by?: string;
+        purpose?: string;
+        required_focus?: string[];
+      };
+    };
+    assert.equal(context.app_purpose_contract?.version, 'app-purpose-v1');
+    assert.equal(context.app_purpose_contract?.selected_by, 'user');
+    assert.equal(context.app_purpose_contract?.purpose, 'verify');
+    assert.ok(context.app_purpose_contract?.required_focus?.includes('claim_extraction'));
     assert.equal(Object.hasOwn(body, 'actor'), false);
     assert.equal(Object.hasOwn(body, 'job'), false);
     processCalls += 1;
