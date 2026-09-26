@@ -1,0 +1,231 @@
+name: Runtime Live Lifecycle Gate
+
+on:
+  workflow_run:
+    workflows: ["Pages Staging Deploy"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-live-lifecycle-gate
+  cancel-in-progress: true
+
+jobs:
+  live-lifecycle:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      STAGING_DOMAIN: 'staging.asterav8.jp'
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Checkout deployed main source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+
+      - name: Require Cloudflare deploy credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN}"
+
+      - name: Install and build exact deployed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-fund --no-audit
+          npm run build
+          printf '{"github_sha":"%s","branch":"main","auth_mode":"real"}\n' "${TARGET_SHA}" > dist/__staging_deployment.json
+
+      - name: Generate ephemeral protected lifecycle probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_key="$(openssl rand -hex 32)"
+          echo "::add-mask::${probe_key}"
+          probe_hash="$(printf '%s' "${probe_key}" | sha256sum | awk '{print $1}')"
+          printf 'RUNTIME_E2E_PROBE_KEY=%s\n' "${probe_key}" >> "${GITHUB_ENV}"
+
+          cat > functions/api/runtime/live-e2e.ts <<EOF
+          import {
+            cancelRuntimeJob,
+            createRuntimeJob,
+            getRuntimeJob,
+            type RuntimeEnv,
+            type RuntimeJobEnvelope,
+          } from '../../_runtime';
+
+          type PagesContext = { request: Request; env: RuntimeEnv };
+          const EXPECTED_KEY_SHA256 = '${probe_hash}';
+
+          async function sha256Hex(value: string): Promise<string> {
+            const bytes = new TextEncoder().encode(value);
+            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+          }
+
+          function sameJob(expected: string, value: RuntimeJobEnvelope): boolean {
+            return value.runtime_job_id === expected;
+          }
+
+          export async function onRequestPost(context: PagesContext): Promise<Response> {
+            const supplied = context.request.headers.get('X-Astera-Runtime-E2E-Key')?.trim() ?? '';
+            if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) {
+              return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
+            }
+
+            const jobId = crypto.randomUUID();
+            const requestId = `runtime-live-e2e:${jobId}`;
+            const correlationId = `runtime-live-e2e:${jobId}`;
+            try {
+              const created = await createRuntimeJob(context.env, {
+                job_id: jobId,
+                tenant_id: 'runtime-live-e2e',
+                user_id: 'runtime-live-e2e',
+                request_id: requestId,
+                prompt: 'Astera Runtime live lifecycle probe. Validate the normal fixed Main8 execution path.',
+                purpose: 'verify',
+                options: [],
+                files: [],
+                private_mode: false,
+                project_id: null,
+                reserved_credits: 1,
+                policy_version: 'runtime-live-e2e',
+                correlation_id: correlationId,
+              });
+              const fetched = await getRuntimeJob(context.env, jobId, correlationId);
+              const cancelled = await cancelRuntimeJob(context.env, jobId, correlationId);
+              const final = await getRuntimeJob(context.env, jobId, correlationId);
+
+              const identityOk = [created, fetched, cancelled, final].every((value) => sameJob(jobId, value));
+              if (!identityOk) {
+                return Response.json({ ok: false, code: 'RUNTIME_E2E_JOB_ID_DIVERGED' }, { status: 502 });
+              }
+              if (fetched.error?.code === 'RUNTIME_STATE_LOST_AFTER_RESTART' || final.error?.code === 'RUNTIME_STATE_LOST_AFTER_RESTART') {
+                return Response.json({ ok: false, code: 'RUNTIME_E2E_STATE_LOST' }, { status: 502 });
+              }
+
+              return Response.json({
+                ok: true,
+                create_state: created.state,
+                get_state: fetched.state,
+                cancel_state: cancelled.state,
+                final_state: final.state,
+                final_error_code: final.error?.code ?? null,
+              }, { headers: { 'Cache-Control': 'no-store' } });
+            } catch (error) {
+              return Response.json({
+                ok: false,
+                code: error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code ?? 'RUNTIME_E2E_FAILED') : 'RUNTIME_E2E_FAILED',
+                message: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240),
+              }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+            }
+          }
+
+          export function onRequest(context: PagesContext): Promise<Response> {
+            if (context.request.method !== 'POST') {
+              return Promise.resolve(Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 }));
+            }
+            return onRequestPost(context);
+          }
+          EOF
+
+      - name: Build and deploy ephemeral probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run cloudflare:functions:build
+          npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
+
+      - name: Execute live create get cancel lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const endpoint = `https://${process.env.STAGING_DOMAIN}/api/runtime/live-e2e`;
+          const key = process.env.RUNTIME_E2E_PROBE_KEY;
+          let last = '';
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            try {
+              const response = await fetch(`${endpoint}?attempt=${attempt}`, {
+                method: 'POST',
+                headers: {
+                  'X-Astera-Runtime-E2E-Key': key,
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-cache',
+                },
+                body: '{}',
+              });
+              const body = await response.json().catch(() => ({}));
+              last = `HTTP=${response.status} BODY=${JSON.stringify(body)}`;
+              if (response.ok && body.ok === true) {
+                console.log(`RUNTIME_LIVE_CREATE_STATE=${body.create_state}`);
+                console.log(`RUNTIME_LIVE_GET_STATE=${body.get_state}`);
+                console.log(`RUNTIME_LIVE_CANCEL_STATE=${body.cancel_state}`);
+                console.log(`RUNTIME_LIVE_FINAL_STATE=${body.final_state}`);
+                console.log(`RUNTIME_LIVE_FINAL_ERROR_CODE=${body.final_error_code ?? 'NONE'}`);
+                console.log('RUNTIME_LIVE_CREATE_GET_CANCEL_GATE=PASS');
+                process.exit(0);
+              }
+            } catch (error) {
+              last = error instanceof Error ? error.message : String(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+          }
+          throw new Error(`RUNTIME_LIVE_CREATE_GET_CANCEL_GATE_FAILED: ${last}`);
+          NODE
+
+      - name: Remove ephemeral probe and redeploy clean source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f functions/api/runtime/live-e2e.ts
+          npm run cloudflare:functions:build
+          npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
+
+      - name: Verify clean final deployment
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const domain = process.env.STAGING_DOMAIN;
+          const expectedSha = process.env.TARGET_SHA;
+          let markerOk = false;
+          let probeRemoved = false;
+          let last = '';
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            try {
+              const [markerResponse, probeResponse] = await Promise.all([
+                fetch(`https://${domain}/__staging_deployment.json?cleanup=${attempt}`, { headers: { 'Cache-Control': 'no-cache' } }),
+                fetch(`https://${domain}/api/runtime/live-e2e?cleanup=${attempt}`, { headers: { 'Cache-Control': 'no-cache' } }),
+              ]);
+              const marker = await markerResponse.json().catch(() => ({}));
+              markerOk = markerResponse.ok && marker.github_sha === expectedSha && marker.branch === 'main';
+              probeRemoved = probeResponse.status === 404;
+              last = `marker=${markerResponse.status}/${marker.github_sha || 'missing'} probe=${probeResponse.status}`;
+              if (markerOk && probeRemoved) break;
+            } catch (error) {
+              last = error instanceof Error ? error.message : String(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+          }
+          if (!markerOk || !probeRemoved) throw new Error(`FINAL_CLEAN_DEPLOYMENT_VERIFY_FAILED: ${last}`);
+          console.log('RUNTIME_LIVE_E2E_EPHEMERAL_ROUTE_REMOVED=PASS');
+          console.log('RUNTIME_LIVE_E2E_FINAL_DEPLOYMENT_SHA=PASS');
+          NODE
