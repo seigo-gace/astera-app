@@ -87,7 +87,7 @@ jobs:
         id: install
         run: npm install --no-audit
 
-      - name: Apply Account, Storage, Credit, and Coupon D1 migrations
+      - name: Apply Account, Storage, Credit, Coupon, and Purpose D1 migrations
         id: d1_runtime_migrations
         shell: bash
         run: |
@@ -107,6 +107,8 @@ jobs:
             echo "Unexpected telegram_file_id column count: $telegram_file_id_count" >&2
             exit 1
           fi
+
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0021_purpose_history_index.sql
 
       - name: Verify active Credit Policy
         id: credit_policy
