@@ -8,6 +8,7 @@ on:
       - '.github/workflows/pages-runtime-binding-verify.yml'
       - '.github/workflows/pages-staging.yml'
       - 'functions/_runtime.ts'
+      - 'functions/api/runtime/status.ts'
   workflow_run:
     workflows: ["Pages Staging Deploy"]
     types: [completed]
@@ -45,8 +46,19 @@ jobs:
           if (/ASTERA_RUNTIME_SERVICE_TOKEN\s*=/.test(source)) {
             throw new Error('RUNTIME_SERVICE_TOKEN_MUST_NOT_BE_STORED_IN_WRANGLER');
           }
+          const statusSource = fs.readFileSync('functions/api/runtime/status.ts', 'utf8');
+          for (const marker of [
+            'context.env.ASTERA_RUNTIME_ORIGIN',
+            'context.env.ASTERA_RUNTIME_SERVICE_TOKEN',
+            'runtime_origin_configured',
+            'runtime_service_token_configured',
+            'runtime_health_http',
+          ]) {
+            if (!statusSource.includes(marker)) throw new Error(`LIVE_RUNTIME_STATUS_MARKER_MISSING:${marker}`);
+          }
           console.log('WRANGLER_RUNTIME_ORIGIN=PASS');
           console.log('WRANGLER_RUNTIME_SERVICE_TOKEN=SECRET_ONLY');
+          console.log('LIVE_RUNTIME_STATUS_SOURCE=PASS');
           console.log('PAGES_RUNTIME_SOURCE_AUTHORITY_GATE=PASS');
           NODE
 
@@ -62,17 +74,19 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
       CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      STAGING_DOMAIN: 'staging.asterav8.jp'
       EXPECTED_RUNTIME_ORIGIN: 'https://runtime.asterav8.jp'
       EXPECTED_BRANCH: 'main'
       EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
     steps:
-      - name: Verify Cloudflare project and active deployment bindings
+      - name: Verify metadata and both live Function routes
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
           const projectName = process.env.CLOUDFLARE_PAGES_PROJECT;
+          const stagingDomain = process.env.STAGING_DOMAIN;
           const token = process.env.CLOUDFLARE_API_TOKEN || '';
           const expectedOrigin = process.env.EXPECTED_RUNTIME_ORIGIN;
           const expectedBranch = process.env.EXPECTED_BRANCH;
@@ -104,7 +118,6 @@ jobs:
           const projectEnv = projectBody.result?.deployment_configs?.production?.env_vars || {};
           const projectOrigin = projectEnv.ASTERA_RUNTIME_ORIGIN;
           const projectToken = projectEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
-
           if (!projectOrigin || projectOrigin.type !== 'plain_text' || projectOrigin.value !== expectedOrigin) {
             throw new Error('PROJECT_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
           }
@@ -115,7 +128,6 @@ jobs:
           const deploymentEnv = latest.env_vars || {};
           const deploymentOrigin = deploymentEnv.ASTERA_RUNTIME_ORIGIN;
           const deploymentToken = deploymentEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
-
           if (!deploymentOrigin || deploymentOrigin.type !== 'plain_text' || deploymentOrigin.value !== expectedOrigin) {
             throw new Error('ACTIVE_DEPLOYMENT_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
           }
@@ -126,9 +138,43 @@ jobs:
           const branch = latest.deployment_trigger?.metadata?.branch || '';
           const commitHash = latest.deployment_trigger?.metadata?.commit_hash || '';
           const stageStatus = latest.latest_stage?.status || '';
+          const deploymentUrl = String(latest.url || '').replace(/\/$/, '');
           if (branch !== expectedBranch) throw new Error(`ACTIVE_DEPLOYMENT_BRANCH_MISMATCH:${branch || 'missing'}`);
           if (expectedSha && commitHash !== expectedSha) throw new Error(`ACTIVE_DEPLOYMENT_SHA_MISMATCH:${commitHash || 'missing'}`);
           if (stageStatus && stageStatus !== 'success') throw new Error(`ACTIVE_DEPLOYMENT_STAGE_NOT_SUCCESS:${stageStatus}`);
+          if (!deploymentUrl.startsWith('https://')) throw new Error('ACTIVE_DEPLOYMENT_URL_MISSING');
+
+          async function probe(label, base) {
+            const response = await fetch(`${base}/api/runtime/status?sha=${encodeURIComponent(expectedSha || 'manual')}`, {
+              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+            });
+            const body = await response.json().catch(() => ({}));
+            const result = {
+              label,
+              http: response.status,
+              origin: body.runtime_origin_configured === true,
+              token: body.runtime_service_token_configured === true,
+              runtimeHealth: Number(body.runtime_health_http || 0),
+            };
+            console.log(`${label}_FUNCTION_HTTP=${result.http}`);
+            console.log(`${label}_FUNCTION_RUNTIME_ORIGIN=${result.origin ? 'PRESENT' : 'MISSING'}`);
+            console.log(`${label}_FUNCTION_RUNTIME_SERVICE_TOKEN=${result.token ? 'PRESENT' : 'MISSING'}`);
+            console.log(`${label}_FUNCTION_RUNTIME_HEALTH_HTTP=${result.runtimeHealth}`);
+            return result;
+          }
+
+          const [custom, direct] = await Promise.all([
+            probe('CUSTOM_DOMAIN', `https://${stagingDomain}`),
+            probe('DEPLOYMENT_URL', deploymentUrl),
+          ]);
+
+          const healthy = (x) => x.http === 200 && x.origin && x.token && x.runtimeHealth === 200;
+          if (custom.origin !== direct.origin || custom.token !== direct.token || custom.runtimeHealth !== direct.runtimeHealth) {
+            throw new Error('CUSTOM_DOMAIN_AND_DEPLOYMENT_FUNCTION_ROUTE_DIVERGED');
+          }
+          if (!healthy(custom) || !healthy(direct)) {
+            throw new Error('LIVE_FUNCTION_RUNTIME_BINDING_FAILED');
+          }
 
           console.log('PROJECT_RUNTIME_ORIGIN=PRESENT TYPE=plain_text');
           console.log('PROJECT_RUNTIME_SERVICE_TOKEN=PRESENT TYPE=secret_text');
