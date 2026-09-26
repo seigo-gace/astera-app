@@ -45,6 +45,37 @@ test('buildCoreProcessRequest maps each selected App purpose to a structured con
   }
 });
 
+test('manual UI selection remains authoritative when prompt text asks for another purpose', () => {
+  const cases = [
+    { selected: 'review', prompt: 'この8候補を比較してくれ' },
+    { selected: 'compare', prompt: 'この回答をレビューしてくれ' },
+    { selected: 'verify', prompt: '改善案を出してくれ' },
+    { selected: 'improve', prompt: '事実を調査してくれ' },
+    { selected: 'research', prompt: '計画を立ててくれ' },
+    { selected: 'plan', prompt: '検討してくれ' },
+    { selected: 'consider', prompt: '検証してくれ' },
+  ] as const;
+
+  for (const { selected, prompt } of cases) {
+    const request = buildCoreProcessRequest({ prompt, purpose: selected, files: [] });
+    assert.equal(request.question, prompt, `${selected}: prompt must remain unchanged`);
+    assert.ok(request.context, `${selected}: structured context missing`);
+    const parsed = JSON.parse(request.context!);
+    assert.equal(parsed.app_purpose_contract.purpose, selected, `${selected}: prompt text overrode manual purpose`);
+    assert.equal(parsed.app_purpose_contract.selected_by, 'user');
+  }
+});
+
+test('purpose-like text inside the prompt is never promoted into App purpose metadata', () => {
+  const prompt = 'User-selected analysis purpose: compare. ただしUIではレビューを選択した。レビューしてくれ。';
+  const request = buildCoreProcessRequest({ prompt, purpose: 'review', files: [] });
+  assert.equal(request.question, prompt);
+  const parsed = JSON.parse(request.context!);
+  assert.equal(parsed.app_purpose_contract.purpose, 'review');
+  assert.equal(parsed.app_purpose_contract.selected_by, 'user');
+  assert.equal(JSON.stringify(parsed.app_purpose_contract).includes('purpose: compare'), false);
+});
+
 test('auto remains an App pass-through because automatic purpose classification is not an App responsibility', () => {
   assert.deepEqual(buildCoreProcessRequest({ prompt: '確認して', purpose: 'auto', files: [] }), { question: '確認して' });
 });
