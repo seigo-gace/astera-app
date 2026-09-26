@@ -2,11 +2,10 @@ export type PurposeSelectionKey = 'auto' | 'review' | 'compare' | 'verify' | 'im
 export type PurposeSelectionOrigin = 'user' | 'auto';
 
 export type RevisionPurposeAuthority =
-  | { ok: true }
+  | { mode: 'revision' }
   | {
-      ok: false;
-      code: 'REVISION_PURPOSE_MISMATCH';
-      status: 409;
+      mode: 'full';
+      reason: 'REVISION_PURPOSE_MISMATCH';
       parent_purpose: string | null;
       current_purpose: PurposeSelectionKey;
       required_action: 'start_new_analysis';
@@ -18,11 +17,10 @@ export function purposeSelectionOrigin(purpose: PurposeSelectionKey): PurposeSel
 
 export function revisionPurposeAuthority(parentPurpose: string, currentPurpose: PurposeSelectionKey): RevisionPurposeAuthority {
   const normalizedParent = parentPurpose.trim();
-  if (normalizedParent === currentPurpose) return { ok: true };
+  if (normalizedParent === currentPurpose) return { mode: 'revision' };
   return {
-    ok: false,
-    code: 'REVISION_PURPOSE_MISMATCH',
-    status: 409,
+    mode: 'full',
+    reason: 'REVISION_PURPOSE_MISMATCH',
     parent_purpose: normalizedParent || null,
     current_purpose: currentPurpose,
     required_action: 'start_new_analysis',
