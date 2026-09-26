@@ -6,11 +6,14 @@ on:
       - 'src/features/composer/**'
       - 'functions/api/jobs/**'
       - 'functions/_job-policy.ts'
+      - 'functions/_purpose-control.ts'
       - 'functions/_runtime.ts'
       - 'packages/contracts/src/jobs.ts'
       - 'contabo/app-api/src/**'
+      - 'scripts/purpose-control-plane-audit.mjs'
       - 'tests/manual-purpose-contract.spec.ts'
       - 'tests/manual-purpose-long-regression.spec.ts'
+      - 'tests/purpose-control-plane-regression.test.mjs'
       - '.github/workflows/manual-purpose-contract-gate.yml'
   push:
     branches: [main]
@@ -18,11 +21,14 @@ on:
       - 'src/features/composer/**'
       - 'functions/api/jobs/**'
       - 'functions/_job-policy.ts'
+      - 'functions/_purpose-control.ts'
       - 'functions/_runtime.ts'
       - 'packages/contracts/src/jobs.ts'
       - 'contabo/app-api/src/**'
+      - 'scripts/purpose-control-plane-audit.mjs'
       - 'tests/manual-purpose-contract.spec.ts'
       - 'tests/manual-purpose-long-regression.spec.ts'
+      - 'tests/purpose-control-plane-regression.test.mjs'
       - '.github/workflows/manual-purpose-contract-gate.yml'
 
 permissions:
@@ -43,6 +49,10 @@ jobs:
         run: |
           npm run check
           npm run contract:check
+      - name: Audit Purpose control/data-plane separation
+        run: node scripts/purpose-control-plane-audit.mjs
+      - name: Run Purpose revision/provenance regressions
+        run: node --experimental-strip-types --test tests/purpose-control-plane-regression.test.mjs
       - name: Run App Runtime purpose contract tests
         run: npm run contabo:test
       - name: Install browser representatives
