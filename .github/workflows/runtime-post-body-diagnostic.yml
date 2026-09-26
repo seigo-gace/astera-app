@@ -2,27 +2,31 @@ name: Runtime POST Body Diagnostic
 
 on:
   workflow_run:
-    workflows: ["Pages Runtime Binding Verify"]
+    workflows: ["Runtime Live Lifecycle Gate"]
     types: [completed]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: runtime-live-lifecycle-gate
+  group: runtime-post-body-diagnostic
   cancel-in-progress: true
 
 jobs:
   diagnose:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
       CLOUDFLARE_PAGES_PROJECT: astera-app-staging
-      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact lifecycle source
+        uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_SHA }}
 
@@ -30,7 +34,7 @@ jobs:
         with:
           node-version: '22.12'
 
-      - name: Build exact deployed source
+      - name: Build exact source
         shell: bash
         run: |
           set -euo pipefail
@@ -62,12 +66,7 @@ jobs:
             return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
           }
 
-          async function callRuntime(
-            env: RuntimeEnv,
-            method: 'GET' | 'POST',
-            path: string,
-            body?: unknown,
-          ): Promise<Record<string, unknown>> {
+          async function callRuntime(env: RuntimeEnv, method: 'GET' | 'POST', path: string, body?: unknown): Promise<Record<string, unknown>> {
             const origin = env.ASTERA_RUNTIME_ORIGIN?.trim() ?? '';
             const token = env.ASTERA_RUNTIME_SERVICE_TOKEN?.trim() ?? '';
             if (!origin || !token) return { http: 0, error_code: 'RUNTIME_BINDING_MISSING' };
@@ -132,23 +131,11 @@ jobs:
 
             const getProbe = await callRuntime(context.env, 'GET', '/internal/v1/jobs/__runtime_post_diag_unknown__');
             const emptyPost = await callRuntime(context.env, 'POST', '/internal/v1/jobs', {});
-
             const lateInvalidId = crypto.randomUUID();
-            const lateInvalidPost = await callRuntime(
-              context.env,
-              'POST',
-              '/internal/v1/jobs',
-              jobInput(lateInvalidId, false, 0),
-            );
+            const lateInvalidPost = await callRuntime(context.env, 'POST', '/internal/v1/jobs', jobInput(lateInvalidId, false, 0));
 
             const normalId = crypto.randomUUID();
-            const normalPost = await callRuntime(
-              context.env,
-              'POST',
-              '/internal/v1/jobs',
-              jobInput(normalId, false, 1),
-            );
-
+            const normalPost = await callRuntime(context.env, 'POST', '/internal/v1/jobs', jobInput(normalId, false, 1));
             let normalCancel: Record<string, unknown> | null = null;
             if (normalPost.http === 201 || normalPost.http === 200) {
               normalCancel = await callRuntime(context.env, 'POST', `/internal/v1/jobs/${encodeURIComponent(normalId)}/cancel`, {});
@@ -158,18 +145,14 @@ jobs:
             let privateCancel: Record<string, unknown> | null = null;
             if (!(normalPost.http === 201 || normalPost.http === 200)) {
               const privateId = crypto.randomUUID();
-              privatePost = await callRuntime(
-                context.env,
-                'POST',
-                '/internal/v1/jobs',
-                jobInput(privateId, true, 1),
-              );
+              privatePost = await callRuntime(context.env, 'POST', '/internal/v1/jobs', jobInput(privateId, true, 1));
               if (privatePost.http === 201 || privatePost.http === 200) {
                 privateCancel = await callRuntime(context.env, 'POST', `/internal/v1/jobs/${encodeURIComponent(privateId)}/cancel`, {});
               }
             }
 
             return Response.json({
+              kind: 'runtime_post_body_diagnostic',
               ok: true,
               get_probe: getProbe,
               empty_post: emptyPost,
@@ -204,19 +187,38 @@ jobs:
         run: |
           set -euo pipefail
           node <<'NODE'
-          const response = await fetch(`${process.env.RUNTIME_POST_DIAG_DEPLOYMENT_URL}/api/runtime/post-body-diag`, {
-            method: 'POST',
-            headers: {
-              'X-Astera-Runtime-Post-Diag-Key': process.env.RUNTIME_POST_DIAG_KEY,
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache',
-            },
-            body: '{}',
-          });
-          const body = await response.json().catch(() => null);
-          console.log(`RUNTIME_POST_DIAG_HTTP=${response.status}`);
-          console.log(`RUNTIME_POST_DIAG_SAFE=${JSON.stringify(body)}`);
-          if (!response.ok || body?.ok !== true) process.exit(1);
+          const base = process.env.RUNTIME_POST_DIAG_DEPLOYMENT_URL;
+          const key = process.env.RUNTIME_POST_DIAG_KEY;
+          let final = null;
+          for (let attempt = 1; attempt <= 8; attempt += 1) {
+            try {
+              const response = await fetch(`${base}/api/runtime/post-body-diag?attempt=${attempt}`, {
+                method: 'POST',
+                headers: {
+                  'X-Astera-Runtime-Post-Diag-Key': key,
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-cache',
+                },
+                body: '{}',
+              });
+              const raw = await response.text();
+              const body = (() => { try { return JSON.parse(raw); } catch { return null; } })();
+              final = {
+                http: response.status,
+                content_type: (response.headers.get('content-type') || '').slice(0, 120),
+                json: body !== null,
+                body,
+              };
+              if (response.ok && body?.kind === 'runtime_post_body_diagnostic' && body?.ok === true) break;
+            } catch (error) {
+              final = { fetch_error: String(error instanceof Error ? error.message : error).slice(0, 240) };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          }
+          console.log(`RUNTIME_POST_DIAG_SAFE=${JSON.stringify(final)}`);
+          if (final?.http !== 200 || final?.body?.kind !== 'runtime_post_body_diagnostic' || final?.body?.ok !== true) {
+            throw new Error('RUNTIME_POST_DIAG_ENDPOINT_NOT_READY_OR_FAILED');
+          }
           NODE
 
       - name: Remove ephemeral diagnostic and redeploy clean source
@@ -226,7 +228,11 @@ jobs:
           set -euo pipefail
           rm -f functions/api/runtime/post-body-diag.ts
           npm run cloudflare:functions:build
-          npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
+          clean_output="$(npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main 2>&1)"
+          printf '%s\n' "${clean_output}"
+          clean_url="$(printf '%s\n' "${clean_output}" | grep -Eo 'https://[a-f0-9]+\.astera-app-staging\.pages\.dev' | tail -n 1)"
+          test -n "${clean_url}"
+          printf 'RUNTIME_POST_DIAG_CLEAN_URL=%s\n' "${clean_url}" >> "${GITHUB_ENV}"
 
       - name: Verify cleanup
         if: always()
@@ -234,16 +240,35 @@ jobs:
         run: |
           set -euo pipefail
           node <<'NODE'
-          const endpoint = `https://${process.env.CLOUDFLARE_PAGES_PROJECT}.pages.dev/api/runtime/post-body-diag`;
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'X-Astera-Runtime-Post-Diag-Key': process.env.RUNTIME_POST_DIAG_KEY,
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache',
-            },
-            body: '{}',
-          });
-          if (response.status !== 404) throw new Error(`RUNTIME_POST_DIAG_CLEANUP_FAILED_HTTP_${response.status}`);
+          const base = process.env.RUNTIME_POST_DIAG_CLEAN_URL;
+          const key = process.env.RUNTIME_POST_DIAG_KEY;
+          const expectedSha = process.env.TARGET_SHA;
+          if (!base) throw new Error('RUNTIME_POST_DIAG_CLEAN_URL_MISSING');
+          let removed = false;
+          let markerOk = false;
+          let last = null;
+          for (let attempt = 1; attempt <= 8; attempt += 1) {
+            const markerResponse = await fetch(`${base}/__staging_deployment.json?cleanup=${attempt}`, { headers: { 'Cache-Control': 'no-cache' } });
+            const marker = await markerResponse.json().catch(() => ({}));
+            const response = await fetch(`${base}/api/runtime/post-body-diag?cleanup=${attempt}`, {
+              method: 'POST',
+              headers: {
+                'X-Astera-Runtime-Post-Diag-Key': key,
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
+              },
+              body: '{}',
+            });
+            const raw = await response.text();
+            const body = (() => { try { return JSON.parse(raw); } catch { return null; } })();
+            markerOk = markerResponse.ok && marker.github_sha === expectedSha && marker.branch === 'main';
+            removed = !(body?.kind === 'runtime_post_body_diagnostic');
+            last = { marker_http: markerResponse.status, marker_sha_match: marker.github_sha === expectedSha, route_http: response.status, route_json: body !== null, diagnostic_marker_present: body?.kind === 'runtime_post_body_diagnostic' };
+            if (markerOk && removed) break;
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          }
+          console.log(`RUNTIME_POST_DIAG_CLEANUP_SAFE=${JSON.stringify(last)}`);
+          if (!markerOk || !removed) throw new Error('RUNTIME_POST_DIAG_CLEANUP_VERIFY_FAILED');
           console.log('RUNTIME_POST_DIAG_EPHEMERAL_ROUTE_REMOVED=PASS');
+          console.log('RUNTIME_POST_DIAG_FINAL_DEPLOYMENT_SHA=PASS');
           NODE
