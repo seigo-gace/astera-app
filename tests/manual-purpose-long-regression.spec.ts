@@ -98,15 +98,17 @@ for (const [purpose, label] of PURPOSES) {
     await page.goto('/app/new', { waitUntil: 'domcontentloaded' });
     await expect(page.getByLabel('Astera入力')).toBeVisible();
 
-    for (let caseIndex = 0; caseIndex < 10; caseIndex += 1) {
-      if (await page.getByRole('button', { name: '新規' }).count()) await page.getByRole('button', { name: '新規' }).click();
+    await page.getByLabel('Fileと実行Optionを追加').click();
+    const initialDialog = page.getByRole('dialog', { name: '追加' });
+    await expect(initialDialog).toBeVisible();
+    await initialDialog.getByText('用途・目的', { exact: true }).click();
+    await initialDialog.getByRole('button', { name: label, exact: true }).click();
+    await initialDialog.getByLabel('閉じる').click();
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
 
-      await page.getByLabel('Fileと実行Optionを追加').click();
-      const dialog = page.getByRole('dialog', { name: '追加' });
-      await expect(dialog).toBeVisible();
-      await dialog.getByText('用途・目的', { exact: true }).click();
-      await dialog.getByRole('button', { name: label, exact: true }).click();
-      await dialog.getByLabel('閉じる').click();
+    for (let caseIndex = 0; caseIndex < 10; caseIndex += 1) {
+      if (caseIndex > 0 && await page.getByRole('button', { name: '新規' }).count()) await page.getByRole('button', { name: '新規' }).click();
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
 
       const prompt = buildLongPrompt(purpose, caseIndex);
       const length = [...prompt].length;
