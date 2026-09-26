@@ -22,7 +22,6 @@ jobs:
     timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
-      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
       CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
       STAGING_DOMAIN: 'staging.asterav8.jp'
       TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -73,8 +72,7 @@ jobs:
           const EXPECTED_KEY_SHA256 = '__PROBE_HASH__';
 
           async function sha256Hex(value: string): Promise<string> {
-            const bytes = new TextEncoder().encode(value);
-            const digest = await crypto.subtle.digest('SHA-256', bytes);
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
             return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
           }
 
@@ -86,9 +84,46 @@ jobs:
             const source = error && typeof error === 'object' ? error as { code?: unknown; message?: unknown; name?: unknown } : {};
             const code = typeof source.code === 'string' ? source.code.slice(0, 96) : 'RUNTIME_E2E_FAILED';
             const raw = typeof source.message === 'string' ? source.message : String(error);
-            const message = raw.replace(/https?:\/\/[^\s"']+/gi, '[url]').slice(0, 240);
-            const errorClass = typeof source.name === 'string' ? source.name.slice(0, 80) : 'UnknownThrown';
-            return { code, message, error_class: errorClass };
+            return {
+              code,
+              message: raw.replace(/https?:\/\/[^\s"']+/gi, '[url]').slice(0, 240),
+              error_class: typeof source.name === 'string' ? source.name.slice(0, 80) : 'UnknownThrown',
+            };
+          }
+
+          async function rawRuntimeProbe(env: RuntimeEnv, method: 'GET' | 'POST'): Promise<Record<string, unknown>> {
+            const origin = env.ASTERA_RUNTIME_ORIGIN?.trim() ?? '';
+            const token = env.ASTERA_RUNTIME_SERVICE_TOKEN?.trim() ?? '';
+            if (!origin || !token) return { http: 0, code: 'RUNTIME_BINDING_MISSING' };
+            const path = method === 'GET'
+              ? '/internal/v1/jobs/__raw_method_probe_never_created__'
+              : '/internal/v1/jobs';
+            const response = await fetch(new URL(path, origin).toString(), {
+              method,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Correlation-ID': 'runtime-live-e2e-raw-method-probe',
+              },
+              ...(method === 'POST' ? { body: '{}' } : {}),
+              redirect: 'manual',
+            });
+            const raw = await response.text();
+            let payload: unknown = null;
+            try { payload = JSON.parse(raw); } catch {}
+            const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+            const error = root.error && typeof root.error === 'object' && !Array.isArray(root.error) ? root.error as Record<string, unknown> : {};
+            return {
+              http: response.status,
+              content_type: (response.headers.get('content-type') ?? '').slice(0, 120),
+              cf_mitigated: (response.headers.get('cf-mitigated') ?? '').slice(0, 80) || null,
+              server: (response.headers.get('server') ?? '').slice(0, 80) || null,
+              location_present: Boolean(response.headers.get('location')),
+              json: Object.keys(root).length > 0,
+              error_code: typeof error.code === 'string' ? error.code.slice(0, 96) : null,
+              body_length: raw.length,
+            };
           }
 
           export async function onRequestPost(context: PagesContext): Promise<Response> {
@@ -97,6 +132,16 @@ jobs:
               if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) {
                 return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
               }
+
+              const [rawGet, rawPost] = await Promise.all([
+                rawRuntimeProbe(context.env, 'GET'),
+                rawRuntimeProbe(context.env, 'POST'),
+              ]);
+              const rawPostReachedRuntime = rawPost.http === 422 && rawPost.error_code === 'JOB_REQUEST_INVALID';
+              if (!rawPostReachedRuntime) {
+                return Response.json({ ok: false, phase: 'raw_method_probe', raw_get: rawGet, raw_post: rawPost }, { status: 502 });
+              }
+
               const jobId = crypto.randomUUID();
               const requestId = `runtime-live-e2e:${jobId}`;
               const correlationId = `runtime-live-e2e:${jobId}`;
@@ -119,12 +164,14 @@ jobs:
               const cancelled = await cancelRuntimeJob(context.env, jobId, correlationId);
               const final = await getRuntimeJob(context.env, jobId, correlationId);
               const identityOk = [created, fetched, cancelled, final].every((value) => sameJob(jobId, value));
-              if (!identityOk) return Response.json({ ok: false, code: 'RUNTIME_E2E_JOB_ID_DIVERGED' }, { status: 502 });
+              if (!identityOk) return Response.json({ ok: false, phase: 'lifecycle', code: 'RUNTIME_E2E_JOB_ID_DIVERGED', raw_get: rawGet, raw_post: rawPost }, { status: 502 });
               if (fetched.error?.code === 'RUNTIME_STATE_LOST_AFTER_RESTART' || final.error?.code === 'RUNTIME_STATE_LOST_AFTER_RESTART') {
-                return Response.json({ ok: false, code: 'RUNTIME_E2E_STATE_LOST' }, { status: 502 });
+                return Response.json({ ok: false, phase: 'lifecycle', code: 'RUNTIME_E2E_STATE_LOST', raw_get: rawGet, raw_post: rawPost }, { status: 502 });
               }
               return Response.json({
                 ok: true,
+                raw_get: rawGet,
+                raw_post: rawPost,
                 create_state: created.state,
                 get_state: fetched.state,
                 cancel_state: cancelled.state,
@@ -132,7 +179,7 @@ jobs:
                 final_error_code: final.error?.code ?? null,
               }, { headers: { 'Cache-Control': 'no-store' } });
             } catch (error) {
-              return Response.json({ ok: false, ...safeError(error) }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+              return Response.json({ ok: false, phase: 'exception', ...safeError(error) }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
             }
           }
 
@@ -179,16 +226,14 @@ jobs:
                   },
                   body: '{}',
                 });
-                const contentType = response.headers.get('content-type') || '';
-                const cfRay = response.headers.get('cf-ray') || '';
                 const raw = await response.text();
                 let body = null;
                 try { body = JSON.parse(raw); } catch {}
                 final = {
                   label,
                   http: response.status,
-                  content_type: contentType.slice(0, 120),
-                  cf_ray_present: Boolean(cfRay),
+                  content_type: (response.headers.get('content-type') || '').slice(0, 120),
+                  cf_ray_present: Boolean(response.headers.get('cf-ray')),
                   body,
                   safe_text: body ? '' : safeText(raw),
                 };
