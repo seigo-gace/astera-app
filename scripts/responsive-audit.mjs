@@ -40,7 +40,10 @@ check('native composer reduced motion', /@media\s*\(prefers-reduced-motion:\s*re
 check('native composer dynamic viewport', nativeCss.includes('100dvh'), 'native composer dynamic viewport unit missing');
 check('native composer overflow guard', nativeCss.includes('overflow-x: hidden'), 'native composer horizontal overflow guard missing');
 check('native composer 16px input', /\.native-composer textarea[\s\S]*?font-size:\s*16px/.test(nativeCss), 'native composer mobile input must avoid iOS zoom');
-check('native composer explicit controls', nativeComposer.includes("setPicker('purpose')") && nativeComposer.includes("setPicker('add')") && nativeComposer.includes('openContextPicker'), '/, + and @ controls are not independently implemented');
+const hasSlashShortcut = nativeComposer.includes("event.key === '/' || event.key === '@'") && nativeComposer.includes("setPicker('add')");
+const hasAtShortcut = nativeComposer.includes("event.key === '/' || event.key === '@'") && nativeComposer.includes('openContextPicker');
+const hasAddButton = nativeComposer.includes('aria-label="Fileと実行Optionを追加"') && nativeComposer.includes("onClick={() => setPicker('add')}");
+check('native composer explicit controls', hasSlashShortcut && hasAtShortcut && hasAddButton, '/ shortcut, + button and @ shortcut are not all implemented');
 check('native composer device compatibility', compatibilityCss.includes('.native-composer textarea') && compatibilityCss.includes('.native-round-button'), 'native composer is missing touch/input compatibility guards');
 check('native composer horizontal stability', horizontalCss.includes('.native-composer-workspace') && horizontalCss.includes('.native-result-section p'), 'native composer is missing horizontal and long-content guards');
 check('native composer orientation stability', orientationCss.includes('.native-composer-dock') && orientationCss.includes('.native-composer textarea'), 'native composer is missing rotation and short-landscape guards');
