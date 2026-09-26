@@ -1,6 +1,13 @@
 name: Pages Runtime Binding Verify
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'wrangler.toml'
+      - '.github/workflows/pages-runtime-binding-verify.yml'
+      - '.github/workflows/pages-staging.yml'
+      - 'functions/_runtime.ts'
   workflow_run:
     workflows: ["Pages Staging Deploy"]
     types: [completed]
@@ -10,24 +17,19 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  source-authority:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'workflow_run' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
-      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
-      CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
       EXPECTED_RUNTIME_ORIGIN: 'https://runtime.asterav8.jp'
-      EXPECTED_BRANCH: 'main'
-      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
     steps:
-      - name: Checkout deployed source
+      - name: Checkout relevant source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || 'main' }}
+          ref: ${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha || 'main' }}
 
       - name: Verify source runtime binding authority
         shell: bash
@@ -45,8 +47,25 @@ jobs:
           }
           console.log('WRANGLER_RUNTIME_ORIGIN=PASS');
           console.log('WRANGLER_RUNTIME_SERVICE_TOKEN=SECRET_ONLY');
+          console.log('PAGES_RUNTIME_SOURCE_AUTHORITY_GATE=PASS');
           NODE
 
+  active-deployment:
+    needs: source-authority
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      EXPECTED_RUNTIME_ORIGIN: 'https://runtime.asterav8.jp'
+      EXPECTED_BRANCH: 'main'
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+    steps:
       - name: Verify Cloudflare project and active deployment bindings
         shell: bash
         run: |
