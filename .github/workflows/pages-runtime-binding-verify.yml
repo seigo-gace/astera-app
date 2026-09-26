@@ -1,0 +1,122 @@
+name: Pages Runtime Binding Verify
+
+on:
+  workflow_run:
+    workflows: ["Pages Staging Deploy"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_ACCOUNT_ID: '6749a1289acc6c158a4621c26c3fbe08'
+      CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      EXPECTED_RUNTIME_ORIGIN: 'https://runtime.asterav8.jp'
+      EXPECTED_BRANCH: 'main'
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+    steps:
+      - name: Checkout deployed source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || 'main' }}
+
+      - name: Verify source runtime binding authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_RUNTIME_ORIGIN="${EXPECTED_RUNTIME_ORIGIN}" node <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('wrangler.toml', 'utf8');
+          const expected = `ASTERA_RUNTIME_ORIGIN = "${process.env.EXPECTED_RUNTIME_ORIGIN}"`;
+          if (!source.split(/\r?\n/).some((line) => line.trim() === expected)) {
+            throw new Error('WRANGLER_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
+          }
+          if (/ASTERA_RUNTIME_SERVICE_TOKEN\s*=/.test(source)) {
+            throw new Error('RUNTIME_SERVICE_TOKEN_MUST_NOT_BE_STORED_IN_WRANGLER');
+          }
+          console.log('WRANGLER_RUNTIME_ORIGIN=PASS');
+          console.log('WRANGLER_RUNTIME_SERVICE_TOKEN=SECRET_ONLY');
+          NODE
+
+      - name: Verify Cloudflare project and active deployment bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const projectName = process.env.CLOUDFLARE_PAGES_PROJECT;
+          const token = process.env.CLOUDFLARE_API_TOKEN || '';
+          const expectedOrigin = process.env.EXPECTED_RUNTIME_ORIGIN;
+          const expectedBranch = process.env.EXPECTED_BRANCH;
+          const expectedSha = process.env.EXPECTED_SHA || '';
+
+          if (!token) throw new Error('CLOUDFLARE_API_TOKEN_MISSING');
+          const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+
+          const [projectResponse, deploymentsResponse, runtimeHealthResponse] = await Promise.all([
+            fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`, { headers }),
+            fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/deployments?env=production&per_page=1`, { headers }),
+            fetch(`${expectedOrigin}/health`, { headers: { Accept: 'application/json' } }),
+          ]);
+
+          const projectBody = await projectResponse.json().catch(() => ({}));
+          const deploymentsBody = await deploymentsResponse.json().catch(() => ({}));
+          const latest = Array.isArray(deploymentsBody.result) ? deploymentsBody.result[0] : null;
+
+          if (!projectResponse.ok || projectBody.success === false) {
+            throw new Error(`PAGES_PROJECT_READ_FAILED_HTTP_${projectResponse.status}`);
+          }
+          if (!deploymentsResponse.ok || deploymentsBody.success === false || !latest) {
+            throw new Error(`PAGES_DEPLOYMENT_READ_FAILED_HTTP_${deploymentsResponse.status}`);
+          }
+          if (!runtimeHealthResponse.ok) {
+            throw new Error(`RUNTIME_HEALTH_FAILED_HTTP_${runtimeHealthResponse.status}`);
+          }
+
+          const projectEnv = projectBody.result?.deployment_configs?.production?.env_vars || {};
+          const projectOrigin = projectEnv.ASTERA_RUNTIME_ORIGIN;
+          const projectToken = projectEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
+
+          if (!projectOrigin || projectOrigin.type !== 'plain_text' || projectOrigin.value !== expectedOrigin) {
+            throw new Error('PROJECT_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
+          }
+          if (!projectToken || projectToken.type !== 'secret_text') {
+            throw new Error('PROJECT_RUNTIME_SERVICE_TOKEN_MISSING_OR_NOT_SECRET');
+          }
+
+          const deploymentEnv = latest.env_vars || {};
+          const deploymentOrigin = deploymentEnv.ASTERA_RUNTIME_ORIGIN;
+          const deploymentToken = deploymentEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
+
+          if (!deploymentOrigin || deploymentOrigin.type !== 'plain_text' || deploymentOrigin.value !== expectedOrigin) {
+            throw new Error('ACTIVE_DEPLOYMENT_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
+          }
+          if (!deploymentToken || deploymentToken.type !== 'secret_text') {
+            throw new Error('ACTIVE_DEPLOYMENT_RUNTIME_SERVICE_TOKEN_MISSING_OR_NOT_SECRET');
+          }
+
+          const branch = latest.deployment_trigger?.metadata?.branch || '';
+          const commitHash = latest.deployment_trigger?.metadata?.commit_hash || '';
+          const stageStatus = latest.latest_stage?.status || '';
+          if (branch !== expectedBranch) throw new Error(`ACTIVE_DEPLOYMENT_BRANCH_MISMATCH:${branch || 'missing'}`);
+          if (expectedSha && commitHash !== expectedSha) throw new Error(`ACTIVE_DEPLOYMENT_SHA_MISMATCH:${commitHash || 'missing'}`);
+          if (stageStatus && stageStatus !== 'success') throw new Error(`ACTIVE_DEPLOYMENT_STAGE_NOT_SUCCESS:${stageStatus}`);
+
+          console.log('PROJECT_RUNTIME_ORIGIN=PRESENT TYPE=plain_text');
+          console.log('PROJECT_RUNTIME_SERVICE_TOKEN=PRESENT TYPE=secret_text');
+          console.log('ACTIVE_DEPLOYMENT_RUNTIME_ORIGIN=PRESENT TYPE=plain_text');
+          console.log('ACTIVE_DEPLOYMENT_RUNTIME_SERVICE_TOKEN=PRESENT TYPE=secret_text');
+          console.log(`ACTIVE_DEPLOYMENT_BRANCH=${branch}`);
+          console.log(`ACTIVE_DEPLOYMENT_SHA_MATCH=${expectedSha ? String(commitHash === expectedSha) : 'NOT_REQUESTED'}`);
+          console.log(`RUNTIME_HEALTH_HTTP=${runtimeHealthResponse.status}`);
+          console.log('PAGES_RUNTIME_BINDING_GATE=PASS');
+          NODE
