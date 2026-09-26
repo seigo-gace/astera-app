@@ -1,0 +1,33 @@
+name: Runtime Auth Shape Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/runtime-auth-shape-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Probe deployed safe diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const bases = [
+            ['CUSTOM', 'https://staging.asterav8.jp'],
+          ];
+          for (const [label, base] of bases) {
+            const response = await fetch(`${base}/api/runtime/auth-diagnostic?ts=${Date.now()}`, {
+              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+            });
+            const body = await response.json().catch(() => ({}));
+            console.log(`${label}_HTTP=${response.status}`);
+            console.log(`${label}_SAFE=${JSON.stringify(body)}`);
+          }
+          NODE
