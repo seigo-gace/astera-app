@@ -164,7 +164,6 @@ async function runtimeRequest(
 export function createRuntimeJob(env: RuntimeEnv, input: RuntimeCreateJob): Promise<RuntimeJobEnvelope> {
   return runtimeRequest(env, '/internal/v1/jobs', {
     method: 'POST',
-    headers: { 'Idempotency-Key': input.request_id, 'X-Request-ID': input.request_id },
     body: JSON.stringify(input),
   }, input.correlation_id);
 }
@@ -176,7 +175,6 @@ export function getRuntimeJob(env: RuntimeEnv, runtimeJobId: string, correlation
 export function cancelRuntimeJob(env: RuntimeEnv, runtimeJobId: string, correlationId: string): Promise<RuntimeJobEnvelope> {
   return runtimeRequest(env, `/internal/v1/jobs/${encodeURIComponent(runtimeJobId)}/cancel`, {
     method: 'POST',
-    headers: { 'Idempotency-Key': `cancel:${runtimeJobId}` },
     body: '{}',
   }, correlationId);
 }
