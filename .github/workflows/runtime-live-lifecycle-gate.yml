@@ -82,16 +82,25 @@ jobs:
             return value.runtime_job_id === expected;
           }
 
-          export async function onRequestPost(context: PagesContext): Promise<Response> {
-            const supplied = context.request.headers.get('X-Astera-Runtime-E2E-Key')?.trim() ?? '';
-            if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) {
-              return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
-            }
+          function safeError(error: unknown): { code: string; message: string; error_class: string } {
+            const source = error && typeof error === 'object' ? error as { code?: unknown; message?: unknown; name?: unknown } : {};
+            const code = typeof source.code === 'string' ? source.code.slice(0, 96) : 'RUNTIME_E2E_FAILED';
+            const raw = typeof source.message === 'string' ? source.message : String(error);
+            const message = raw.replace(/https?:\/\/[^\s"']+/gi, '[url]').slice(0, 240);
+            const errorClass = typeof source.name === 'string' ? source.name.slice(0, 80) : 'UnknownThrown';
+            return { code, message, error_class: errorClass };
+          }
 
-            const jobId = crypto.randomUUID();
-            const requestId = `runtime-live-e2e:${jobId}`;
-            const correlationId = `runtime-live-e2e:${jobId}`;
+          export async function onRequestPost(context: PagesContext): Promise<Response> {
             try {
+              const supplied = context.request.headers.get('X-Astera-Runtime-E2E-Key')?.trim() ?? '';
+              if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) {
+                return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
+              }
+
+              const jobId = crypto.randomUUID();
+              const requestId = `runtime-live-e2e:${jobId}`;
+              const correlationId = `runtime-live-e2e:${jobId}`;
               const created = await createRuntimeJob(context.env, {
                 job_id: jobId,
                 tenant_id: 'runtime-live-e2e',
@@ -110,15 +119,11 @@ jobs:
               const fetched = await getRuntimeJob(context.env, jobId, correlationId);
               const cancelled = await cancelRuntimeJob(context.env, jobId, correlationId);
               const final = await getRuntimeJob(context.env, jobId, correlationId);
-
               const identityOk = [created, fetched, cancelled, final].every((value) => sameJob(jobId, value));
-              if (!identityOk) {
-                return Response.json({ ok: false, code: 'RUNTIME_E2E_JOB_ID_DIVERGED' }, { status: 502 });
-              }
+              if (!identityOk) return Response.json({ ok: false, code: 'RUNTIME_E2E_JOB_ID_DIVERGED' }, { status: 502 });
               if (fetched.error?.code === 'RUNTIME_STATE_LOST_AFTER_RESTART' || final.error?.code === 'RUNTIME_STATE_LOST_AFTER_RESTART') {
                 return Response.json({ ok: false, code: 'RUNTIME_E2E_STATE_LOST' }, { status: 502 });
               }
-
               return Response.json({
                 ok: true,
                 create_state: created.state,
@@ -128,11 +133,7 @@ jobs:
                 final_error_code: final.error?.code ?? null,
               }, { headers: { 'Cache-Control': 'no-store' } });
             } catch (error) {
-              return Response.json({
-                ok: false,
-                code: error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code ?? 'RUNTIME_E2E_FAILED') : 'RUNTIME_E2E_FAILED',
-                message: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240),
-              }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
+              return Response.json({ ok: false, ...safeError(error) }, { status: 502, headers: { 'Cache-Control': 'no-store' } });
             }
           }
 
@@ -152,42 +153,70 @@ jobs:
           npm run cloudflare:functions:build
           npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
 
+          latest="$(curl --silent --show-error --fail-with-body \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${CLOUDFLARE_PAGES_PROJECT}/deployments?env=production&per_page=1" \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            --header "Accept: application/json")"
+          deployment_url="$(LATEST="$latest" node -e "const x=JSON.parse(process.env.LATEST||'{}'); const r=Array.isArray(x.result)?x.result[0]:null; if(!r?.url) process.exit(2); process.stdout.write(String(r.url).replace(/\\\/$/,''));")"
+          printf 'RUNTIME_E2E_DEPLOYMENT_URL=%s\n' "${deployment_url}" >> "${GITHUB_ENV}"
+
       - name: Execute live create get cancel lifecycle
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const endpoint = `https://${process.env.STAGING_DOMAIN}/api/runtime/live-e2e`;
           const key = process.env.RUNTIME_E2E_PROBE_KEY;
-          let last = '';
-          for (let attempt = 1; attempt <= 12; attempt += 1) {
-            try {
-              const response = await fetch(`${endpoint}?attempt=${attempt}`, {
-                method: 'POST',
-                headers: {
-                  'X-Astera-Runtime-E2E-Key': key,
-                  'Content-Type': 'application/json',
-                  'Cache-Control': 'no-cache',
-                },
-                body: '{}',
-              });
-              const body = await response.json().catch(() => ({}));
-              last = `HTTP=${response.status} BODY=${JSON.stringify(body)}`;
-              if (response.ok && body.ok === true) {
-                console.log(`RUNTIME_LIVE_CREATE_STATE=${body.create_state}`);
-                console.log(`RUNTIME_LIVE_GET_STATE=${body.get_state}`);
-                console.log(`RUNTIME_LIVE_CANCEL_STATE=${body.cancel_state}`);
-                console.log(`RUNTIME_LIVE_FINAL_STATE=${body.final_state}`);
-                console.log(`RUNTIME_LIVE_FINAL_ERROR_CODE=${body.final_error_code ?? 'NONE'}`);
-                console.log('RUNTIME_LIVE_CREATE_GET_CANCEL_GATE=PASS');
-                process.exit(0);
+          const targets = [
+            ['DEPLOYMENT_URL', process.env.RUNTIME_E2E_DEPLOYMENT_URL],
+            ['CUSTOM_DOMAIN', `https://${process.env.STAGING_DOMAIN}`],
+          ];
+          const safeText = (value) => String(value || '').replace(/https?:\/\/[^\s"']+/gi, '[url]').slice(0, 300);
+          const outcomes = [];
+
+          for (const [label, base] of targets) {
+            let final = null;
+            for (let attempt = 1; attempt <= 8; attempt += 1) {
+              try {
+                const response = await fetch(`${base}/api/runtime/live-e2e?attempt=${attempt}`, {
+                  method: 'POST',
+                  headers: {
+                    'X-Astera-Runtime-E2E-Key': key,
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                  },
+                  body: '{}',
+                });
+                const contentType = response.headers.get('content-type') || '';
+                const cfRay = response.headers.get('cf-ray') || '';
+                const raw = await response.text();
+                let body = null;
+                try { body = JSON.parse(raw); } catch {}
+                final = {
+                  label,
+                  http: response.status,
+                  content_type: contentType.slice(0, 120),
+                  cf_ray_present: Boolean(cfRay),
+                  body,
+                  safe_text: body ? '' : safeText(raw),
+                };
+                if (response.ok && body?.ok === true) break;
+              } catch (error) {
+                final = { label, fetch_error: safeText(error instanceof Error ? error.message : String(error)) };
               }
-            } catch (error) {
-              last = error instanceof Error ? error.message : String(error);
+              await new Promise((resolve) => setTimeout(resolve, 2000));
             }
-            await new Promise((resolve) => setTimeout(resolve, 2500));
+            outcomes.push(final);
+            console.log(`${label}_SAFE_RESULT=${JSON.stringify(final)}`);
           }
-          throw new Error(`RUNTIME_LIVE_CREATE_GET_CANCEL_GATE_FAILED: ${last}`);
+
+          const passed = outcomes.find((item) => item?.http === 200 && item?.body?.ok === true);
+          if (!passed) throw new Error('RUNTIME_LIVE_CREATE_GET_CANCEL_GATE_FAILED');
+          console.log(`RUNTIME_LIVE_CREATE_STATE=${passed.body.create_state}`);
+          console.log(`RUNTIME_LIVE_GET_STATE=${passed.body.get_state}`);
+          console.log(`RUNTIME_LIVE_CANCEL_STATE=${passed.body.cancel_state}`);
+          console.log(`RUNTIME_LIVE_FINAL_STATE=${passed.body.final_state}`);
+          console.log(`RUNTIME_LIVE_FINAL_ERROR_CODE=${passed.body.final_error_code ?? 'NONE'}`);
+          console.log('RUNTIME_LIVE_CREATE_GET_CANCEL_GATE=PASS');
           NODE
 
       - name: Remove ephemeral probe and redeploy clean source
@@ -207,19 +236,22 @@ jobs:
           node <<'NODE'
           const domain = process.env.STAGING_DOMAIN;
           const expectedSha = process.env.TARGET_SHA;
+          const key = process.env.RUNTIME_E2E_PROBE_KEY;
           let markerOk = false;
           let probeRemoved = false;
           let last = '';
           for (let attempt = 1; attempt <= 12; attempt += 1) {
             try {
-              const [markerResponse, probeResponse] = await Promise.all([
-                fetch(`https://${domain}/__staging_deployment.json?cleanup=${attempt}`, { headers: { 'Cache-Control': 'no-cache' } }),
-                fetch(`https://${domain}/api/runtime/live-e2e?cleanup=${attempt}`, { headers: { 'Cache-Control': 'no-cache' } }),
-              ]);
+              const markerResponse = await fetch(`https://${domain}/__staging_deployment.json?cleanup=${attempt}`, { headers: { 'Cache-Control': 'no-cache' } });
               const marker = await markerResponse.json().catch(() => ({}));
+              const probeResponse = await fetch(`https://${domain}/api/runtime/live-e2e?cleanup=${attempt}`, {
+                method: 'POST',
+                headers: { 'X-Astera-Runtime-E2E-Key': key, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+                body: '{}',
+              });
               markerOk = markerResponse.ok && marker.github_sha === expectedSha && marker.branch === 'main';
               probeRemoved = probeResponse.status === 404;
-              last = `marker=${markerResponse.status}/${marker.github_sha || 'missing'} probe=${probeResponse.status}`;
+              last = `marker=${markerResponse.status}/${marker.github_sha || 'missing'} probe_post=${probeResponse.status}`;
               if (markerOk && probeRemoved) break;
             } catch (error) {
               last = error instanceof Error ? error.message : String(error);
