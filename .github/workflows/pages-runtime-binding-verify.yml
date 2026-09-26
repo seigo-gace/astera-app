@@ -79,7 +79,7 @@ jobs:
       EXPECTED_BRANCH: 'main'
       EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || '' }}
     steps:
-      - name: Verify Cloudflare metadata and live Function bindings
+      - name: Verify metadata and both live Function routes
         shell: bash
         run: |
           set -euo pipefail
@@ -95,18 +95,14 @@ jobs:
           if (!token) throw new Error('CLOUDFLARE_API_TOKEN_MISSING');
           const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
 
-          const [projectResponse, deploymentsResponse, runtimeHealthResponse, liveFunctionResponse] = await Promise.all([
+          const [projectResponse, deploymentsResponse, runtimeHealthResponse] = await Promise.all([
             fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`, { headers }),
             fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/deployments?env=production&per_page=1`, { headers }),
             fetch(`${expectedOrigin}/health`, { headers: { Accept: 'application/json' } }),
-            fetch(`https://${stagingDomain}/api/runtime/status?sha=${encodeURIComponent(expectedSha || 'manual')}`, {
-              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-            }),
           ]);
 
           const projectBody = await projectResponse.json().catch(() => ({}));
           const deploymentsBody = await deploymentsResponse.json().catch(() => ({}));
-          const liveFunctionBody = await liveFunctionResponse.json().catch(() => ({}));
           const latest = Array.isArray(deploymentsBody.result) ? deploymentsBody.result[0] : null;
 
           if (!projectResponse.ok || projectBody.success === false) {
@@ -122,7 +118,6 @@ jobs:
           const projectEnv = projectBody.result?.deployment_configs?.production?.env_vars || {};
           const projectOrigin = projectEnv.ASTERA_RUNTIME_ORIGIN;
           const projectToken = projectEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
-
           if (!projectOrigin || projectOrigin.type !== 'plain_text' || projectOrigin.value !== expectedOrigin) {
             throw new Error('PROJECT_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
           }
@@ -133,7 +128,6 @@ jobs:
           const deploymentEnv = latest.env_vars || {};
           const deploymentOrigin = deploymentEnv.ASTERA_RUNTIME_ORIGIN;
           const deploymentToken = deploymentEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
-
           if (!deploymentOrigin || deploymentOrigin.type !== 'plain_text' || deploymentOrigin.value !== expectedOrigin) {
             throw new Error('ACTIVE_DEPLOYMENT_RUNTIME_ORIGIN_MISSING_OR_MISMATCHED');
           }
@@ -144,18 +138,41 @@ jobs:
           const branch = latest.deployment_trigger?.metadata?.branch || '';
           const commitHash = latest.deployment_trigger?.metadata?.commit_hash || '';
           const stageStatus = latest.latest_stage?.status || '';
+          const deploymentUrl = String(latest.url || '').replace(/\/$/, '');
           if (branch !== expectedBranch) throw new Error(`ACTIVE_DEPLOYMENT_BRANCH_MISMATCH:${branch || 'missing'}`);
           if (expectedSha && commitHash !== expectedSha) throw new Error(`ACTIVE_DEPLOYMENT_SHA_MISMATCH:${commitHash || 'missing'}`);
           if (stageStatus && stageStatus !== 'success') throw new Error(`ACTIVE_DEPLOYMENT_STAGE_NOT_SUCCESS:${stageStatus}`);
+          if (!deploymentUrl.startsWith('https://')) throw new Error('ACTIVE_DEPLOYMENT_URL_MISSING');
 
-          const liveOrigin = liveFunctionBody.runtime_origin_configured === true;
-          const liveToken = liveFunctionBody.runtime_service_token_configured === true;
-          const liveRuntimeHealth = Number(liveFunctionBody.runtime_health_http || 0);
-          if (!liveFunctionResponse.ok || !liveOrigin || !liveToken || liveRuntimeHealth !== 200) {
-            console.error(`LIVE_FUNCTION_HTTP=${liveFunctionResponse.status}`);
-            console.error(`LIVE_FUNCTION_RUNTIME_ORIGIN=${liveOrigin ? 'PRESENT' : 'MISSING'}`);
-            console.error(`LIVE_FUNCTION_RUNTIME_SERVICE_TOKEN=${liveToken ? 'PRESENT' : 'MISSING'}`);
-            console.error(`LIVE_FUNCTION_RUNTIME_HEALTH_HTTP=${liveRuntimeHealth}`);
+          async function probe(label, base) {
+            const response = await fetch(`${base}/api/runtime/status?sha=${encodeURIComponent(expectedSha || 'manual')}`, {
+              headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+            });
+            const body = await response.json().catch(() => ({}));
+            const result = {
+              label,
+              http: response.status,
+              origin: body.runtime_origin_configured === true,
+              token: body.runtime_service_token_configured === true,
+              runtimeHealth: Number(body.runtime_health_http || 0),
+            };
+            console.log(`${label}_FUNCTION_HTTP=${result.http}`);
+            console.log(`${label}_FUNCTION_RUNTIME_ORIGIN=${result.origin ? 'PRESENT' : 'MISSING'}`);
+            console.log(`${label}_FUNCTION_RUNTIME_SERVICE_TOKEN=${result.token ? 'PRESENT' : 'MISSING'}`);
+            console.log(`${label}_FUNCTION_RUNTIME_HEALTH_HTTP=${result.runtimeHealth}`);
+            return result;
+          }
+
+          const [custom, direct] = await Promise.all([
+            probe('CUSTOM_DOMAIN', `https://${stagingDomain}`),
+            probe('DEPLOYMENT_URL', deploymentUrl),
+          ]);
+
+          const healthy = (x) => x.http === 200 && x.origin && x.token && x.runtimeHealth === 200;
+          if (custom.origin !== direct.origin || custom.token !== direct.token || custom.runtimeHealth !== direct.runtimeHealth) {
+            throw new Error('CUSTOM_DOMAIN_AND_DEPLOYMENT_FUNCTION_ROUTE_DIVERGED');
+          }
+          if (!healthy(custom) || !healthy(direct)) {
             throw new Error('LIVE_FUNCTION_RUNTIME_BINDING_FAILED');
           }
 
@@ -166,8 +183,5 @@ jobs:
           console.log(`ACTIVE_DEPLOYMENT_BRANCH=${branch}`);
           console.log(`ACTIVE_DEPLOYMENT_SHA_MATCH=${expectedSha ? String(commitHash === expectedSha) : 'NOT_REQUESTED'}`);
           console.log(`RUNTIME_HEALTH_HTTP=${runtimeHealthResponse.status}`);
-          console.log('LIVE_FUNCTION_RUNTIME_ORIGIN=PRESENT');
-          console.log('LIVE_FUNCTION_RUNTIME_SERVICE_TOKEN=PRESENT');
-          console.log(`LIVE_FUNCTION_RUNTIME_HEALTH_HTTP=${liveRuntimeHealth}`);
           console.log('PAGES_RUNTIME_BINDING_GATE=PASS');
           NODE
