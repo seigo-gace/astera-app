@@ -90,7 +90,7 @@ const sourceMarkers = [
 // Deploy済みかどうかはSource Markerへ混ぜず、Release/Runtime Evidenceへ分離する。
 const readinessChecks = [
   ['functions/_account-projection.ts', ['requireAsteraActor', 'ASTERA_DB']],
-  ['functions/api/jobs/estimate.ts', ['revisionBillableCharacters', 'promptFingerprint', 'billable_characters']],
+  ['functions/api/jobs/estimate.ts', ['revisionBillingDecision', 'revisionPurposeAuthority', 'promptFingerprint', 'billable_characters']],
   ['functions/api/jobs/index.ts', ['createRuntimeJob', 'credit_reservations', 'requestFingerprint']],
   ['functions/api/[[path]].ts', ['APP_API_ORIGIN', 'APP_API_SERVICE_TOKEN', 'X-Astera-Internal-Authenticated']],
   ['contabo/app-api/src/index.ts', ['export class AsteraRuntimeService', 'validateCreateRequest', 'validateResult']],
@@ -178,44 +178,52 @@ const report = {
   packageVersion: packageJson.version,
   declaredRouteCount,
   detectedRouteEntries: routeEntries,
-  userStoryFiles: storyFiles,
-  scopeExclusions,
   notionHierarchy: traceability?.notionHierarchy ?? null,
-  currentMain: {
-    frontendFiles: Object.fromEntries(requiredFrontendFiles.map((item) => [item, exists(item)])),
-    contractAndEvidenceFiles: Object.fromEntries(requiredContractAndEvidenceFiles.map((item) => [item, exists(item)])),
-    launchAssets: Object.fromEntries(requiredLaunchAssets.map((item) => [item, exists(item)])),
-    indexAssetReferences: Object.fromEntries(resolvedIndexAssetReferences.map((item) => [item, exists(item)])),
+  routeAudit: {
+    manifestEntries: routeEntries,
+    declaredRouteCount,
+    exactMatch: declaredRouteCount !== null && declaredRouteCount === routeEntries,
   },
-  evidenceBoundary: {
-    githubActionsRun: 'not confirmed by current repository evidence',
-    cloudflareDeployment: 'not confirmed',
-    backendSandbox: 'not confirmed',
-    emulatorSimulatorPhysicalDevices: 'not confirmed',
-    rule: 'Design, source presence and authored tests never prove executed external evidence.',
+  indexAssetAudit: {
+    absoluteReferences: absoluteAssetReferences,
+    resolvedReferences: resolvedIndexAssetReferences,
+    brokenReferences: brokenIndexAssetReferences,
   },
-  sourceGaps,
-  releaseBlockers,
-  sourceVerdict: sourceGaps.length === 0 ? 'PASS' : 'FAIL',
-  releaseVerdict: releaseBlockers.length === 0 ? 'GO' : 'NO-GO',
+  storyAudit: {
+    files: storyFiles,
+    count: storyFiles.length,
+  },
+  sourceAudit: {
+    requiredFrontendFiles,
+    requiredContractAndEvidenceFiles,
+    requiredLaunchAssets,
+    sourceMarkers,
+    readinessChecks,
+    sourceGaps,
+    sourceVerdict: sourceGaps.length === 0 ? 'PASS' : 'FAIL',
+  },
+  scopeExclusions,
+  releaseEvidence: {
+    status: releaseBlockers.length === 0 ? 'GO' : 'NO-GO',
+    blockers: releaseBlockers,
+    note: 'Source completeness does not prove deployment, OAuth, billing, storage, or physical-device release evidence.',
+  },
 };
 
-const outputDir = resolve('audit-results');
-fs.mkdirSync(outputDir, { recursive: true });
-const outputPath = path.join(outputDir, 'notion-repository-audit.json');
-fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+fs.mkdirSync(resolve('audit-results'), { recursive: true });
+fs.writeFileSync(resolve('audit-results/notion-repository-audit.json'), `${JSON.stringify(report, null, 2)}\n`);
 
 console.log(JSON.stringify({
-  sourceVerdict: report.sourceVerdict,
-  releaseVerdict: report.releaseVerdict,
+  sourceVerdict: report.sourceAudit.sourceVerdict,
+  releaseVerdict: report.releaseEvidence.status,
   packageVersion: report.packageVersion,
-  routes: `${routeEntries}/${declaredRouteCount ?? 'unknown'}`,
-  notionPages: traceability?.notionHierarchy?.pageCount ?? 'unknown',
+  routes: `${routeEntries}/${declaredRouteCount ?? '?'}`,
+  notionPages: report.notionHierarchy?.pageCount ?? null,
   userStoryFiles: storyFiles.length,
   sourceGapCount: sourceGaps.length,
   sourceGaps,
   releaseBlockers,
-  report: path.relative(root, outputPath),
+  report: 'audit-results/notion-repository-audit.json',
 }, null, 2));
 
 if (strict && sourceGaps.length > 0) process.exit(1);
