@@ -53,6 +53,9 @@ jobs:
             'runtime_origin_configured',
             'runtime_service_token_configured',
             'runtime_health_http',
+            'runtime_auth_http',
+            'runtime_auth_authenticated',
+            'runtime_auth_response_code',
           ]) {
             if (!statusSource.includes(marker)) throw new Error(`LIVE_RUNTIME_STATUS_MARKER_MISSING:${marker}`);
           }
@@ -155,11 +158,17 @@ jobs:
               origin: body.runtime_origin_configured === true,
               token: body.runtime_service_token_configured === true,
               runtimeHealth: Number(body.runtime_health_http || 0),
+              runtimeAuthHttp: Number(body.runtime_auth_http || 0),
+              runtimeAuthenticated: body.runtime_auth_authenticated === true,
+              runtimeAuthCode: typeof body.runtime_auth_response_code === 'string' ? body.runtime_auth_response_code : '',
             };
             console.log(`${label}_FUNCTION_HTTP=${result.http}`);
             console.log(`${label}_FUNCTION_RUNTIME_ORIGIN=${result.origin ? 'PRESENT' : 'MISSING'}`);
             console.log(`${label}_FUNCTION_RUNTIME_SERVICE_TOKEN=${result.token ? 'PRESENT' : 'MISSING'}`);
             console.log(`${label}_FUNCTION_RUNTIME_HEALTH_HTTP=${result.runtimeHealth}`);
+            console.log(`${label}_FUNCTION_RUNTIME_AUTH_HTTP=${result.runtimeAuthHttp}`);
+            console.log(`${label}_FUNCTION_RUNTIME_AUTHENTICATED=${result.runtimeAuthenticated}`);
+            console.log(`${label}_FUNCTION_RUNTIME_AUTH_CODE=${result.runtimeAuthCode || 'MISSING'}`);
             return result;
           }
 
@@ -168,8 +177,22 @@ jobs:
             probe('DEPLOYMENT_URL', deploymentUrl),
           ]);
 
-          const healthy = (x) => x.http === 200 && x.origin && x.token && x.runtimeHealth === 200;
-          if (custom.origin !== direct.origin || custom.token !== direct.token || custom.runtimeHealth !== direct.runtimeHealth) {
+          const healthy = (x) =>
+            x.http === 200 &&
+            x.origin &&
+            x.token &&
+            x.runtimeHealth === 200 &&
+            x.runtimeAuthHttp === 404 &&
+            x.runtimeAuthenticated &&
+            x.runtimeAuthCode === 'RUNTIME_JOB_NOT_FOUND';
+          if (
+            custom.origin !== direct.origin ||
+            custom.token !== direct.token ||
+            custom.runtimeHealth !== direct.runtimeHealth ||
+            custom.runtimeAuthHttp !== direct.runtimeAuthHttp ||
+            custom.runtimeAuthenticated !== direct.runtimeAuthenticated ||
+            custom.runtimeAuthCode !== direct.runtimeAuthCode
+          ) {
             throw new Error('CUSTOM_DOMAIN_AND_DEPLOYMENT_FUNCTION_ROUTE_DIVERGED');
           }
           if (!healthy(custom) || !healthy(direct)) {
