@@ -22,8 +22,20 @@ const MAIN8 = [
   ['08 主役AI／利用者への再指示', '- 再指示'],
 ].map(([title, body]) => `${title}\n${body}`).join('\n---\n');
 
-test('internal Job API reaches current Astera Core wire contract and returns Main8', async (t) => {
+const MANUAL_PURPOSES = ['review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
+const REQUIRED_FOCUS: Record<(typeof MANUAL_PURPOSES)[number], string> = {
+  review: 'internal_consistency',
+  compare: 'candidate_extraction',
+  verify: 'claim_extraction',
+  improve: 'defects_and_bottlenecks',
+  research: 'entity_extraction',
+  plan: 'execution_sequence',
+  consider: 'opposing_views',
+};
+
+test('internal Job API preserves all seven manual App purpose contracts through Runtime adapter and returns Main8', async (t) => {
   let processCalls = 0;
+  const seenPurposes = new Set<string>();
   const processServer = createServer(async (req, res) => {
     if (req.method !== 'POST' || req.url !== '/process') {
       res.writeHead(404).end();
@@ -35,22 +47,31 @@ test('internal Job API reaches current Astera Core wire contract and returns Mai
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
-    assert.equal(body.question, 'Main API Contract Test');
+    const question = String(body.question ?? '');
+    const expectedPurpose = question.replace('Main API Contract Test:', '');
+    assert.ok(MANUAL_PURPOSES.includes(expectedPurpose as (typeof MANUAL_PURPOSES)[number]));
+
     const context = JSON.parse(String(body.context ?? '{}')) as {
       app_purpose_contract?: {
         version?: string;
         selected_by?: string;
         purpose?: string;
+        objective?: string;
         required_focus?: string[];
+        operating_rules?: string[];
       };
     };
-    assert.equal(context.app_purpose_contract?.version, 'app-purpose-v1');
-    assert.equal(context.app_purpose_contract?.selected_by, 'user');
-    assert.equal(context.app_purpose_contract?.purpose, 'verify');
-    assert.ok(context.app_purpose_contract?.required_focus?.includes('claim_extraction'));
+    const contract = context.app_purpose_contract;
+    assert.equal(contract?.version, 'app-purpose-v1');
+    assert.equal(contract?.selected_by, 'user');
+    assert.equal(contract?.purpose, expectedPurpose);
+    assert.ok((contract?.objective ?? '').length > 20);
+    assert.ok(contract?.required_focus?.includes(REQUIRED_FOCUS[expectedPurpose as keyof typeof REQUIRED_FOCUS]));
+    assert.ok(contract?.operating_rules?.some((rule) => /original user prompt/i.test(rule)));
     assert.equal(Object.hasOwn(body, 'actor'), false);
     assert.equal(Object.hasOwn(body, 'job'), false);
     processCalls += 1;
+    seenPurposes.add(expectedPurpose);
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
     res.end(MAIN8);
   });
@@ -107,48 +128,53 @@ test('internal Job API reaches current Astera Core wire contract and returns Mai
     await service.database.close();
   });
 
-  const jobId = crypto.randomUUID();
-  const created = await app.request('/internal/v1/jobs', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer internal-test-token', 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      job_id: jobId,
-      tenant_id: 'tenant-test',
-      user_id: 'user-test',
-      request_id: crypto.randomUUID(),
-      prompt: 'Main API Contract Test',
-      purpose: 'verify',
-      options: [],
-      files: [],
-      private_mode: false,
-      project_id: null,
-      reserved_credits: 10,
-      policy_version: 'test-policy',
-      correlation_id: crypto.randomUUID(),
-    }),
-  });
-  assert.equal(created.status, 201);
-
-  let completed: Record<string, unknown> | null = null;
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const polled = await app.request(`/internal/v1/jobs/${jobId}`, {
-      headers: { Authorization: 'Bearer internal-test-token' },
+  for (const purpose of MANUAL_PURPOSES) {
+    const jobId = crypto.randomUUID();
+    const prompt = `Main API Contract Test:${purpose}`;
+    const created = await app.request('/internal/v1/jobs', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer internal-test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_id: jobId,
+        tenant_id: 'tenant-test',
+        user_id: 'user-test',
+        request_id: crypto.randomUUID(),
+        prompt,
+        purpose,
+        options: [],
+        files: [],
+        private_mode: false,
+        project_id: null,
+        reserved_credits: 10,
+        policy_version: 'test-policy',
+        correlation_id: crypto.randomUUID(),
+      }),
     });
-    assert.equal(polled.status, 200);
-    const payload = await polled.json() as { job: Record<string, unknown> };
-    if (payload.job.state === 'completed') {
-      completed = payload.job;
-      break;
+    assert.equal(created.status, 201, `${purpose}: create failed`);
+
+    let completed: Record<string, unknown> | null = null;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const polled = await app.request(`/internal/v1/jobs/${jobId}`, {
+        headers: { Authorization: 'Bearer internal-test-token' },
+      });
+      assert.equal(polled.status, 200, `${purpose}: poll failed`);
+      const payload = await polled.json() as { job: Record<string, unknown> };
+      if (payload.job.state === 'completed') {
+        completed = payload.job;
+        break;
+      }
+      if (payload.job.state === 'failed') assert.fail(`${purpose}: Main Runtime failed: ${JSON.stringify(payload.job.error)}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    if (payload.job.state === 'failed') assert.fail(`Main Runtime failed: ${JSON.stringify(payload.job.error)}`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.ok(completed, `${purpose}: Main Runtime Job did not complete`);
+    const result = completed.result as { sections?: Record<string, { title?: string; body?: string; canonical_key?: string }> };
+    assert.equal(result.sections?.true_purpose?.title, '01 本当の目的');
+    assert.equal(result.sections?.recommendation?.title, '07 根拠成立状態');
+    assert.equal(result.sections?.recommendation?.canonical_key, '07_evidence_status');
+    assert.equal(result.sections?.next_prompt?.title, '08 主役AI／利用者への再指示');
   }
 
-  assert.ok(completed, 'Main Runtime Job did not complete');
-  assert.equal(processCalls, 1);
-  const result = completed.result as { sections?: Record<string, { title?: string; body?: string; canonical_key?: string }> };
-  assert.equal(result.sections?.true_purpose?.title, '01 本当の目的');
-  assert.equal(result.sections?.recommendation?.title, '07 根拠成立状態');
-  assert.equal(result.sections?.recommendation?.canonical_key, '07_evidence_status');
-  assert.equal(result.sections?.next_prompt?.title, '08 主役AI／利用者への再指示');
+  assert.equal(processCalls, MANUAL_PURPOSES.length);
+  assert.deepEqual([...seenPurposes].sort(), [...MANUAL_PURPOSES].sort());
 });
