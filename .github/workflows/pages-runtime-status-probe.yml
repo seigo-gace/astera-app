@@ -1,0 +1,70 @@
+name: Pages Runtime Status Probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pages-runtime-status-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Probe live Pages runtime status safely
+        shell: bash
+        env:
+          CUSTOM_URL: https://staging.asterav8.jp/api/runtime/status
+          DEPLOYMENT_URL: https://9f5ae5e2.astera-app-staging.pages.dev/api/runtime/status
+          RUNTIME_HEALTH_URL: https://runtime.asterav8.jp/health
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const targets = [
+            ['custom', process.env.CUSTOM_URL],
+            ['deployment', process.env.DEPLOYMENT_URL],
+          ];
+          const allowed = [
+            'status',
+            'runtime_origin_configured',
+            'runtime_service_token_configured',
+            'runtime_health_http',
+            'runtime_health_error_class',
+            'runtime_health_error_message',
+            'runtime_health_cause_class',
+            'runtime_health_cause_code',
+          ];
+
+          for (const [name, url] of targets) {
+            try {
+              const response = await fetch(url, {
+                headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+                redirect: 'manual',
+              });
+              const text = await response.text();
+              let body = null;
+              try { body = JSON.parse(text); } catch {}
+              const safe = {};
+              if (body && typeof body === 'object' && !Array.isArray(body)) {
+                for (const key of allowed) safe[key] = body[key] ?? null;
+              }
+              console.log(`${name.toUpperCase()}_FUNCTION_HTTP=${response.status}`);
+              console.log(`${name.toUpperCase()}_SAFE_BODY=${JSON.stringify(safe)}`);
+            } catch (error) {
+              console.log(`${name.toUpperCase()}_PROBE_ERROR_CLASS=${error instanceof Error ? error.name : 'UnknownThrown'}`);
+              console.log(`${name.toUpperCase()}_PROBE_ERROR_MESSAGE=${error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240)}`);
+            }
+          }
+
+          try {
+            const response = await fetch(process.env.RUNTIME_HEALTH_URL, {
+              headers: { Accept: 'application/json' },
+              redirect: 'manual',
+            });
+            console.log(`DIRECT_RUNTIME_HEALTH_HTTP=${response.status}`);
+          } catch (error) {
+            console.log(`DIRECT_RUNTIME_PROBE_ERROR_CLASS=${error instanceof Error ? error.name : 'UnknownThrown'}`);
+          }
+          NODE
