@@ -1,0 +1,206 @@
+name: Runtime Fetch Differential Diagnostic
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-fetch-differential-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_PAGES_PROJECT: astera-app-staging
+      TARGET_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Build source and generate protected differential probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN}"
+          npm install --no-fund --no-audit
+          npm run build
+          printf '{"github_sha":"%s","branch":"main","auth_mode":"real"}\n' "${TARGET_SHA}" > dist/__staging_deployment.json
+          probe_key="$(openssl rand -hex 32)"
+          echo "::add-mask::${probe_key}"
+          probe_hash="$(printf '%s' "${probe_key}" | sha256sum | awk '{print $1}')"
+          printf 'RUNTIME_DIFF_KEY=%s\n' "${probe_key}" >> "${GITHUB_ENV}"
+          cat > functions/api/runtime/fetch-diff.ts <<'EOF'
+          import type { RuntimeEnv } from '../../_runtime';
+          type PagesContext = { request: Request; env: RuntimeEnv };
+          const EXPECTED_KEY_SHA256 = '__PROBE_HASH__';
+
+          async function sha256Hex(value: string): Promise<string> {
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+            return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+          }
+          function obj(value: unknown): Record<string, unknown> {
+            return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+          }
+          function input(jobId: string, mode: 'baseline' | 'lifecycle-safe' | 'lifecycle-original') {
+            const lifecycle = mode !== 'baseline';
+            return {
+              job_id: jobId,
+              tenant_id: lifecycle ? 'runtime-live-e2e' : 'runtime-fetch-diff',
+              user_id: lifecycle ? 'runtime-live-e2e' : 'runtime-fetch-diff',
+              request_id: `${lifecycle ? 'runtime-live-e2e' : 'runtime-fetch-diff'}:${jobId}`,
+              prompt: mode === 'lifecycle-original'
+                ? 'Astera Runtime live lifecycle probe. Validate the normal fixed Main8 execution path.'
+                : mode === 'lifecycle-safe'
+                  ? 'Runtime live lifecycle diagnostic.'
+                  : 'Runtime fetch differential diagnostic.',
+              purpose: 'verify', options: [], files: [], private_mode: false, project_id: null,
+              reserved_credits: 1,
+              policy_version: lifecycle ? 'runtime-live-e2e' : 'runtime-fetch-diff',
+              correlation_id: `${lifecycle ? 'runtime-live-e2e' : 'runtime-fetch-diff'}:${jobId}`,
+            };
+          }
+          async function requestRuntime(
+            env: RuntimeEnv,
+            body: Record<string, unknown>,
+            correlationHeader: string,
+            options: { redirectManual: boolean; signal: boolean },
+          ): Promise<Record<string, unknown>> {
+            const origin = env.ASTERA_RUNTIME_ORIGIN?.trim() ?? '';
+            const token = env.ASTERA_RUNTIME_SERVICE_TOKEN?.trim() ?? '';
+            if (!origin || !token) return { http: 0, error_code: 'RUNTIME_BINDING_MISSING' };
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort('diag_timeout'), 15000);
+            try {
+              const response = await fetch(new URL('/internal/v1/jobs', origin).toString(), {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', 'X-Correlation-ID': correlationHeader },
+                body: JSON.stringify(body),
+                ...(options.redirectManual ? { redirect: 'manual' as const } : {}),
+                ...(options.signal ? { signal: controller.signal } : {}),
+              });
+              const raw = await response.text();
+              let payload: unknown = null;
+              try { payload = JSON.parse(raw); } catch {}
+              const root = obj(payload);
+              const error = obj(root.error);
+              const job = obj(root.job);
+              return {
+                http: response.status,
+                content_type: (response.headers.get('content-type') ?? '').slice(0, 100),
+                server: (response.headers.get('server') ?? '').slice(0, 80) || null,
+                cf_mitigated: (response.headers.get('cf-mitigated') ?? '').slice(0, 80) || null,
+                location_present: Boolean(response.headers.get('location')),
+                json: Object.keys(root).length > 0,
+                error_code: typeof error.code === 'string' ? error.code.slice(0, 96) : null,
+                job_present: Object.keys(job).length > 0,
+                body_length: raw.length,
+              };
+            } catch (error) {
+              return { http: 0, fetch_error: error instanceof Error ? error.name : 'UnknownThrown' };
+            } finally { clearTimeout(timer); }
+          }
+          async function cancelIfCreated(env: RuntimeEnv, jobId: string, result: Record<string, unknown>): Promise<void> {
+            if (result.http !== 200 && result.http !== 201) return;
+            const origin = env.ASTERA_RUNTIME_ORIGIN?.trim() ?? '';
+            const token = env.ASTERA_RUNTIME_SERVICE_TOKEN?.trim() ?? '';
+            if (!origin || !token) return;
+            await fetch(new URL(`/internal/v1/jobs/${encodeURIComponent(jobId)}/cancel`, origin).toString(), {
+              method: 'POST', headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', 'X-Correlation-ID': crypto.randomUUID() }, body: '{}', redirect: 'manual',
+            }).catch(() => undefined);
+          }
+          export async function onRequestPost(context: PagesContext): Promise<Response> {
+            const supplied = context.request.headers.get('X-Astera-Runtime-Diff-Key')?.trim() ?? '';
+            if (!supplied || await sha256Hex(supplied) !== EXPECTED_KEY_SHA256) return Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 });
+            const cases: Array<[string, 'baseline'|'lifecycle-safe'|'lifecycle-original', 'simple'|'uuid'|'lifecycle', boolean, boolean]> = [
+              ['baseline_manual', 'baseline', 'simple', true, false],
+              ['baseline_follow', 'baseline', 'simple', false, false],
+              ['baseline_signal', 'baseline', 'simple', false, true],
+              ['lifecycle_body_safe_prompt', 'lifecycle-safe', 'simple', true, false],
+              ['lifecycle_body_original_prompt', 'lifecycle-original', 'simple', true, false],
+              ['lifecycle_uuid_header', 'lifecycle-original', 'uuid', true, false],
+              ['lifecycle_correlation_header', 'lifecycle-original', 'lifecycle', true, false],
+              ['lifecycle_helper_shape', 'lifecycle-original', 'lifecycle', false, true],
+            ];
+            const results: Record<string, unknown> = {};
+            for (const [name, mode, headerMode, redirectManual, signal] of cases) {
+              const jobId = crypto.randomUUID();
+              const body = input(jobId, mode);
+              const header = headerMode === 'simple' ? 'runtime-fetch-differential' : headerMode === 'uuid' ? crypto.randomUUID() : `runtime-live-e2e:${jobId}`;
+              const result = await requestRuntime(context.env, body, header, { redirectManual, signal });
+              results[name] = result;
+              await cancelIfCreated(context.env, jobId, result);
+            }
+            return Response.json({ kind: 'runtime_fetch_differential', ok: true, results }, { headers: { 'Cache-Control': 'no-store' } });
+          }
+          export function onRequest(context: PagesContext): Promise<Response> {
+            return context.request.method === 'POST' ? onRequestPost(context) : Promise.resolve(Response.json({ error: { code: 'ROUTE_NOT_FOUND' } }, { status: 404 }));
+          }
+          EOF
+          sed -i "s/__PROBE_HASH__/${probe_hash}/" functions/api/runtime/fetch-diff.ts
+      - name: Deploy and execute differential probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run cloudflare:functions:build
+          output="$(npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main 2>&1)"
+          printf '%s\n' "${output}"
+          url="$(printf '%s\n' "${output}" | grep -Eo 'https://[a-f0-9]+\.astera-app-staging\.pages\.dev' | tail -n 1)"
+          test -n "${url}"
+          printf 'RUNTIME_DIFF_URL=%s\n' "${url}" >> "${GITHUB_ENV}"
+          node <<'NODE'
+          const url = process.env.RUNTIME_DIFF_URL;
+          const key = process.env.RUNTIME_DIFF_KEY;
+          let final = null;
+          for (let attempt = 1; attempt <= 8; attempt++) {
+            const response = await fetch(`${url}/api/runtime/fetch-diff?attempt=${attempt}`, { method:'POST', headers:{'X-Astera-Runtime-Diff-Key':key,'Content-Type':'application/json','Cache-Control':'no-cache'}, body:'{}' });
+            const raw = await response.text();
+            let body = null; try { body = JSON.parse(raw); } catch {}
+            final = { http: response.status, json: body !== null, body };
+            if (response.ok && body?.kind === 'runtime_fetch_differential') break;
+            await new Promise(r => setTimeout(r, 2500));
+          }
+          console.log(`RUNTIME_FETCH_DIFF_SAFE=${JSON.stringify(final)}`);
+          if (final?.http !== 200 || final?.body?.kind !== 'runtime_fetch_differential') throw new Error('RUNTIME_FETCH_DIFF_FAILED');
+          NODE
+      - name: Remove differential probe and redeploy clean source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f functions/api/runtime/fetch-diff.ts
+          npm run cloudflare:functions:build
+          output="$(npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main 2>&1)"
+          printf '%s\n' "${output}"
+          url="$(printf '%s\n' "${output}" | grep -Eo 'https://[a-f0-9]+\.astera-app-staging\.pages\.dev' | tail -n 1)"
+          test -n "${url}"
+          printf 'RUNTIME_DIFF_CLEAN_URL=%s\n' "${url}" >> "${GITHUB_ENV}"
+      - name: Verify cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const base = process.env.RUNTIME_DIFF_CLEAN_URL;
+          const key = process.env.RUNTIME_DIFF_KEY;
+          const expected = process.env.TARGET_SHA;
+          if (!base) throw new Error('CLEAN_URL_MISSING');
+          const markerResponse = await fetch(`${base}/__staging_deployment.json`, {headers:{'Cache-Control':'no-cache'}});
+          const marker = await markerResponse.json().catch(()=>({}));
+          const routeResponse = await fetch(`${base}/api/runtime/fetch-diff`, {method:'POST',headers:{'X-Astera-Runtime-Diff-Key':key,'Content-Type':'application/json'},body:'{}'});
+          const raw = await routeResponse.text(); let body=null; try{body=JSON.parse(raw)}catch{}
+          const markerOk = markerResponse.ok && marker.github_sha === expected && marker.branch === 'main';
+          const removed = body?.kind !== 'runtime_fetch_differential';
+          console.log(`RUNTIME_FETCH_DIFF_CLEANUP_SAFE=${JSON.stringify({marker_http:markerResponse.status,marker_sha_match:marker.github_sha===expected,route_http:routeResponse.status,diagnostic_marker_present:body?.kind==='runtime_fetch_differential'})}`);
+          if (!markerOk || !removed) throw new Error('RUNTIME_FETCH_DIFF_CLEANUP_FAILED');
+          console.log('RUNTIME_FETCH_DIFF_EPHEMERAL_ROUTE_REMOVED=PASS');
+          console.log('RUNTIME_FETCH_DIFF_FINAL_DEPLOYMENT_SHA=PASS');
+          NODE
