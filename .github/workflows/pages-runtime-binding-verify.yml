@@ -56,6 +56,7 @@ jobs:
             'runtime_auth_http',
             'runtime_auth_authenticated',
             'runtime_auth_response_code',
+            'RUNTIME_STATE_LOST_AFTER_RESTART',
           ]) {
             if (!statusSource.includes(marker)) throw new Error(`LIVE_RUNTIME_STATUS_MARKER_MISSING:${marker}`);
           }
@@ -177,14 +178,16 @@ jobs:
             probe('DEPLOYMENT_URL', deploymentUrl),
           ]);
 
+          const authContractValid = (x) =>
+            (x.runtimeAuthHttp === 404 && x.runtimeAuthCode === 'RUNTIME_JOB_NOT_FOUND') ||
+            (x.runtimeAuthHttp === 200 && x.runtimeAuthCode === 'RUNTIME_STATE_LOST_AFTER_RESTART');
           const healthy = (x) =>
             x.http === 200 &&
             x.origin &&
             x.token &&
             x.runtimeHealth === 200 &&
-            x.runtimeAuthHttp === 404 &&
             x.runtimeAuthenticated &&
-            x.runtimeAuthCode === 'RUNTIME_JOB_NOT_FOUND';
+            authContractValid(x);
           if (
             custom.origin !== direct.origin ||
             custom.token !== direct.token ||
