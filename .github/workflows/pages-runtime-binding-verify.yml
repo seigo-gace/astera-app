@@ -98,22 +98,16 @@ jobs:
 
           if (!token) throw new Error('CLOUDFLARE_API_TOKEN_MISSING');
           const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+          const deploymentListUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/deployments?env=production&per_page=25`;
 
-          const [projectResponse, deploymentsResponse, runtimeHealthResponse] = await Promise.all([
+          const [projectResponse, runtimeHealthResponse] = await Promise.all([
             fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}`, { headers }),
-            fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${projectName}/deployments?env=production&per_page=1`, { headers }),
             fetch(`${expectedOrigin}/health`, { headers: { Accept: 'application/json' } }),
           ]);
 
           const projectBody = await projectResponse.json().catch(() => ({}));
-          const deploymentsBody = await deploymentsResponse.json().catch(() => ({}));
-          const latest = Array.isArray(deploymentsBody.result) ? deploymentsBody.result[0] : null;
-
           if (!projectResponse.ok || projectBody.success === false) {
             throw new Error(`PAGES_PROJECT_READ_FAILED_HTTP_${projectResponse.status}`);
-          }
-          if (!deploymentsResponse.ok || deploymentsBody.success === false || !latest) {
-            throw new Error(`PAGES_DEPLOYMENT_READ_FAILED_HTTP_${deploymentsResponse.status}`);
           }
           if (!runtimeHealthResponse.ok) {
             throw new Error(`RUNTIME_HEALTH_FAILED_HTTP_${runtimeHealthResponse.status}`);
@@ -129,7 +123,40 @@ jobs:
             throw new Error('PROJECT_RUNTIME_SERVICE_TOKEN_MISSING_OR_NOT_SECRET');
           }
 
-          const deploymentEnv = latest.env_vars || {};
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          async function selectSuccessfulDeployment() {
+            let observed = [];
+            for (let attempt = 1; attempt <= 6; attempt += 1) {
+              const response = await fetch(deploymentListUrl, { headers });
+              const body = await response.json().catch(() => ({}));
+              if (!response.ok || body.success === false || !Array.isArray(body.result)) {
+                throw new Error(`PAGES_DEPLOYMENT_READ_FAILED_HTTP_${response.status}`);
+              }
+              observed = body.result.map((deployment) => ({
+                branch: deployment?.deployment_trigger?.metadata?.branch || '',
+                sha: deployment?.deployment_trigger?.metadata?.commit_hash || '',
+                stage: deployment?.latest_stage?.status || '',
+              }));
+              const selected = body.result.find((deployment) => {
+                const branch = deployment?.deployment_trigger?.metadata?.branch || '';
+                const sha = deployment?.deployment_trigger?.metadata?.commit_hash || '';
+                const stage = deployment?.latest_stage?.status || '';
+                return branch === expectedBranch && (!expectedSha || sha === expectedSha) && stage === 'success';
+              });
+              if (selected) {
+                console.log(`PAGES_DEPLOYMENT_SELECTION_ATTEMPT=${attempt}`);
+                return selected;
+              }
+              if (attempt < 6) await sleep(5000);
+            }
+            const exact = observed.filter((deployment) =>
+              deployment.branch === expectedBranch && (!expectedSha || deployment.sha === expectedSha));
+            console.log(`PAGES_DEPLOYMENT_EXACT_CANDIDATES=${JSON.stringify(exact)}`);
+            throw new Error(expectedSha ? 'EXACT_SUCCESSFUL_DEPLOYMENT_NOT_FOUND' : 'SUCCESSFUL_BRANCH_DEPLOYMENT_NOT_FOUND');
+          }
+
+          const deployment = await selectSuccessfulDeployment();
+          const deploymentEnv = deployment.env_vars || {};
           const deploymentOrigin = deploymentEnv.ASTERA_RUNTIME_ORIGIN;
           const deploymentToken = deploymentEnv.ASTERA_RUNTIME_SERVICE_TOKEN;
           if (!deploymentOrigin || deploymentOrigin.type !== 'plain_text' || deploymentOrigin.value !== expectedOrigin) {
@@ -139,13 +166,13 @@ jobs:
             throw new Error('ACTIVE_DEPLOYMENT_RUNTIME_SERVICE_TOKEN_MISSING_OR_NOT_SECRET');
           }
 
-          const branch = latest.deployment_trigger?.metadata?.branch || '';
-          const commitHash = latest.deployment_trigger?.metadata?.commit_hash || '';
-          const stageStatus = latest.latest_stage?.status || '';
-          const deploymentUrl = String(latest.url || '').replace(/\/$/, '');
+          const branch = deployment.deployment_trigger?.metadata?.branch || '';
+          const commitHash = deployment.deployment_trigger?.metadata?.commit_hash || '';
+          const stageStatus = deployment.latest_stage?.status || '';
+          const deploymentUrl = String(deployment.url || '').replace(/\/$/, '');
           if (branch !== expectedBranch) throw new Error(`ACTIVE_DEPLOYMENT_BRANCH_MISMATCH:${branch || 'missing'}`);
           if (expectedSha && commitHash !== expectedSha) throw new Error(`ACTIVE_DEPLOYMENT_SHA_MISMATCH:${commitHash || 'missing'}`);
-          if (stageStatus && stageStatus !== 'success') throw new Error(`ACTIVE_DEPLOYMENT_STAGE_NOT_SUCCESS:${stageStatus}`);
+          if (stageStatus !== 'success') throw new Error(`ACTIVE_DEPLOYMENT_STAGE_NOT_SUCCESS:${stageStatus || 'missing'}`);
           if (!deploymentUrl.startsWith('https://')) throw new Error('ACTIVE_DEPLOYMENT_URL_MISSING');
 
           async function probe(label, base) {
@@ -207,6 +234,7 @@ jobs:
           console.log('ACTIVE_DEPLOYMENT_RUNTIME_ORIGIN=PRESENT TYPE=plain_text');
           console.log('ACTIVE_DEPLOYMENT_RUNTIME_SERVICE_TOKEN=PRESENT TYPE=secret_text');
           console.log(`ACTIVE_DEPLOYMENT_BRANCH=${branch}`);
+          console.log(`ACTIVE_DEPLOYMENT_STAGE=${stageStatus}`);
           console.log(`ACTIVE_DEPLOYMENT_SHA_MATCH=${expectedSha ? String(commitHash === expectedSha) : 'NOT_REQUESTED'}`);
           console.log(`RUNTIME_HEALTH_HTTP=${runtimeHealthResponse.status}`);
           console.log('PAGES_RUNTIME_BINDING_GATE=PASS');
