@@ -17,7 +17,7 @@ import {
   type EstimateInput,
   type RevisionCreditMetric,
 } from '../../_job-policy';
-import { assertRevisionPurposeAuthority } from '../../_purpose-control';
+import { revisionPurposeAuthority } from '../../_purpose-control';
 
 type UploadRow = {
   id: string;
@@ -106,7 +106,19 @@ async function revisionBillableCharacters(
   if (Boolean(parent.private_mode) !== input.privateMode) {
     throw new FunctionHttpError(409, 'REVISION_PRIVACY_MODE_MISMATCH', '修整元Jobと再投稿JobのPrivate Modeが一致しません。');
   }
-  assertRevisionPurposeAuthority(parent.purpose, input.purpose);
+  const purposeAuthority = revisionPurposeAuthority(parent.purpose, input.purpose);
+  if (!purposeAuthority.ok) {
+    throw new FunctionHttpError(
+      purposeAuthority.status,
+      purposeAuthority.code,
+      '用途を変更した実行は修整再投稿として扱えません。新しい分析として実行してください。',
+      {
+        parent_purpose: purposeAuthority.parent_purpose,
+        current_purpose: purposeAuthority.current_purpose,
+        required_action: purposeAuthority.required_action,
+      },
+    );
+  }
   if (!parent.prompt_sha256) {
     throw new FunctionHttpError(409, 'REVISION_PROVENANCE_UNAVAILABLE', '修整元本文をServer検証できないため差分Creditを適用できません。');
   }
