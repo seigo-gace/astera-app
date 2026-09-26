@@ -75,7 +75,10 @@ test('estimate exposes purpose provenance without rewriting prompt', () => {
 test('result and history preserve selected purpose as provenance instead of reclassifying text', () => {
   const trigger = readFileSync(new URL('../migrations/d1/0009_result_settlement_trigger.sql', import.meta.url), 'utf8');
   const history = readFileSync(new URL('../functions/_history-store.ts', import.meta.url), 'utf8');
+  const purposeIndex = readFileSync(new URL('../migrations/d1/0021_purpose_history_index.sql', import.meta.url), 'utf8');
   assert.match(trigger, /NEW\.purpose/);
   assert.match(history, /r\.purpose=\?5/);
   assert.doesNotMatch(history, /inferPurpose|classifyPurpose|detectPurpose/i);
+  assert.match(purposeIndex, /CREATE INDEX IF NOT EXISTS results_tenant_purpose_created/);
+  assert.match(purposeIndex, /ON results\(tenant_id, purpose, created_at DESC\)/);
 });
