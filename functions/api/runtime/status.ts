@@ -85,7 +85,7 @@ async function runtimeHealth(origin: string | undefined): Promise<RuntimeHealthP
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: { Accept: 'application/json' },
-      redirect: 'error',
+      redirect: 'manual',
     });
 
     return {
