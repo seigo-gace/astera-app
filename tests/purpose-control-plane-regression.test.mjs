@@ -1,30 +1,60 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import {
+  purposeSelectionOrigin,
+  revisionPurposeAuthority,
+} from '../functions/_purpose-control.ts';
 
 const MANUAL = ['review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'];
-const control = readFileSync(new URL('../functions/_purpose-control.ts', import.meta.url), 'utf8');
 
-test('purpose control module keeps manual/user and auto origins distinct', () => {
-  assert.match(control, /purpose === 'auto' \? 'auto' : 'user'/);
-  for (const purpose of MANUAL) assert.match(control, new RegExp(`PurposeKey|${purpose}|currentPurpose`));
+test('manual purposes are user-selected control-plane values and auto stays auto', () => {
+  for (const purpose of MANUAL) assert.equal(purposeSelectionOrigin(purpose), 'user');
+  assert.equal(purposeSelectionOrigin('auto'), 'auto');
 });
 
-test('cross-purpose revision fails closed as a new-analysis boundary', () => {
-  assert.match(control, /normalizedParent === currentPurpose/);
-  assert.match(control, /REVISION_PURPOSE_MISMATCH/);
-  assert.match(control, /required_action:\s*'start_new_analysis'/);
-  assert.match(control, /parent_purpose:\s*normalizedParent/);
-  assert.match(control, /current_purpose:\s*currentPurpose/);
+test('same-purpose revisions remain eligible for revision treatment', () => {
+  for (const purpose of ['auto', ...MANUAL]) {
+    assert.deepEqual(revisionPurposeAuthority(purpose, purpose), { ok: true });
+  }
+});
+
+test('all 42 manual cross-purpose transitions become new-analysis boundaries', () => {
+  let mismatches = 0;
+  for (const parent of MANUAL) {
+    for (const current of MANUAL) {
+      if (parent === current) continue;
+      const result = revisionPurposeAuthority(parent, current);
+      assert.equal(result.ok, false);
+      if (result.ok) continue;
+      assert.equal(result.code, 'REVISION_PURPOSE_MISMATCH');
+      assert.equal(result.status, 409);
+      assert.equal(result.parent_purpose, parent);
+      assert.equal(result.current_purpose, current);
+      assert.equal(result.required_action, 'start_new_analysis');
+      mismatches += 1;
+    }
+  }
+  assert.equal(mismatches, 42);
+});
+
+test('auto/manual transitions also become new-analysis boundaries', () => {
+  for (const [parent, current] of [['auto', 'review'], ['review', 'auto']]) {
+    const result = revisionPurposeAuthority(parent, current);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.required_action, 'start_new_analysis');
+  }
 });
 
 test('estimate verifies parent purpose before revision diff billing', () => {
   const source = readFileSync(new URL('../functions/api/jobs/estimate.ts', import.meta.url), 'utf8');
   assert.match(source, /SELECT j\.id, j\.state, j\.private_mode, j\.purpose, e\.prompt_sha256/);
-  const authority = source.indexOf('assertRevisionPurposeAuthority(parent.purpose, input.purpose)');
+  const authority = source.indexOf('revisionPurposeAuthority(parent.purpose, input.purpose)');
+  const rejection = source.indexOf("'用途を変更した実行は修整再投稿として扱えません。新しい分析として実行してください。'");
   const diff = source.indexOf('return revisedCreditMetric(input.revision.basePrompt, input.prompt, policy)');
   assert.ok(authority >= 0, 'revision purpose authority check is missing');
-  assert.ok(diff > authority, 'revision diff billing must happen after purpose authority validation');
+  assert.ok(rejection > authority, 'purpose mismatch must become an explicit fail-closed response');
+  assert.ok(diff > rejection, 'revision diff billing must happen only after purpose authority validation');
 });
 
 test('selected purpose participates in estimate/job fingerprint authority', () => {
