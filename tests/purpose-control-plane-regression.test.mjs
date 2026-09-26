@@ -15,20 +15,19 @@ test('manual purposes are user-selected control-plane values and auto stays auto
 
 test('same-purpose revisions remain eligible for revision treatment', () => {
   for (const purpose of ['auto', ...MANUAL]) {
-    assert.deepEqual(revisionPurposeAuthority(purpose, purpose), { ok: true });
+    assert.deepEqual(revisionPurposeAuthority(purpose, purpose), { mode: 'revision' });
   }
 });
 
-test('all 42 manual cross-purpose transitions become new-analysis boundaries', () => {
+test('all 42 manual cross-purpose transitions become full new analyses', () => {
   let mismatches = 0;
   for (const parent of MANUAL) {
     for (const current of MANUAL) {
       if (parent === current) continue;
       const result = revisionPurposeAuthority(parent, current);
-      assert.equal(result.ok, false);
-      if (result.ok) continue;
-      assert.equal(result.code, 'REVISION_PURPOSE_MISMATCH');
-      assert.equal(result.status, 409);
+      assert.equal(result.mode, 'full');
+      if (result.mode !== 'full') continue;
+      assert.equal(result.reason, 'REVISION_PURPOSE_MISMATCH');
       assert.equal(result.parent_purpose, parent);
       assert.equal(result.current_purpose, current);
       assert.equal(result.required_action, 'start_new_analysis');
@@ -38,29 +37,39 @@ test('all 42 manual cross-purpose transitions become new-analysis boundaries', (
   assert.equal(mismatches, 42);
 });
 
-test('auto/manual transitions also become new-analysis boundaries', () => {
+test('auto/manual transitions are also full new analyses', () => {
   for (const [parent, current] of [['auto', 'review'], ['review', 'auto']]) {
     const result = revisionPurposeAuthority(parent, current);
-    assert.equal(result.ok, false);
-    if (!result.ok) assert.equal(result.required_action, 'start_new_analysis');
+    assert.equal(result.mode, 'full');
+    if (result.mode === 'full') assert.equal(result.required_action, 'start_new_analysis');
   }
 });
 
-test('estimate verifies parent purpose before revision diff billing', () => {
+test('estimate strips revision billing when purpose authority changes', () => {
   const source = readFileSync(new URL('../functions/api/jobs/estimate.ts', import.meta.url), 'utf8');
   assert.match(source, /SELECT j\.id, j\.state, j\.private_mode, j\.purpose, e\.prompt_sha256/);
   const authority = source.indexOf('revisionPurposeAuthority(parent.purpose, input.purpose)');
-  const rejection = source.indexOf("'用途を変更した実行は修整再投稿として扱えません。新しい分析として実行してください。'");
-  const diff = source.indexOf('return revisedCreditMetric(input.revision.basePrompt, input.prompt, policy)');
+  const downgrade = source.indexOf("if (purposeAuthority.mode === 'full')");
+  const parentReset = source.indexOf('effectiveParentJobId: null');
+  const diff = source.indexOf('metric: revisedCreditMetric(input.revision.basePrompt, input.prompt, policy)');
   assert.ok(authority >= 0, 'revision purpose authority check is missing');
-  assert.ok(rejection > authority, 'purpose mismatch must become an explicit fail-closed response');
-  assert.ok(diff > rejection, 'revision diff billing must happen only after purpose authority validation');
+  assert.ok(downgrade > authority, 'cross-purpose revision must be downgraded to full analysis');
+  assert.ok(parentReset > downgrade, 'cross-purpose full analysis must clear effective revision parent');
+  assert.ok(diff > parentReset, 'revision diff billing must happen only on the same-purpose path');
+  assert.match(source, /billing_mode:\s*revisionDecision\.effectiveParentJobId \? 'revision' : 'full'/);
+  assert.match(source, /revision_reset_reason:\s*revisionDecision\.resetReason/);
 });
 
 test('selected purpose participates in estimate/job fingerprint authority', () => {
   const source = readFileSync(new URL('../functions/_job-policy.ts', import.meta.url), 'utf8');
   const stable = source.slice(source.indexOf('function stableInput'), source.indexOf('async function sha256'));
   assert.match(stable, /purpose:\s*input\.purpose/);
+});
+
+test('estimate exposes purpose provenance without rewriting prompt', () => {
+  const source = readFileSync(new URL('../functions/api/jobs/estimate.ts', import.meta.url), 'utf8');
+  assert.match(source, /purpose:\s*input\.purpose/);
+  assert.match(source, /purpose_origin:\s*purposeSelectionOrigin\(input\.purpose\)/);
 });
 
 test('result and history preserve selected purpose as provenance instead of reclassifying text', () => {
