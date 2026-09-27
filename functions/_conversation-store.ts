@@ -20,6 +20,9 @@ type TurnRow = {
   position: number;
   created_at: string;
   updated_at: string;
+  job_state: string;
+  error_code: string | null;
+  error_message: string | null;
 };
 type JobRow = { id: string; private_mode: number; project_id: string | null; state: string; purpose: string };
 
@@ -86,25 +89,36 @@ export async function appendConversationTurn(
       .bind(conversationId, actor.tenantId, actor.userId, job.project_id, titleFromPrompt(prompt), now).run();
   }
 
-  const existing = await db.prepare(`SELECT id,conversation_id,job_id,prompt,purpose,position,created_at,updated_at
-    FROM chat_turns WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1`)
+  const existing = await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.position,t.created_at,t.updated_at,
+      j.state AS job_state,j.error_code,j.error_message
+    FROM chat_turns t JOIN app_jobs j ON j.id=t.job_id
+    WHERE t.id=?1 AND t.tenant_id=?2 AND t.user_id=?3 LIMIT 1`)
     .bind(clientTurnId, actor.tenantId, actor.userId).first<TurnRow>();
 
   if (existing) {
-    if (existing.conversation_id !== conversationId) throw new ConversationStoreError(409, 'CONVERSATION_TURN_OWNER_MISMATCH', 'Turnは別Conversationに属しています。');
+    if (existing.conversation_id !== conversationId) {
+      throw new ConversationStoreError(409, 'CONVERSATION_TURN_OWNER_MISMATCH', 'Turnは別Conversationに属しています。');
+    }
     await db.prepare(`UPDATE chat_turns SET job_id=?1,prompt=?2,purpose=?3,updated_at=?4
       WHERE id=?5 AND conversation_id=?6 AND tenant_id=?7 AND user_id=?8`)
       .bind(jobId, prompt, purpose, now, clientTurnId, conversationId, actor.tenantId, actor.userId).run();
   } else {
-    const next = await db.prepare(`SELECT COALESCE(MAX(position),0)+1 AS position FROM chat_turns WHERE conversation_id=?1`)
-      .bind(conversationId).first<{ position: number }>();
-    const position = Number(next?.position ?? 1);
-    await db.prepare(`INSERT INTO chat_turns(id,conversation_id,tenant_id,user_id,job_id,prompt,purpose,position,created_at,updated_at)
-      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)`)
-      .bind(clientTurnId, conversationId, actor.tenantId, actor.userId, jobId, prompt, purpose, position, now).run();
+    try {
+      await db.prepare(`INSERT INTO chat_turns(id,conversation_id,tenant_id,user_id,job_id,prompt,purpose,position,created_at,updated_at)
+        SELECT ?1,?2,?3,?4,?5,?6,?7,COALESCE(MAX(position),0)+1,?8,?8
+        FROM chat_turns WHERE conversation_id=?2`)
+        .bind(clientTurnId, conversationId, actor.tenantId, actor.userId, jobId, prompt, purpose, now).run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/UNIQUE|constraint/i.test(message)) {
+        throw new ConversationStoreError(409, 'CONVERSATION_TURN_CONFLICT', '同じConversationへの同時投稿が競合しました。再試行してください。');
+      }
+      throw error;
+    }
   }
 
-  await db.prepare(`UPDATE chat_conversations SET project_id=COALESCE(?1,project_id),updated_at=?2 WHERE id=?3 AND tenant_id=?4 AND user_id=?5`)
+  await db.prepare(`UPDATE chat_conversations SET project_id=COALESCE(?1,project_id),updated_at=?2
+    WHERE id=?3 AND tenant_id=?4 AND user_id=?5`)
     .bind(job.project_id, now, conversationId, actor.tenantId, actor.userId).run();
   return { conversation_id: conversationId, turn_id: clientTurnId, job_id: jobId };
 }
@@ -120,14 +134,17 @@ export async function listConversations(
     WHERE tenant_id=?1 AND user_id=?2 AND archived_at IS NULL
     ORDER BY updated_at DESC,id DESC LIMIT ?3`)
     .bind(actor.tenantId, actor.userId, limit).all<ConversationRow>()).results ?? [];
-  return { conversations: rows.map((row) => ({
-    id: row.id,
-    conversation_id: row.id,
-    project_id: row.project_id,
-    title: row.title,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  })), limit };
+  return {
+    conversations: rows.map((row) => ({
+      id: row.id,
+      conversation_id: row.id,
+      project_id: row.project_id,
+      title: row.title,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    })),
+    limit,
+  };
 }
 
 export async function getConversation(
@@ -136,8 +153,12 @@ export async function getConversation(
   conversationId: string,
 ): Promise<Record<string, unknown>> {
   const conversation = await ownedConversation(db, actor, conversationId);
-  const turns = (await db.prepare(`SELECT id,conversation_id,job_id,prompt,purpose,position,created_at,updated_at
-    FROM chat_turns WHERE conversation_id=?1 AND tenant_id=?2 AND user_id=?3 ORDER BY position ASC`)
+  const turns = (await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.position,t.created_at,t.updated_at,
+      j.state AS job_state,j.error_code,j.error_message
+    FROM chat_turns t
+    JOIN app_jobs j ON j.id=t.job_id AND j.tenant_id=t.tenant_id AND j.user_id=t.user_id
+    WHERE t.conversation_id=?1 AND t.tenant_id=?2 AND t.user_id=?3
+    ORDER BY t.position ASC`)
     .bind(conversationId, actor.tenantId, actor.userId).all<TurnRow>()).results ?? [];
   const hydrated: Record<string, unknown>[] = [];
   for (const turn of turns) {
@@ -145,8 +166,11 @@ export async function getConversation(
       .bind(turn.job_id, actor.tenantId).first<{ id: string }>();
     let result: unknown = null;
     if (resultRow?.id) {
-      try { result = (await getResult(db, actor, resultRow.id)).result ?? null; }
-      catch (error) { if (!(error instanceof ResultStoreError && error.status === 404)) throw error; }
+      try {
+        result = (await getResult(db, actor, resultRow.id)).result ?? null;
+      } catch (error) {
+        if (!(error instanceof ResultStoreError && error.status === 404)) throw error;
+      }
     }
     hydrated.push({
       id: turn.id,
@@ -155,6 +179,10 @@ export async function getConversation(
       prompt: turn.prompt,
       purpose: turn.purpose,
       position: turn.position,
+      job_state: turn.job_state,
+      error: turn.error_code || turn.error_message
+        ? { code: turn.error_code || 'JOB_FAILED', message: turn.error_message || 'Jobを完了できませんでした。' }
+        : null,
       created_at: turn.created_at,
       updated_at: turn.updated_at,
       result,
