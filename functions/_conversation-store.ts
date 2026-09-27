@@ -1,0 +1,174 @@
+import type { D1Database } from './_account-projection';
+import { getResult, ResultStoreError } from './_result-store';
+
+export type ConversationActor = { userId: string; tenantId: string };
+
+type ConversationRow = {
+  id: string;
+  project_id: string | null;
+  title: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+type TurnRow = {
+  id: string;
+  conversation_id: string;
+  job_id: string;
+  prompt: string;
+  purpose: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+type JobRow = { id: string; private_mode: number; project_id: string | null; state: string; purpose: string };
+
+export class ConversationStoreError extends Error {
+  constructor(public status: number, public code: string, message: string, public details?: unknown) {
+    super(message);
+    this.name = 'ConversationStoreError';
+  }
+}
+
+function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
+function titleFromPrompt(prompt: string): string {
+  const oneLine = prompt.replace(/\s+/g, ' ').trim();
+  return oneLine.slice(0, 80) || 'Astera Chat';
+}
+
+async function ownedConversation(db: D1Database, actor: ConversationActor, id: string): Promise<ConversationRow> {
+  const row = await db.prepare(`SELECT id,project_id,title,archived_at,created_at,updated_at
+    FROM chat_conversations WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1`)
+    .bind(id, actor.tenantId, actor.userId).first<ConversationRow>();
+  if (!row) throw new ConversationStoreError(404, 'CONVERSATION_NOT_FOUND', 'Conversationが見つかりません。');
+  return row;
+}
+
+async function ownedNormalJob(db: D1Database, actor: ConversationActor, jobId: string): Promise<JobRow> {
+  const row = await db.prepare(`SELECT id,private_mode,project_id,state,purpose FROM app_jobs
+    WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1`)
+    .bind(jobId, actor.tenantId, actor.userId).first<JobRow>();
+  if (!row) throw new ConversationStoreError(404, 'CONVERSATION_JOB_NOT_FOUND', 'Conversationへ関連付けるJobを確認できません。');
+  if (Boolean(row.private_mode)) throw new ConversationStoreError(409, 'PRIVATE_JOB_CONVERSATION_FORBIDDEN', 'Private Mode JobはConversationへ保存できません。');
+  return row;
+}
+
+export async function appendConversationTurn(
+  db: D1Database,
+  actor: ConversationActor,
+  value: unknown,
+): Promise<Record<string, unknown>> {
+  const body = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const clientTurnId = text(body.client_turn_id ?? body.clientTurnId);
+  const conversationIdInput = text(body.conversation_id ?? body.conversationId);
+  const jobId = text(body.job_id ?? body.jobId);
+  const prompt = text(body.prompt);
+  const purpose = text(body.purpose);
+  if (!clientTurnId) throw new ConversationStoreError(422, 'CONVERSATION_TURN_ID_REQUIRED', 'client_turn_idが必要です。');
+  if (!jobId) throw new ConversationStoreError(422, 'CONVERSATION_JOB_ID_REQUIRED', 'job_idが必要です。');
+  if (!prompt) throw new ConversationStoreError(422, 'CONVERSATION_PROMPT_REQUIRED', 'Prompt本文が必要です。');
+  if (!['auto','review','compare','verify','improve','research','plan','consider'].includes(purpose)) {
+    throw new ConversationStoreError(422, 'CONVERSATION_PURPOSE_INVALID', 'Purposeが不正です。');
+  }
+
+  const job = await ownedNormalJob(db, actor, jobId);
+  if (job.purpose !== purpose) throw new ConversationStoreError(409, 'CONVERSATION_PURPOSE_MISMATCH', 'JobとConversation TurnのPurposeが一致しません。');
+  const now = new Date().toISOString();
+  let conversationId = conversationIdInput;
+
+  if (conversationId) {
+    const conversation = await ownedConversation(db, actor, conversationId);
+    if (conversation.archived_at) throw new ConversationStoreError(409, 'CONVERSATION_ARCHIVED', 'Archived Conversationには投稿できません。');
+  } else {
+    conversationId = crypto.randomUUID();
+    await db.prepare(`INSERT INTO chat_conversations(id,tenant_id,user_id,project_id,title,archived_at,created_at,updated_at)
+      VALUES(?1,?2,?3,?4,?5,NULL,?6,?6)`)
+      .bind(conversationId, actor.tenantId, actor.userId, job.project_id, titleFromPrompt(prompt), now).run();
+  }
+
+  const existing = await db.prepare(`SELECT id,conversation_id,job_id,prompt,purpose,position,created_at,updated_at
+    FROM chat_turns WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1`)
+    .bind(clientTurnId, actor.tenantId, actor.userId).first<TurnRow>();
+
+  if (existing) {
+    if (existing.conversation_id !== conversationId) throw new ConversationStoreError(409, 'CONVERSATION_TURN_OWNER_MISMATCH', 'Turnは別Conversationに属しています。');
+    await db.prepare(`UPDATE chat_turns SET job_id=?1,prompt=?2,purpose=?3,updated_at=?4
+      WHERE id=?5 AND conversation_id=?6 AND tenant_id=?7 AND user_id=?8`)
+      .bind(jobId, prompt, purpose, now, clientTurnId, conversationId, actor.tenantId, actor.userId).run();
+  } else {
+    const next = await db.prepare(`SELECT COALESCE(MAX(position),0)+1 AS position FROM chat_turns WHERE conversation_id=?1`)
+      .bind(conversationId).first<{ position: number }>();
+    const position = Number(next?.position ?? 1);
+    await db.prepare(`INSERT INTO chat_turns(id,conversation_id,tenant_id,user_id,job_id,prompt,purpose,position,created_at,updated_at)
+      VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)`)
+      .bind(clientTurnId, conversationId, actor.tenantId, actor.userId, jobId, prompt, purpose, position, now).run();
+  }
+
+  await db.prepare(`UPDATE chat_conversations SET project_id=COALESCE(?1,project_id),updated_at=?2 WHERE id=?3 AND tenant_id=?4 AND user_id=?5`)
+    .bind(job.project_id, now, conversationId, actor.tenantId, actor.userId).run();
+  return { conversation_id: conversationId, turn_id: clientTurnId, job_id: jobId };
+}
+
+export async function listConversations(
+  db: D1Database,
+  actor: ConversationActor,
+  limitRaw: number,
+): Promise<Record<string, unknown>> {
+  const limit = Number.isInteger(limitRaw) ? Math.min(100, Math.max(1, limitRaw)) : 25;
+  const rows = (await db.prepare(`SELECT id,project_id,title,archived_at,created_at,updated_at
+    FROM chat_conversations
+    WHERE tenant_id=?1 AND user_id=?2 AND archived_at IS NULL
+    ORDER BY updated_at DESC,id DESC LIMIT ?3`)
+    .bind(actor.tenantId, actor.userId, limit).all<ConversationRow>()).results ?? [];
+  return { conversations: rows.map((row) => ({
+    id: row.id,
+    conversation_id: row.id,
+    project_id: row.project_id,
+    title: row.title,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  })), limit };
+}
+
+export async function getConversation(
+  db: D1Database,
+  actor: ConversationActor,
+  conversationId: string,
+): Promise<Record<string, unknown>> {
+  const conversation = await ownedConversation(db, actor, conversationId);
+  const turns = (await db.prepare(`SELECT id,conversation_id,job_id,prompt,purpose,position,created_at,updated_at
+    FROM chat_turns WHERE conversation_id=?1 AND tenant_id=?2 AND user_id=?3 ORDER BY position ASC`)
+    .bind(conversationId, actor.tenantId, actor.userId).all<TurnRow>()).results ?? [];
+  const hydrated: Record<string, unknown>[] = [];
+  for (const turn of turns) {
+    const resultRow = await db.prepare(`SELECT id FROM results WHERE job_id=?1 AND tenant_id=?2 AND deleted_at IS NULL LIMIT 1`)
+      .bind(turn.job_id, actor.tenantId).first<{ id: string }>();
+    let result: unknown = null;
+    if (resultRow?.id) {
+      try { result = (await getResult(db, actor, resultRow.id)).result ?? null; }
+      catch (error) { if (!(error instanceof ResultStoreError && error.status === 404)) throw error; }
+    }
+    hydrated.push({
+      id: turn.id,
+      turn_id: turn.id,
+      job_id: turn.job_id,
+      prompt: turn.prompt,
+      purpose: turn.purpose,
+      position: turn.position,
+      created_at: turn.created_at,
+      updated_at: turn.updated_at,
+      result,
+    });
+  }
+  return {
+    conversation: {
+      id: conversation.id,
+      conversation_id: conversation.id,
+      project_id: conversation.project_id,
+      title: conversation.title,
+      created_at: conversation.created_at,
+      updated_at: conversation.updated_at,
+      turns: hydrated,
+    },
+  };
+}
