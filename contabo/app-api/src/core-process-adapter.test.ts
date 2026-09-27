@@ -80,6 +80,39 @@ test('auto remains an App pass-through because automatic purpose classification 
   assert.deepEqual(buildCoreProcessRequest({ prompt: '確認して', purpose: 'auto', files: [] }), { question: '確認して' });
 });
 
+test('custom purpose is structured user_objective and never rewrites original prompt', () => {
+  const request = buildCoreProcessRequest({
+    prompt: '元の依頼本文をそのまま保持する',
+    purpose: 'auto',
+    purpose_text: '公開前の法的リスクと個人情報保護を重点的に確認する',
+    files: [],
+  });
+  assert.equal(request.question, '元の依頼本文をそのまま保持する');
+  assert.ok(request.context);
+  const parsed = JSON.parse(request.context!);
+  assert.deepEqual(parsed, {
+    user_objective: {
+      version: 'app-user-objective-v1',
+      selected_by: 'user',
+      text: '公開前の法的リスクと個人情報保護を重点的に確認する',
+    },
+  });
+});
+
+test('manual purpose and custom purpose coexist as separate structured controls', () => {
+  const request = buildCoreProcessRequest({
+    prompt: '対象本文',
+    purpose: 'research',
+    purpose_text: '一次情報を優先して日本国内規制を重点確認する',
+    files: [],
+  });
+  assert.equal(request.question, '対象本文');
+  const parsed = JSON.parse(request.context!);
+  assert.deepEqual(parsed.app_purpose_contract, MANUAL_PURPOSE_CONTRACTS.research);
+  assert.equal(parsed.user_objective.text, '一次情報を優先して日本国内規制を重点確認する');
+  assert.equal(parsed.user_objective.selected_by, 'user');
+});
+
 test('unsupported manual purpose fails closed instead of silently reaching Core', () => {
   assert.throws(
     () => buildCoreProcessRequest({ prompt: '確認して', purpose: 'unknown-purpose', files: [] }),
