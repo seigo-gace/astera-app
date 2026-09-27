@@ -52,4 +52,4 @@ jobs:
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
       - name: Run Composer conversation user stories
-        run: npx playwright test tests/composer-user-stories.spec.ts --workers=2
+        run: npx playwright test tests/composer-user-stories.spec.ts --workers=2 --reporter=line,github
