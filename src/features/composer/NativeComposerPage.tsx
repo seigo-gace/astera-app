@@ -53,6 +53,14 @@ type ResultSection = {
   sourceIds: string[];
 };
 
+type ResultSource = {
+  id: string;
+  title: string;
+  url: string;
+  status: string;
+  retrievedAt: string;
+};
+
 type CatalogItem = {
   id: string;
   title: string;
@@ -177,10 +185,15 @@ function sectionBody(value: unknown): string {
   return recordText(record, ['body', 'content', 'text']);
 }
 
-function normalizeResult(payload: unknown): ResultSection[] {
+function resultRecord(payload: unknown): Record<string, unknown> {
   const root = asRecord(payload);
   const job = asRecord(root.job ?? root.data ?? root);
-  const result = asRecord(job.result ?? root.result ?? job);
+  return asRecord(job.result ?? root.result ?? job);
+}
+
+function normalizeResult(payload: unknown): ResultSection[] {
+  const root = asRecord(payload);
+  const result = resultRecord(payload);
   const rawSections = result.sections ?? root.sections;
 
   if (Array.isArray(rawSections)) {
@@ -221,6 +234,22 @@ function normalizeResult(payload: unknown): ResultSection[] {
   return normalized;
 }
 
+function normalizeSources(payload: unknown): ResultSource[] {
+  const result = resultRecord(payload);
+  return asArray(result.sources).map((item, index) => {
+    const source = asRecord(item);
+    const url = recordText(source, ['url', 'source_url']);
+    const id = recordText(source, ['id', 'source_id'], String(index + 1));
+    return {
+      id,
+      title: recordText(source, ['title', 'name'], url || `Source ${index + 1}`),
+      url,
+      status: recordText(source, ['status', 'verification_status'], 'unverified'),
+      retrievedAt: recordText(source, ['retrievedAt', 'retrieved_at']),
+    };
+  });
+}
+
 function jobSource(payload: unknown) {
   const root = asRecord(payload);
   return asRecord(root.job ?? root.data ?? root);
@@ -232,6 +261,22 @@ function jobState(payload: unknown): string {
 
 function jobId(payload: unknown): string {
   return recordText(jobSource(payload), ['job_id', 'jobId', 'id']);
+}
+
+function terminalJobError(payload: unknown): ApiError {
+  const source = jobSource(payload);
+  const nested = asRecord(source.error);
+  const message = recordText(
+    nested,
+    ['message'],
+    recordText(source, ['message', 'error_message'], 'Jobを完了できませんでした。'),
+  );
+  const code = recordText(
+    nested,
+    ['code'],
+    recordText(source, ['error_code', 'code'], 'JOB_FAILED'),
+  );
+  return new ApiError(message, 502, code, payload);
 }
 
 function phaseLabel(phase: ComposerPhase): string {
@@ -289,7 +334,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [documentTemplateId, setDocumentTemplateId] = useState('');
   const [documentTemplateSource, setDocumentTemplateSource] = useState<DocumentTemplateSource>('personal');
   const [storageDestinationId, setStorageDestinationId] = useState('');
-  const [privateMode] = useState(true);
+  const [privateMode, setPrivateMode] = useState(true);
   const [projectId, setProjectId] = useState('');
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [phase, setPhase] = useState<ComposerPhase>('draft');
@@ -297,6 +342,8 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
   const [notice, setNotice] = useState('');
   const [currentJobId, setCurrentJobId] = useState('');
   const [resultSections, setResultSections] = useState<ResultSection[]>([]);
+  const [resultSources, setResultSources] = useState<ResultSource[]>([]);
+  const [evidenceMode, setEvidenceMode] = useState(false);
   const [picker, setPicker] = useState<PickerKind>(null);
   const [projects, setProjects] = useState<CatalogItem[]>([]);
   const [, setTemplates] = useState<CatalogItem[]>([]);
@@ -367,6 +414,8 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     privateOutputTimer.current = window.setTimeout(() => {
       privateOutputTimer.current = null;
       setResultSections([]);
+      setResultSources([]);
+      setEvidenceMode(false);
       setPrompt('');
       setSubmittedPrompt('');
       setCurrentJobId('');
@@ -398,6 +447,48 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
         revision_base_prompt: revisionBaseline.prompt,
       }
     : {}, [privateMode, revisionBaseline]);
+
+  const evidenceItems = useMemo(() => {
+    if (resultSources.length > 0) return resultSources;
+    const ids = Array.from(new Set(resultSections.flatMap((section) => section.sourceIds).filter(Boolean)));
+    return ids.map((id) => ({ id, title: id, url: '', status: 'referenced', retrievedAt: '' } satisfies ResultSource));
+  }, [resultSections, resultSources]);
+  const hasEvidence = evidenceItems.length > 0;
+
+  useEffect(() => {
+    const group = document.querySelector<HTMLElement>('.platform-main-evidence-toggle');
+    const mainLink = group?.querySelector<HTMLAnchorElement>('a');
+    const evidenceButton = group?.querySelector<HTMLButtonElement>('button');
+    if (!group || !mainLink || !evidenceButton) return;
+
+    const onMain = (event: Event) => {
+      event.preventDefault();
+      setEvidenceMode(false);
+    };
+    const onEvidence = (event: Event) => {
+      event.preventDefault();
+      if (hasEvidence) setEvidenceMode(true);
+    };
+
+    mainLink.addEventListener('click', onMain);
+    evidenceButton.addEventListener('click', onEvidence);
+    evidenceButton.disabled = !hasEvidence;
+    evidenceButton.setAttribute('aria-disabled', hasEvidence ? 'false' : 'true');
+    mainLink.classList.toggle('is-active', !evidenceMode);
+    evidenceButton.classList.toggle('is-active', evidenceMode);
+    if (evidenceMode) mainLink.removeAttribute('aria-current');
+    else mainLink.setAttribute('aria-current', 'page');
+
+    return () => {
+      mainLink.removeEventListener('click', onMain);
+      evidenceButton.removeEventListener('click', onEvidence);
+      evidenceButton.disabled = true;
+      evidenceButton.setAttribute('aria-disabled', 'true');
+      evidenceButton.classList.remove('is-active');
+      mainLink.classList.add('is-active');
+      mainLink.setAttribute('aria-current', 'page');
+    };
+  }, [evidenceMode, hasEvidence]);
 
   const validate = useCallback((): ApiError | null => {
     if (!prompt.trim()) return new ApiError('実行する本文を入力してください。', 422, 'ASTERA_INPUT_REQUIRED');
@@ -530,6 +621,18 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     void loadCatalogs();
   };
 
+  const applyCompletedPayload = useCallback((payload: unknown, id: string, submittedText: string) => {
+    setResultSections(normalizeResult(payload));
+    setResultSources(normalizeSources(payload));
+    setEvidenceMode(false);
+    setRevisionBaseline({ jobId: id, prompt: submittedText, privateMode });
+    setPhase('completed');
+    setNotice(privateMode
+      ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
+      : 'Resultを保存しました。履歴からいつでも開けます。');
+    armPrivateOutputExpiry();
+  }, [armPrivateOutputExpiry, privateMode]);
+
   const pollJob = useCallback(async (id: string, submittedText: string) => {
     pollController.current?.abort();
     const controller = new AbortController();
@@ -542,25 +645,19 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       else if (state === 'running') setPhase('running');
       else if (state === 'assembling_result' || state === 'assembling') setPhase('assembling_result');
       else if (state === 'completed' || state === 'complete') {
-        setResultSections(normalizeResult(payload));
-        setRevisionBaseline({ jobId: id, prompt: submittedText, privateMode });
-        setPhase('completed');
-        setNotice(privateMode
-          ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
-          : 'Resultを保存しました。必要なら本文を修整して再投稿できます。');
-        armPrivateOutputExpiry();
+        applyCompletedPayload(payload, id, submittedText);
         return;
       } else if (state === 'cancelled' || state === 'canceled') {
         setPhase('cancelled');
-        setNotice('Jobを取り消しました。入力内容は保持しています。');
+        setNotice('Jobを取り消しました。投稿内容は会話に保持しています。');
         return;
       } else if (state === 'failed' || state === 'partially_completed' || state === 'partial') {
-        throw new ApiError(recordText(jobSource(payload), ['message', 'error_message'], 'Jobを完了できませんでした。'), 502, recordText(jobSource(payload), ['error_code', 'code'], 'JOB_FAILED'), payload);
+        throw terminalJobError(payload);
       }
       await new Promise((resolve) => window.setTimeout(resolve, Math.min(800 + attempt * 100, 2_500)));
     }
     throw new ApiError('Job状態の確認期限を超えました。Historyから状態を再確認してください。', 504, 'JOB_POLL_TIMEOUT');
-  }, [armPrivateOutputExpiry, privateMode]);
+  }, [applyCompletedPayload]);
 
   const runJob = useCallback(async () => {
     if (executionLock.current) return;
@@ -575,8 +672,10 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     executionLock.current = true;
     setError(null);
     setNotice('');
+    setEvidenceMode(false);
     const submittedText = prompt.trim();
     setSubmittedPrompt(submittedText);
+    setPrompt('');
     setPhase('estimating');
 
     try {
@@ -629,14 +728,11 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       setCurrentJobId(id);
       const immediateState = jobState(payload);
       if (immediateState === 'completed' || immediateState === 'complete') {
-        setResultSections(normalizeResult(payload));
-        setRevisionBaseline({ jobId: id, prompt: submittedText, privateMode });
-        setPhase('completed');
-        setNotice(privateMode
-          ? 'Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。'
-          : 'Resultを保存しました。必要なら本文を修整して再投稿できます。');
-        armPrivateOutputExpiry();
+        applyCompletedPayload(payload, id, submittedText);
         return;
+      }
+      if (immediateState === 'failed' || immediateState === 'partially_completed' || immediateState === 'partial') {
+        throw terminalJobError(payload);
       }
       setPhase('queued');
       await pollJob(id, submittedText);
@@ -647,7 +743,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     } finally {
       executionLock.current = false;
     }
-  }, [armPrivateOutputExpiry, clearPrivateOutputTimer, executionOptions, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, revisionPayload, validate]);
+  }, [applyCompletedPayload, clearPrivateOutputTimer, executionOptions, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, revisionPayload, validate]);
 
   const cancelJob = async () => {
     if (!currentJobId) return;
@@ -656,7 +752,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       pollController.current?.abort();
       clearPrivateOutputTimer();
       setPhase('cancelled');
-      setNotice('取消Requestを送信しました。入力内容は保持しています。');
+      setNotice('取消Requestを送信しました。投稿内容は会話に保持しています。');
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError('取消Requestに失敗しました。'));
     }
@@ -672,6 +768,8 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
     setProjectId('');
     setFiles([]);
     setResultSections([]);
+    setResultSources([]);
+    setEvidenceMode(false);
     setCurrentJobId('');
     setRevisionBaseline(null);
     setError(null);
@@ -791,6 +889,9 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
               <button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>
               {renderPurposeAccordion()}
               {renderVisibleOptions()}
+              <button type="button" className={privateMode ? 'is-selected' : ''} aria-pressed={privateMode} onClick={() => setPrivateMode((current) => !current)}>
+                <span>Private Mode</span><b>{privateMode ? 'ON' : 'OFF'}</b>
+              </button>
             </>
           )}
           {picker === 'context' && (
@@ -820,17 +921,34 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
       <div className="native-composer-workspace" data-native-composer="true" onDragOver={(event) => event.preventDefault()} onDrop={onDropFiles}>
         <section className="native-timeline" aria-live="polite">
           <div className="native-timeline-inner">
-            {!submittedPrompt && resultSections.length === 0 && !activeWork && !error && (
+            {!submittedPrompt && resultSections.length === 0 && !activeWork && !error && !evidenceMode && (
               <div className="native-empty-state">
                 <h1>何を判断材料にしますか？</h1>
               </div>
             )}
 
-            {(submittedPrompt || resultSections.length > 0 || activeWork || error) && (
+            {evidenceMode ? (
+              <section className="native-evidence-view" aria-label="根拠一覧">
+                <header><h1>根拠</h1><span>{evidenceItems.length}件</span></header>
+                {evidenceItems.length === 0 ? <p className="native-evidence-empty">このResultには根拠情報がありません。</p> : (
+                  <ol>
+                    {evidenceItems.map((source, index) => (
+                      <li key={`${source.id}-${index}`}>
+                        <span className="native-evidence-number">{index + 1}</span>
+                        <div>
+                          {source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.title}</a> : <strong>{source.title}</strong>}
+                          <small>{[source.status, source.retrievedAt].filter(Boolean).join(' · ')}</small>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            ) : (submittedPrompt || resultSections.length > 0 || activeWork || error) && (
               <article className="native-turn">
                 {submittedPrompt && (
                   <section className="native-user-message" aria-label="ユーザー投稿">
-                    <p style={{ padding: '12px 16px 14px', whiteSpace: 'pre-wrap', lineHeight: 1.65 }}>{submittedPrompt}</p>
+                    <p>{submittedPrompt}</p>
                     {messageChips.length > 0 && <div className="native-message-chips">{messageChips.map((chip) => <span key={chip}>{chip}</span>)}</div>}
                   </section>
                 )}
@@ -858,7 +976,6 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
                         <article key={section.key} className="native-result-section">
                           <div className="native-result-heading"><span>{String(index + 1).padStart(2, '0')}</span><h2>{section.title}</h2><button type="button" aria-label={`${section.title}をコピー`} onClick={() => void navigator.clipboard?.writeText(section.body)}>コピー</button></div>
                           <p>{section.body}</p>
-                          {section.sourceIds.length > 0 && <small>Source: {section.sourceIds.join(', ')}</small>}
                         </article>
                       ))}
                     </div>
@@ -908,7 +1025,7 @@ export default function NativeComposerPage({ route }: { route: RouteMatch }) {
               style={{ border: 0, outline: 'none', boxShadow: 'none' }}
               maxLength={MAX_INPUT_CHARACTERS}
               rows={1}
-              placeholder="Asteraに判断材料へ変えてほしい内容を入力"
+              placeholder="メッセージを入力"
               aria-label="Astera入力"
             />
             <div className="native-composer-actions" style={{ border: 0, borderTop: 0, boxShadow: 'none' }}>
