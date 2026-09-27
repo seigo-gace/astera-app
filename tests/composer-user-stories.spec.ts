@@ -175,11 +175,12 @@ test('STORY-COMPOSER-006 edit action uses revision only for the edited turn', as
   const textarea = page.getByLabel('Astera入力');
   await textarea.fill('元の投稿');
   await textarea.press('Control+Enter');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
   await page.getByLabel('投稿を編集').click();
   await expect(textarea).toHaveValue('元の投稿');
   await textarea.fill('修整後の投稿');
   await textarea.press('Control+Enter');
-  expect(jobBodies).toHaveLength(2);
+  await expect.poll(() => jobBodies.length).toBe(2);
   expect(jobBodies[1].revision_of_job_id).toBe('job-story-1');
   expect(jobBodies[1].revision_base_prompt).toBe('元の投稿');
   await expect(page.locator('.native-user-message')).toHaveCount(1);
@@ -219,19 +220,20 @@ test('STORY-COMPOSER-009 private mode defaults ON and only OFF persists a conver
   await installRuntime(page, { counters, conversationBodies });
   await openComposer(page);
   await page.getByLabel('Fileと実行Optionを追加').click();
-  let dialog = page.getByRole('dialog', { name: '追加' });
+  const dialog = page.getByRole('dialog', { name: '追加' });
   await expect(dialog.getByRole('button', { name: /Private Mode/ })).toHaveAttribute('aria-pressed', 'true');
   await dialog.getByLabel('閉じる').click();
   await page.getByLabel('Astera入力').fill('Private');
   await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
   expect(counters.conversations).toBe(0);
 
   await setPrivateMode(page, false);
   await page.getByLabel('Astera入力').fill('Normal');
   await page.getByLabel('Astera入力').press('Control+Enter');
-  expect(counters.conversations).toBe(1);
+  await expect.poll(() => counters.conversations).toBe(1);
   expect(conversationBodies[0].prompt).toBe('Normal');
-  expect(page.url()).toContain('/app/chats/conversation-story');
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/app/chats/conversation-story');
 });
 
 test('STORY-COMPOSER-010 saved conversation restores user prompt and result from history route', async ({ page }) => {
