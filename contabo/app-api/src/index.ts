@@ -18,6 +18,7 @@ const RESULT_KEYS = [
   'next_prompt',
 ] as const;
 const PRIVATE_OUTPUT_TTL_MS = 60 * 60 * 1000;
+const MAX_PURPOSE_TEXT_CHARACTERS = 2_000;
 
 type Purpose = (typeof PURPOSES)[number];
 type OptionKey = (typeof OPTIONS)[number];
@@ -39,6 +40,7 @@ export type RuntimeCreateRequest = {
   request_id: string;
   prompt: string;
   purpose: Purpose;
+  purpose_text: string | null;
   options: Array<{ key: OptionKey; config: Record<string, string> }>;
   files: RuntimeFile[];
   private_mode: boolean;
@@ -85,6 +87,10 @@ function validateCreateRequest(value: unknown): RuntimeCreateRequest {
   };
   const purpose = text(source.purpose) as Purpose;
   if (!PURPOSES.includes(purpose)) throw Object.assign(new Error('Purposeは8種から一つだけ指定してください。'), { code: 'PURPOSE_INVALID' });
+  const purposeText = text(source.purpose_text ?? source.purposeText) || null;
+  if (purposeText && [...purposeText].length > MAX_PURPOSE_TEXT_CHARACTERS) {
+    throw Object.assign(new Error(`自由入力の目的は${MAX_PURPOSE_TEXT_CHARACTERS.toLocaleString()}文字以内です。`), { code: 'PURPOSE_TEXT_TOO_LARGE' });
+  }
   const prompt = text(source.prompt);
   if (!prompt) throw Object.assign(new Error('Promptがありません。'), { code: 'PROMPT_REQUIRED' });
   if ([...prompt].length > 200_000) throw Object.assign(new Error('Promptは200,000文字以内です。'), { code: 'PROMPT_TOO_LARGE' });
@@ -124,6 +130,7 @@ function validateCreateRequest(value: unknown): RuntimeCreateRequest {
     request_id: requiredText('request_id'),
     prompt,
     purpose,
+    purpose_text: purposeText,
     options,
     files,
     private_mode: privateMode,
@@ -325,6 +332,7 @@ export class AsteraRuntimeService {
     } finally {
       this.active.delete(input.job_id);
       input.prompt = '';
+      input.purpose_text = null;
       input.files.length = 0;
       input.options.length = 0;
     }
@@ -399,7 +407,7 @@ function bearerToken(value: string | undefined): string {
 
 function httpStatus(error: unknown): number {
   const code = typeof (error as ProcessError)?.code === 'string' ? (error as ProcessError).code as string : '';
-  if (code.endsWith('_REQUIRED') || code.includes('INVALID') || code.includes('DUPLICATED') || code.includes('UNSUPPORTED')) return 422;
+  if (code.endsWith('_REQUIRED') || code.includes('INVALID') || code.includes('DUPLICATED') || code.includes('UNSUPPORTED') || code.includes('TOO_LARGE')) return 422;
   if (code === 'RUNTIME_JOB_NOT_FOUND') return 404;
   if (code.includes('OWNERSHIP') || code.includes('TOKEN')) return 403;
   return 500;
