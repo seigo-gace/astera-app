@@ -21,6 +21,7 @@ on:
       - 'migrations/d1/0023_custom_purpose_text.sql'
       - 'tests/composer-user-stories.spec.ts'
       - 'tests/composer-custom-purpose.spec.ts'
+      - 'tests/composer-mobile-viewport.spec.ts'
       - 'playwright.config.ts'
       - '.github/workflows/composer-conversation-gate.yml'
   pull_request:
@@ -42,6 +43,7 @@ on:
       - 'migrations/d1/0023_custom_purpose_text.sql'
       - 'tests/composer-user-stories.spec.ts'
       - 'tests/composer-custom-purpose.spec.ts'
+      - 'tests/composer-mobile-viewport.spec.ts'
       - 'playwright.config.ts'
       - '.github/workflows/composer-conversation-gate.yml'
 
@@ -79,7 +81,7 @@ jobs:
           COMPOSER_VISUAL_REVIEW: '1'
         run: |
           set +e
-          npx playwright test tests/composer-user-stories.spec.ts tests/composer-custom-purpose.spec.ts --workers=2 --reporter=line,github 2>&1 | tee /tmp/composer-playwright.log
+          npx playwright test tests/composer-user-stories.spec.ts tests/composer-custom-purpose.spec.ts tests/composer-mobile-viewport.spec.ts --workers=2 --reporter=line,github 2>&1 | tee /tmp/composer-playwright.log
           code=${PIPESTATUS[0]}
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           {
