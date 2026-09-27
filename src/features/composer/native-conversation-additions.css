@@ -46,5 +46,5 @@
 .native-turn+.native-turn{padding-top:4px;border-top:1px solid color-mix(in srgb,var(--native-line) 45%,transparent)}
 @media(max-width:760px){html.native-composer-route .platform-main{height:calc(100dvh - 118px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;margin-top:0!important}}
 @media(max-width:600px){.native-user-actions{padding-right:0}.native-purpose-button{padding-inline:7px;max-width:42vw}.native-evidence-view{padding-inline:2px}.native-evidence-view h1{font-size:20px}.native-evidence-view li{grid-template-columns:25px minmax(0,1fr);gap:8px}.native-turn+.native-turn{padding-top:2px}.native-user-message.is-collapsed{max-height:220px}.native-purpose-text-editor textarea{min-height:104px}}
-@media(orientation:landscape) and (max-height:560px) and (max-width:760px){html.native-composer-route .platform-main{height:calc(100dvh - 54px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;margin-top:0!important}}
+@media(orientation:landscape) and (max-height:560px) and (max-width:760px){html.native-composer-route .platform-main{height:calc(100dvh - 118px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;margin-top:0!important}}
 @media(pointer:coarse){.native-user-actions button,.native-purpose-button,.native-editing-banner button{min-height:44px}.native-user-actions button{width:44px;min-width:44px}}
