@@ -20,6 +20,7 @@ type CurrentExecutionOptionKey = Exclude<ExecutionOptionKey, 'document'>;
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type AgentMode = 'low' | 'medium' | 'high';
 type PickerKind = 'add' | 'context' | 'purpose' | null;
+type ResultKey = 'true_purpose' | 'missing_assumptions' | 'fact_check' | 'risk_detection' | 'counter_view' | 'alternatives' | 'recommendation' | 'next_prompt';
 
 type UploadedFile = {
   localId: string;
@@ -32,7 +33,7 @@ type UploadedFile = {
   error?: string;
 };
 type JobEstimate = { estimateId: string; requiredCredits: number; availableCredits: number; expiresAt: string };
-type ResultSection = { key: string; title: string; body: string; sourceIds: string[] };
+type ResultSection = { key: ResultKey; title: string; body: string; sourceIds: string[] };
 type ResultSource = { id: string; title: string; url: string; status: string; retrievedAt: string };
 type CatalogItem = { id: string; title: string; status?: string };
 type Turn = {
@@ -50,11 +51,11 @@ type EditBaseline = { turnId: string; jobId: string; prompt: string; privateMode
 
 const MAX_INPUT_CHARACTERS = 200_000;
 const PRIVATE_OUTPUT_TTL_MS = 60 * 60 * 1000;
-const RESULT_KEYS: readonly string[] = [
+const RESULT_KEYS: readonly ResultKey[] = [
   'true_purpose', 'missing_assumptions', 'fact_check', 'risk_detection',
   'counter_view', 'alternatives', 'recommendation', 'next_prompt',
 ];
-const RESULT_TITLES: Record<string, string> = {
+const RESULT_TITLES: Record<ResultKey, string> = {
   true_purpose: '真の目的',
   missing_assumptions: '不足前提',
   fact_check: '事実確認',
@@ -124,20 +125,21 @@ function normalizeResult(payload: unknown): ResultSection[] {
   const result = resultRecord(payload);
   const raw = result.sections ?? root.sections;
   if (Array.isArray(raw)) {
-    const map = new Map<string, ResultSection>();
+    const map = new Map<ResultKey, ResultSection>();
     for (const item of raw) {
       const record = asRecord(item);
-      const key = recordText(record, ['key']);
+      const rawKey = recordText(record, ['key']);
+      const key = RESULT_KEYS.find((candidate) => candidate === rawKey);
       const body = sectionBody(record);
       if (!key || !body || map.has(key)) continue;
       map.set(key, {
         key,
-        title: recordText(record, ['title'], RESULT_TITLES[key] ?? key),
+        title: recordText(record, ['title'], RESULT_TITLES[key]),
         body,
         sourceIds: asArray(record.sourceIds ?? record.source_ids).map(String),
       });
     }
-    const ordered = RESULT_KEYS.map((key) => map.get(key)).filter((value): value is ResultSection => Boolean(value));
+    const ordered = RESULT_KEYS.map((key) => map.get(key)).filter((value): value is ResultSection => value !== undefined);
     if (ordered.length === RESULT_KEYS.length) return ordered;
   }
   const objectSections = asRecord(raw);
@@ -149,7 +151,7 @@ function normalizeResult(payload: unknown): ResultSection[] {
     const record = asRecord(source);
     normalized.push({
       key,
-      title: recordText(record, ['title'], RESULT_TITLES[key] ?? key),
+      title: recordText(record, ['title'], RESULT_TITLES[key]),
       body,
       sourceIds: asArray(record.sourceIds ?? record.source_ids).map(String),
     });
