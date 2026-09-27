@@ -21,6 +21,7 @@ on:
       - 'migrations/d1/0023_custom_purpose_text.sql'
       - 'tests/composer-user-stories.spec.ts'
       - 'tests/composer-custom-purpose.spec.ts'
+      - 'playwright.config.ts'
       - '.github/workflows/composer-conversation-gate.yml'
   pull_request:
     branches: [main]
@@ -41,6 +42,7 @@ on:
       - 'migrations/d1/0023_custom_purpose_text.sql'
       - 'tests/composer-user-stories.spec.ts'
       - 'tests/composer-custom-purpose.spec.ts'
+      - 'playwright.config.ts'
       - '.github/workflows/composer-conversation-gate.yml'
 
 permissions:
@@ -73,6 +75,8 @@ jobs:
         id: composer_playwright
         continue-on-error: true
         shell: bash
+        env:
+          COMPOSER_VISUAL_REVIEW: '1'
         run: |
           set +e
           npx playwright test tests/composer-user-stories.spec.ts tests/composer-custom-purpose.spec.ts --workers=2 --reporter=line,github 2>&1 | tee /tmp/composer-playwright.log
@@ -91,6 +95,14 @@ jobs:
         with:
           name: composer-playwright-log
           path: /tmp/composer-playwright.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Composer visual review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: composer-visual-review
+          path: test-results/**/*.png
           if-no-files-found: error
           retention-days: 7
       - name: Enforce Composer Playwright gate
