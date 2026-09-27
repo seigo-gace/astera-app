@@ -21,7 +21,7 @@ async function installRuntime(page: Page): Promise<void> {
 }
 
 async function expectFullyInsideViewport(page: Page, label: string): Promise<void> {
-  const control = page.getByLabel(label);
+  const control = page.getByRole('button', { name: label, exact: true });
   await expect(control).toBeVisible();
   const box = await control.boundingBox();
   const viewport = page.viewportSize();
@@ -34,12 +34,51 @@ async function expectFullyInsideViewport(page: Page, label: string): Promise<voi
   expect(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height);
 }
 
+async function logComposerGeometry(page: Page): Promise<void> {
+  const geometry = await page.evaluate(() => {
+    const selectors = [
+      '.platform-shell',
+      '.platform-main',
+      '.platform-page-content',
+      '.native-composer-workspace',
+      '.native-composer-dock',
+      '.native-composer',
+      '.native-composer-actions',
+    ];
+    const rows = selectors.map((selector) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) return { selector, missing: true };
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        selector,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height, bottom: rect.bottom },
+        height: style.height,
+        minHeight: style.minHeight,
+        paddingTop: style.paddingTop,
+        paddingBottom: style.paddingBottom,
+        marginTop: style.marginTop,
+        boxSizing: style.boxSizing,
+        overflow: style.overflow,
+      };
+    });
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      safeTop: getComputedStyle(document.documentElement).getPropertyValue('--safe-top'),
+      safeBottom: getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'),
+      rows,
+    };
+  });
+  console.log(`COMPOSER_GEOMETRY=${JSON.stringify(geometry)}`);
+}
+
 async function fillAndVerifyComposerControls(page: Page): Promise<void> {
   await installRuntime(page);
   await page.goto('/app/new', { waitUntil: 'domcontentloaded' });
   const textarea = page.getByLabel('Astera入力');
   await expect(textarea).toBeVisible();
   await textarea.fill('1行目\n2行目');
+  await logComposerGeometry(page);
   await expectFullyInsideViewport(page, 'Fileと実行Optionを追加');
   await expectFullyInsideViewport(page, 'Purposeを選択');
   await expectFullyInsideViewport(page, '実行');
