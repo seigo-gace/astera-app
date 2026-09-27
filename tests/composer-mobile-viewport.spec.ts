@@ -34,11 +34,7 @@ async function expectFullyInsideViewport(page: Page, label: string): Promise<voi
   expect(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height);
 }
 
-test.beforeEach(async ({}, testInfo: TestInfo) => {
-  test.skip(testInfo.project.name !== 'webkit-iphone-large', 'Mobile viewport regression uses the canonical large iPhone representative.');
-});
-
-test('MOBILE-COMPOSER-001 multiline input keeps plus, purpose and send fully inside viewport', async ({ page }) => {
+async function fillAndVerifyComposerControls(page: Page): Promise<void> {
   await installRuntime(page);
   await page.goto('/app/new', { waitUntil: 'domcontentloaded' });
   const textarea = page.getByLabel('Astera入力');
@@ -47,4 +43,17 @@ test('MOBILE-COMPOSER-001 multiline input keeps plus, purpose and send fully ins
   await expectFullyInsideViewport(page, 'Fileと実行Optionを追加');
   await expectFullyInsideViewport(page, 'Purposeを選択');
   await expectFullyInsideViewport(page, '実行');
+}
+
+test.beforeEach(async ({}, testInfo: TestInfo) => {
+  test.skip(testInfo.project.name !== 'webkit-iphone-large', 'Mobile viewport regression uses the canonical large iPhone representative.');
+});
+
+test('MOBILE-COMPOSER-001 multiline input keeps plus, purpose and send fully inside viewport', async ({ page }) => {
+  await fillAndVerifyComposerControls(page);
+});
+
+test('MOBILE-COMPOSER-002 landscape multiline input keeps plus, purpose and send fully inside viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await fillAndVerifyComposerControls(page);
 });
