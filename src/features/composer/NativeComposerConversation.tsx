@@ -19,7 +19,7 @@ type ExecutionOptionKey = 'translation' | 'agent-mode' | 'document' | 'external-
 type CurrentExecutionOptionKey = Exclude<ExecutionOptionKey, 'document'>;
 type ComposerPhase = 'draft' | 'uploading' | 'estimating' | 'submitting' | 'queued' | 'running' | 'assembling_result' | 'completed' | 'failed' | 'cancelled';
 type AgentMode = 'low' | 'medium' | 'high';
-type PickerKind = 'add' | 'context' | 'purpose' | null;
+type PickerKind = 'add' | 'context' | 'purpose' | 'purpose-text' | null;
 type ResultKey = 'true_purpose' | 'missing_assumptions' | 'fact_check' | 'risk_detection' | 'counter_view' | 'alternatives' | 'recommendation' | 'next_prompt';
 
 type UploadedFile = {
@@ -40,6 +40,7 @@ type Turn = {
   id: string;
   prompt: string;
   purpose: PurposeKey;
+  purposeText: string;
   privateMode: boolean;
   jobId: string;
   phase: ComposerPhase;
@@ -47,9 +48,18 @@ type Turn = {
   sources: ResultSource[];
   error: ApiError | null;
 };
-type EditBaseline = { turnId: string; jobId: string; prompt: string; privateMode: boolean; purpose: PurposeKey };
+type EditBaseline = {
+  turnId: string;
+  jobId: string;
+  prompt: string;
+  privateMode: boolean;
+  purpose: PurposeKey;
+  purposeText: string;
+};
 
 const MAX_INPUT_CHARACTERS = 200_000;
+const MAX_PURPOSE_TEXT_CHARACTERS = 2_000;
+const LONG_USER_MESSAGE_CHARACTERS = 1_200;
 const PRIVATE_OUTPUT_TTL_MS = 60 * 60 * 1000;
 const RESULT_KEYS: readonly ResultKey[] = [
   'true_purpose', 'missing_assumptions', 'fact_check', 'risk_detection',
@@ -222,6 +232,7 @@ function hydratePersistedTurn(value: unknown): Turn | null {
   const id = recordText(record, ['turn_id', 'id']);
   const jobIdValue = recordText(record, ['job_id']);
   const prompt = recordText(record, ['prompt']);
+  const purposeText = recordText(record, ['purpose_text', 'purposeText']);
   const rawPurpose = recordText(record, ['purpose'], 'auto');
   const purpose: PurposeKey = ['auto', 'review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'].includes(rawPurpose)
     ? rawPurpose as PurposeKey
@@ -229,13 +240,14 @@ function hydratePersistedTurn(value: unknown): Turn | null {
   if (!id || !jobIdValue || !prompt) return null;
   const result = asRecord(record.result);
   if (!Object.keys(result).length) {
-    return { id, prompt, purpose, privateMode: false, jobId: jobIdValue, phase: 'queued', sections: [], sources: [], error: null };
+    return { id, prompt, purpose, purposeText, privateMode: false, jobId: jobIdValue, phase: 'queued', sections: [], sources: [], error: null };
   }
   try {
     return {
       id,
       prompt,
       purpose,
+      purposeText,
       privateMode: false,
       jobId: jobIdValue,
       phase: 'completed',
@@ -248,6 +260,7 @@ function hydratePersistedTurn(value: unknown): Turn | null {
       id,
       prompt,
       purpose,
+      purposeText,
       privateMode: false,
       jobId: jobIdValue,
       phase: 'failed',
@@ -258,10 +271,27 @@ function hydratePersistedTurn(value: unknown): Turn | null {
   }
 }
 
+function ExpandableUserMessage({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = [...text].length > LONG_USER_MESSAGE_CHARACTERS;
+  return (
+    <section className={`native-user-message${collapsible && !expanded ? ' is-collapsed' : ''}`} aria-label="ユーザー投稿">
+      <p>{text}</p>
+      {collapsible && (
+        <button type="button" className="native-user-expand" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+          {expanded ? '閉じる' : 'もっと見る'}
+        </button>
+      )}
+    </section>
+  );
+}
+
 export default function NativeComposerConversation({ route }: { route: RouteMatch }) {
   const [prompt, setPrompt] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [purpose, setPurpose] = useState<PurposeKey>('auto');
+  const [purposeText, setPurposeText] = useState('');
+  const [purposeTextDraft, setPurposeTextDraft] = useState('');
   const [selectedOptions, setSelectedOptions] = useState<ExecutionOptionKey[]>([]);
   const [targetLanguage, setTargetLanguage] = useState(defaultLanguage());
   const [agentMode, setAgentMode] = useState<AgentMode>('medium');
@@ -279,6 +309,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [evidenceMode, setEvidenceMode] = useState(false);
   const [editing, setEditing] = useState<EditBaseline | null>(null);
+  const [copiedKey, setCopiedKey] = useState('');
   const [conversationId, setConversationId] = useState(route.id === 'chat-detail' ? route.params.id || '' : '');
   const [conversationLoading, setConversationLoading] = useState(route.id === 'chat-detail');
   const [optionVisibility, setOptionVisibility] = useState<Record<CurrentExecutionOptionKey, boolean>>({
@@ -293,6 +324,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const dragIndex = useRef<number | null>(null);
   const privateTurnTimers = useRef(new Map<string, number>());
+  const copyTimer = useRef<number | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.add('native-composer-route');
@@ -308,6 +340,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     pollController.current?.abort();
     for (const timer of privateTurnTimers.current.values()) window.clearTimeout(timer);
     privateTurnTimers.current.clear();
+    if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
   }, []);
 
   useEffect(() => {
@@ -366,7 +399,10 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         setProjectId(recordText(conversation, ['project_id']));
         setPrivateMode(false);
         const last = loaded.at(-1);
-        if (last) setPurpose(last.purpose);
+        if (last) {
+          setPurpose(last.purpose);
+          setPurposeText(last.purposeText);
+        }
         setPhase('draft');
       })
       .catch((caught) => {
@@ -406,13 +442,29 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const validate = useCallback((): ApiError | null => {
     if (!prompt.trim()) return new ApiError('実行する本文を入力してください。', 422, 'ASTERA_INPUT_REQUIRED');
     if ([...prompt].length > MAX_INPUT_CHARACTERS) return new ApiError(`入力は${MAX_INPUT_CHARACTERS.toLocaleString()}文字以内です。`, 413, 'ASTERA_INPUT_TOO_LARGE');
+    if ([...purposeText].length > MAX_PURPOSE_TEXT_CHARACTERS) return new ApiError(`自由入力の目的は${MAX_PURPOSE_TEXT_CHARACTERS.toLocaleString()}文字以内です。`, 413, 'PURPOSE_TEXT_TOO_LARGE');
     if (hasPendingFiles) return new ApiError('File Uploadの完了を待ってください。', 409, 'FILE_UPLOAD_IN_PROGRESS');
     if (hasFailedFiles) return new ApiError('Uploadに失敗したFileをRetryまたは削除してください。', 409, 'FILE_UPLOAD_FAILED');
     if (files.length !== readyFileIds.length) return new ApiError('実Byte参照がないFileは実行できません。', 409, 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED');
     if (selectedOptions.includes('translation') && !targetLanguage.trim()) return new ApiError('翻訳先言語を選択してください。', 422, 'TARGET_LANGUAGE_REQUIRED');
     if (selectedOptions.includes('external-storage-transfer') && !storageDestinationId.trim()) return new ApiError('転送先Storageを選択してください。', 422, 'STORAGE_DESTINATION_REQUIRED');
     return null;
-  }, [files.length, hasFailedFiles, hasPendingFiles, prompt, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
+  }, [files.length, hasFailedFiles, hasPendingFiles, prompt, purposeText, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
+
+  const copyText = useCallback(async (key: string, value: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
+      if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => {
+        copyTimer.current = null;
+        setCopiedKey('');
+      }, 1_600);
+    } catch {
+      setNotice('コピーできませんでした。BrowserのClipboard権限を確認してください。');
+    }
+  }, []);
 
   const upsertTurn = useCallback((turn: Turn) => setTurns((current) => {
     const index = current.findIndex((item) => item.id === turn.id);
@@ -454,6 +506,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     id: string,
     submittedText: string,
     currentPurpose: PurposeKey,
+    currentPurposeText: string,
     isPrivate: boolean,
   ) => {
     if (isPrivate) return;
@@ -468,6 +521,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
             job_id: id,
             prompt: submittedText,
             purpose: currentPurpose,
+            purpose_text: currentPurposeText || null,
           },
           idempotent: true,
         });
@@ -540,9 +594,13 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     const submittedText = prompt.trim();
     const edit = editing;
     const sendPurpose = purpose;
+    const sendPurposeText = purposeText.trim();
     const sendPrivateMode = privateMode;
     setPhase('estimating');
-    const revisionPayload = edit && edit.privateMode === sendPrivateMode && edit.purpose === sendPurpose
+    const revisionPayload = edit
+      && edit.privateMode === sendPrivateMode
+      && edit.purpose === sendPurpose
+      && edit.purposeText === sendPurposeText
       ? { revision_of_job_id: edit.jobId, revision_base_prompt: edit.prompt }
       : {};
     try {
@@ -551,6 +609,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         body: {
           prompt: submittedText,
           purpose: sendPurpose,
+          purpose_text: sendPurposeText || null,
           options: executionOptions,
           file_ids: readyFileIds,
           private_mode: sendPrivateMode,
@@ -581,6 +640,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
           request_id: requestId,
           prompt: submittedText,
           purpose: sendPurpose,
+          purpose_text: sendPurposeText || null,
           options: executionOptions,
           file_ids: readyFileIds,
           private_mode: sendPrivateMode,
@@ -597,6 +657,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         id: turnId,
         prompt: submittedText,
         purpose: sendPurpose,
+        purposeText: sendPurposeText,
         privateMode: sendPrivateMode,
         jobId: id,
         phase: immediate === 'completed' || immediate === 'complete' ? 'completed' : immediate === 'failed' ? 'failed' : 'queued',
@@ -608,7 +669,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       setPrompt('');
       setEditing(null);
       setPhase('queued');
-      await persistTurn(turnId, id, submittedText, sendPurpose, sendPrivateMode);
+      await persistTurn(turnId, id, submittedText, sendPurpose, sendPurposeText, sendPrivateMode);
       if (immediate === 'completed' || immediate === 'complete') {
         completeTurn(turnId, payload, sendPrivateMode);
         return;
@@ -627,7 +688,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     } finally {
       executionLock.current = false;
     }
-  }, [completeTurn, editing, executionOptions, patchTurn, persistTurn, pollJob, privateMode, projectId, prompt, purpose, readyFileIds, upsertTurn, validate]);
+  }, [completeTurn, editing, executionOptions, patchTurn, persistTurn, pollJob, privateMode, projectId, prompt, purpose, purposeText, readyFileIds, upsertTurn, validate]);
 
   const cancelJob = useCallback(async () => {
     if (!currentJobId) return;
@@ -744,8 +805,9 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     if (!turn.jobId || turn.phase !== 'completed') return;
     setPrompt(turn.prompt);
     setPurpose(turn.purpose);
+    setPurposeText(turn.purposeText);
     setPrivateMode(turn.privateMode);
-    setEditing({ turnId: turn.id, jobId: turn.jobId, prompt: turn.prompt, privateMode: turn.privateMode, purpose: turn.purpose });
+    setEditing({ turnId: turn.id, jobId: turn.jobId, prompt: turn.prompt, privateMode: turn.privateMode, purpose: turn.purpose, purposeText: turn.purposeText });
     setEvidenceMode(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
@@ -754,6 +816,9 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     setPrompt('');
     setTurns([]);
     setFiles([]);
+    setPurpose('auto');
+    setPurposeText('');
+    setPurposeTextDraft('');
     setCurrentJobId('');
     setConversationId('');
     setError(null);
@@ -786,6 +851,11 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     <div className="native-purpose-list">
       <button type="button" className={purpose === 'auto' ? 'is-selected' : ''} onClick={() => { setPurpose('auto'); setPicker(null); }}><span>Auto</span>{purpose === 'auto' && <b>✓</b>}</button>
       {PURPOSE_CHOICES.map((item) => <button key={item.key} type="button" className={purpose === item.key ? 'is-selected' : ''} onClick={() => { setPurpose(item.key); setPicker(null); }}><span>{item.label}</span>{purpose === item.key && <b>✓</b>}</button>)}
+      <div className="native-purpose-separator" />
+      <button type="button" className={purposeText ? 'is-selected' : ''} onClick={() => { setPurposeTextDraft(purposeText); setPicker('purpose-text'); }}>
+        <span>目的を自由入力</span><b>{purposeText ? '✓' : '›'}</b>
+      </button>
+      {purposeText && <button type="button" onClick={() => { setPurposeText(''); setPurposeTextDraft(''); setPicker(null); }}><span>自由目的を解除</span><b>×</b></button>}
     </div>
   );
 
@@ -800,10 +870,17 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
 
   const pickerBody = picker && (
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPicker(null); }}>
-      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : 'Option・対象選択'}>
-        <header><strong>{picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : 'Option・対象'}</strong><button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button></header>
+      <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : picker === 'purpose-text' ? '目的を自由入力' : 'Option・対象選択'}>
+        <header><strong>{picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : picker === 'purpose-text' ? '目的を自由入力' : 'Option・対象'}</strong><button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button></header>
         <div className="native-picker-body">
           {picker === 'purpose' && renderPurposeChoices()}
+          {picker === 'purpose-text' && (
+            <div className="native-purpose-text-editor">
+              <label><span>この実行で重視する目的</span><textarea aria-label="自由目的" value={purposeTextDraft} onChange={(event) => setPurposeTextDraft(event.target.value)} maxLength={MAX_PURPOSE_TEXT_CHARACTERS} rows={5} placeholder="例：公開前に法的リスクと個人情報保護を重点的に確認する" /></label>
+              <div className="native-purpose-text-count">{[...purposeTextDraft].length.toLocaleString()} / {MAX_PURPOSE_TEXT_CHARACTERS.toLocaleString()}</div>
+              <div className="native-purpose-text-actions"><button type="button" onClick={() => { setPurposeTextDraft(purposeText); setPicker('purpose'); }}>キャンセル</button><button type="button" className="native-picker-apply" onClick={() => { setPurposeText(purposeTextDraft.trim()); setPicker(null); }}>適用</button></div>
+            </div>
+          )}
           {picker === 'add' && <><button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>{renderVisibleOptions()}<button type="button" className={privateMode ? 'is-selected' : ''} aria-pressed={privateMode} onClick={() => setPrivateMode((current) => !current)}><span>Private Mode</span><b>{privateMode ? 'ON' : 'OFF'}</b></button></>}
           {picker === 'context' && <>{catalogLoading && <p className="native-picker-status">登録済み項目を読み込んでいます…</p>}{renderVisibleOptions()}{selectedOptions.includes('translation') && optionVisibility.translation && <label className="native-picker-field"><span>翻訳先言語</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} /></label>}{selectedOptions.includes('external-storage-transfer') && optionVisibility['external-storage-transfer'] && <label className="native-picker-field"><span>外部Storage転送先</span><select value={storageDestinationId} onChange={(event) => setStorageDestinationId(event.target.value)}><option value="">選択してください</option>{destinations.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}<label className="native-picker-field"><span>Project</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">Projectなし</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button type="button" className="native-picker-apply" onClick={() => setPicker(null)}>完了</button></>}
         </div>
@@ -816,6 +893,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     mode: evidenceMode ? 'evidence' as const : 'main' as const,
     onModeChange: (mode: 'main' | 'evidence') => setEvidenceMode(mode === 'evidence'),
   };
+  const purposeButtonLabel = purposeText || PURPOSE_LABELS[purpose];
 
   if (conversationLoading) {
     return <ResponsivePageShell route={route} fullWidth evidenceControl={evidenceControl}><BusyState label="Chat履歴を読み込んでいます…" /></ResponsivePageShell>;
@@ -839,9 +917,9 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
                 {turns.map((turn) => (
                   <article className="native-turn" key={turn.id} data-turn-id={turn.id}>
                     <div className="native-user-turn">
-                      <section className="native-user-message" aria-label="ユーザー投稿"><p>{turn.prompt}</p></section>
+                      <ExpandableUserMessage text={turn.prompt} />
                       <div className="native-user-actions">
-                        <button type="button" aria-label="投稿をコピー" title="コピー" onClick={() => void navigator.clipboard?.writeText(turn.prompt)}><span aria-hidden="true">⧉</span></button>
+                        <button type="button" aria-label="投稿をコピー" title="コピー" onClick={() => void copyText(`turn:${turn.id}`, turn.prompt)}><span aria-hidden="true">{copiedKey === `turn:${turn.id}` ? '✓' : '⧉'}</span></button>
                         <button type="button" aria-label="投稿を編集" title="編集" disabled={turn.phase !== 'completed'} onClick={() => editTurn(turn)}><span aria-hidden="true">✎</span></button>
                       </div>
                     </div>
@@ -849,8 +927,8 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
                     {turn.error && <section className="native-error" role="alert"><div><strong>{turn.error.message}</strong><code>{turn.error.code}</code></div></section>}
                     {turn.sections.length > 0 && (
                       <section className="native-response">
-                        <header><strong>ASTERA</strong><button type="button" aria-label="回答を全てコピー" onClick={() => void navigator.clipboard?.writeText(turn.sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'))}><span aria-hidden="true">⧉</span></button></header>
-                        <div className="native-result-sections">{turn.sections.map((section, index) => <article key={section.key} className="native-result-section"><div className="native-result-heading"><span>{String(index + 1).padStart(2, '0')}</span><h2>{section.title}</h2><button type="button" aria-label={`${section.title}をコピー`} onClick={() => void navigator.clipboard?.writeText(section.body)}>コピー</button></div><p>{section.body}</p></article>)}</div>
+                        <header><strong>ASTERA</strong><button type="button" aria-label="回答をコピー" title="コピー" onClick={() => void copyText(`response:${turn.id}`, turn.sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'))}><span aria-hidden="true">{copiedKey === `response:${turn.id}` ? '✓' : '⧉'}</span></button></header>
+                        <div className="native-result-sections">{turn.sections.map((section, index) => <article key={section.key} className="native-result-section"><div className="native-result-heading"><span>{String(index + 1).padStart(2, '0')}</span><h2>{section.title}</h2></div><p>{section.body}</p></article>)}</div>
                       </section>
                     )}
                   </article>
@@ -864,7 +942,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
 
         <section className="native-composer-dock">
           {notice && <div className="native-notice" role="status">{notice}</div>}
-          {editing && <div className="native-editing-banner"><span>投稿を編集しています</span><button type="button" onClick={() => { setEditing(null); setPrompt(''); }}>キャンセル</button></div>}
+          {editing && <div className="native-editing-banner"><span>投稿を編集しています</span><button type="button" onClick={() => { setEditing(null); setPrompt(''); setPurpose(editing.purpose); setPurposeText(editing.purposeText); }}>キャンセル</button></div>}
           {files.length > 0 && (
             <ul className="native-file-queue" aria-label="File Queue">
               {files.map((file, index) => <li key={file.localId} draggable={file.status !== 'uploading'} onDragStart={() => { dragIndex.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) reorderFile(dragIndex.current, index); dragIndex.current = null; }}><div><strong>{file.name}</strong><small>{file.status === 'ready' ? 'Upload完了' : file.status === 'uploading' ? 'Uploading…' : file.error}</small></div><div>{file.status === 'error' && <button type="button" onClick={() => retryFile(file)}>Retry</button>}<button type="button" onClick={() => setFiles((current) => current.filter((item) => item.localId !== file.localId))} disabled={file.status === 'uploading'}>×</button></div></li>)}
@@ -875,7 +953,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
             <div className="native-composer-actions">
               <div className="native-left-tools">
                 <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => setPicker('add')}>＋</button>
-                <button type="button" className="native-purpose-button" aria-label="Purposeを選択" onClick={() => setPicker('purpose')}>{PURPOSE_LABELS[purpose]} <span aria-hidden="true">⌄</span></button>
+                <button type="button" className={`native-purpose-button${purposeText ? ' has-custom-purpose' : ''}`} aria-label="Purposeを選択" title={purposeText || PURPOSE_LABELS[purpose]} onClick={() => setPicker('purpose')}><span>{purposeButtonLabel}</span><span aria-hidden="true">⌄</span></button>
                 {selectedOptions.filter((key): key is CurrentExecutionOptionKey => key !== 'document').map((key) => {
                   const label = key === 'agent-mode' ? `Agent ${AGENT_MODE_LABELS[agentMode]}` : OPTION_LABELS[key];
                   return <span className="native-form-chip is-option" key={key}><span>{label}</span><button type="button" aria-label={`${label}を削除`} onClick={() => toggleOption(key)}>×</button></span>;
