@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 const baseURL = 'http://127.0.0.1:4173';
 const playwrightOutDir = '.verify/playwright-dist';
+const captureSuccessfulScreenshots = process.env.COMPOSER_VISUAL_REVIEW === '1';
 
 function project(
   name: string,
@@ -37,7 +38,7 @@ export default defineConfig({
   use: {
     baseURL,
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    screenshot: captureSuccessfulScreenshots ? 'on' : 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 5_000,
     navigationTimeout: 15_000,
