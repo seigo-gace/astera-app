@@ -138,13 +138,17 @@ function useSidebarRecent(enabled: boolean): SidebarRecentState {
     if (!enabled) { setState({ status: 'ready', items: [] }); return; }
     setState((current) => current.items.length ? { status: 'loading', items: current.items } : { status: 'loading', items: [] });
     try {
-      const payload = await apiRequest('/api/conversations?limit=6');
-      const items = asArray(payload, ['conversations', 'items']).slice(0, 6).map((item, index) => {
-        const record = asRecord(item), id = recordText(record, ['conversation_id', 'id']);
-        if (!id) return null;
-        return { id, title: recordText(record, ['title', 'name'], `Chat ${index + 1}`), href: `/app/chats/${encodeURIComponent(id)}` } satisfies SidebarRecentItem;
-      }).filter((item): item is SidebarRecentItem => item !== null);
-      if (items.length) { setState({ status: 'ready', items }); return; }
+      try {
+        const payload = await apiRequest('/api/conversations?limit=6');
+        const items = asArray(payload, ['conversations', 'items']).slice(0, 6).map((item, index) => {
+          const record = asRecord(item), id = recordText(record, ['conversation_id', 'id']);
+          if (!id) return null;
+          return { id, title: recordText(record, ['title', 'name'], `Chat ${index + 1}`), href: `/app/chats/${encodeURIComponent(id)}` } satisfies SidebarRecentItem;
+        }).filter((item): item is SidebarRecentItem => item !== null);
+        if (items.length) { setState({ status: 'ready', items }); return; }
+      } catch {
+        // Conversation履歴が未利用・一時障害でも、既存Result履歴を失わせない。
+      }
       const legacy = await apiRequest('/api/history?limit=6');
       const legacyItems = asArray(legacy, ['history', 'items', 'results']).slice(0, 6).map((item, index) => {
         const record = asRecord(item), id = recordText(record, ['result_id', 'id']);
