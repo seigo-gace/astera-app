@@ -27,6 +27,8 @@ type MockOptions = {
   jobBodies?: Array<Record<string, unknown>>;
   conversationBodies?: Array<Record<string, unknown>>;
   conversationDetail?: Record<string, unknown>;
+  conversationListFailure?: boolean;
+  legacyHistoryItems?: Array<Record<string, unknown>>;
 };
 
 async function installRuntime(page: Page, options: MockOptions = {}): Promise<void> {
@@ -44,8 +46,11 @@ async function installRuntime(page: Page, options: MockOptions = {}): Promise<vo
       }
       return json(route, { preferences });
     }
-    if (path === '/api/history') return json(route, { items: [] });
-    if (path === '/api/conversations' && request.method() === 'GET') return json(route, { conversations: [] });
+    if (path === '/api/history') return json(route, { items: options.legacyHistoryItems ?? [] });
+    if (path === '/api/conversations' && request.method() === 'GET') {
+      if (options.conversationListFailure) return json(route, { error: { code: 'CONVERSATION_LIST_FAILED', message: 'temporary failure' } }, 500);
+      return json(route, { conversations: [] });
+    }
     if (path === '/api/conversations' && request.method() === 'POST') {
       if (options.counters) options.counters.conversations += 1;
       options.conversationBodies?.push(request.postDataJSON() as Record<string, unknown>);
@@ -285,4 +290,38 @@ test('STORY-COMPOSER-012 plus and at reflect sidebar preference candidates', asy
   await expect(dialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
   await expect(dialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
   await expect(dialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
+});
+
+test('STORY-COMPOSER-013 sidebar falls back to legacy Result history when Conversation list fails', async ({ page }) => {
+  await installRuntime(page, {
+    conversationListFailure: true,
+    legacyHistoryItems: [{ id: 'result-legacy', title: 'Legacy Result' }],
+  });
+  await openComposer(page);
+  await expect(page.locator('a[href="/app/results/result-legacy"]')).toHaveCount(1);
+});
+
+test('STORY-COMPOSER-014 persisted failed Job restores the real terminal error instead of queued state', async ({ page }) => {
+  await installRuntime(page, {
+    conversationDetail: {
+      conversation: {
+        id: 'conversation-story',
+        project_id: null,
+        turns: [{
+          id: 'turn-failed',
+          job_id: 'job-failed',
+          prompt: '失敗した過去投稿',
+          purpose: 'verify',
+          job_state: 'failed',
+          error: { code: 'RUNTIME_FAILED', message: '実Runtime失敗' },
+          result: null,
+        }],
+      },
+    },
+  });
+  await openComposer(page, '/app/chats/conversation-story');
+  await expect(page.locator('.native-user-message > p')).toHaveText('失敗した過去投稿');
+  await expect(page.locator('.native-error')).toContainText('実Runtime失敗');
+  await expect(page.locator('.native-error')).toContainText('RUNTIME_FAILED');
+  await expect(page.locator('.native-processing')).toHaveCount(0);
 });
