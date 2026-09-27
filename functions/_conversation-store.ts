@@ -1,4 +1,5 @@
 import type { D1Database } from './_account-projection';
+import { MAX_PURPOSE_TEXT_CHARACTERS } from './_purpose-text';
 import { getResult, ResultStoreError } from './_result-store';
 
 export type ConversationActor = { userId: string; tenantId: string };
@@ -17,6 +18,7 @@ type TurnRow = {
   job_id: string;
   prompt: string;
   purpose: string;
+  purpose_text: string | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -24,7 +26,7 @@ type TurnRow = {
   error_code: string | null;
   error_message: string | null;
 };
-type JobRow = { id: string; private_mode: number; project_id: string | null; state: string; purpose: string };
+type JobRow = { id: string; private_mode: number; project_id: string | null; state: string; purpose: string; purpose_text: string | null };
 
 export class ConversationStoreError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -34,6 +36,7 @@ export class ConversationStoreError extends Error {
 }
 
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
+function nullableText(value: unknown): string | null { return text(value) || null; }
 function titleFromPrompt(prompt: string): string {
   const oneLine = prompt.replace(/\s+/g, ' ').trim();
   return oneLine.slice(0, 80) || 'Astera Chat';
@@ -48,7 +51,7 @@ async function ownedConversation(db: D1Database, actor: ConversationActor, id: s
 }
 
 async function ownedNormalJob(db: D1Database, actor: ConversationActor, jobId: string): Promise<JobRow> {
-  const row = await db.prepare(`SELECT id,private_mode,project_id,state,purpose FROM app_jobs
+  const row = await db.prepare(`SELECT id,private_mode,project_id,state,purpose,purpose_text FROM app_jobs
     WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1`)
     .bind(jobId, actor.tenantId, actor.userId).first<JobRow>();
   if (!row) throw new ConversationStoreError(404, 'CONVERSATION_JOB_NOT_FOUND', 'Conversationへ関連付けるJobを確認できません。');
@@ -67,15 +70,22 @@ export async function appendConversationTurn(
   const jobId = text(body.job_id ?? body.jobId);
   const prompt = text(body.prompt);
   const purpose = text(body.purpose);
+  const purposeText = nullableText(body.purpose_text ?? body.purposeText);
   if (!clientTurnId) throw new ConversationStoreError(422, 'CONVERSATION_TURN_ID_REQUIRED', 'client_turn_idが必要です。');
   if (!jobId) throw new ConversationStoreError(422, 'CONVERSATION_JOB_ID_REQUIRED', 'job_idが必要です。');
   if (!prompt) throw new ConversationStoreError(422, 'CONVERSATION_PROMPT_REQUIRED', 'Prompt本文が必要です。');
   if (!['auto','review','compare','verify','improve','research','plan','consider'].includes(purpose)) {
     throw new ConversationStoreError(422, 'CONVERSATION_PURPOSE_INVALID', 'Purposeが不正です。');
   }
+  if (purposeText && [...purposeText].length > MAX_PURPOSE_TEXT_CHARACTERS) {
+    throw new ConversationStoreError(413, 'CONVERSATION_PURPOSE_TEXT_TOO_LARGE', `自由入力の目的は${MAX_PURPOSE_TEXT_CHARACTERS.toLocaleString()}文字以内です。`);
+  }
 
   const job = await ownedNormalJob(db, actor, jobId);
   if (job.purpose !== purpose) throw new ConversationStoreError(409, 'CONVERSATION_PURPOSE_MISMATCH', 'JobとConversation TurnのPurposeが一致しません。');
+  if ((job.purpose_text?.trim() || null) !== purposeText) {
+    throw new ConversationStoreError(409, 'CONVERSATION_PURPOSE_TEXT_MISMATCH', 'JobとConversation Turnの自由目的が一致しません。');
+  }
   const now = new Date().toISOString();
   let conversationId = conversationIdInput;
 
@@ -89,7 +99,7 @@ export async function appendConversationTurn(
       .bind(conversationId, actor.tenantId, actor.userId, job.project_id, titleFromPrompt(prompt), now).run();
   }
 
-  const existing = await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.position,t.created_at,t.updated_at,
+  const existing = await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.purpose_text,t.position,t.created_at,t.updated_at,
       j.state AS job_state,j.error_code,j.error_message
     FROM chat_turns t JOIN app_jobs j ON j.id=t.job_id
     WHERE t.id=?1 AND t.tenant_id=?2 AND t.user_id=?3 LIMIT 1`)
@@ -99,15 +109,15 @@ export async function appendConversationTurn(
     if (existing.conversation_id !== conversationId) {
       throw new ConversationStoreError(409, 'CONVERSATION_TURN_OWNER_MISMATCH', 'Turnは別Conversationに属しています。');
     }
-    await db.prepare(`UPDATE chat_turns SET job_id=?1,prompt=?2,purpose=?3,updated_at=?4
-      WHERE id=?5 AND conversation_id=?6 AND tenant_id=?7 AND user_id=?8`)
-      .bind(jobId, prompt, purpose, now, clientTurnId, conversationId, actor.tenantId, actor.userId).run();
+    await db.prepare(`UPDATE chat_turns SET job_id=?1,prompt=?2,purpose=?3,purpose_text=?4,updated_at=?5
+      WHERE id=?6 AND conversation_id=?7 AND tenant_id=?8 AND user_id=?9`)
+      .bind(jobId, prompt, purpose, purposeText, now, clientTurnId, conversationId, actor.tenantId, actor.userId).run();
   } else {
     try {
-      await db.prepare(`INSERT INTO chat_turns(id,conversation_id,tenant_id,user_id,job_id,prompt,purpose,position,created_at,updated_at)
-        SELECT ?1,?2,?3,?4,?5,?6,?7,COALESCE(MAX(position),0)+1,?8,?8
+      await db.prepare(`INSERT INTO chat_turns(id,conversation_id,tenant_id,user_id,job_id,prompt,purpose,purpose_text,position,created_at,updated_at)
+        SELECT ?1,?2,?3,?4,?5,?6,?7,?8,COALESCE(MAX(position),0)+1,?9,?9
         FROM chat_turns WHERE conversation_id=?2`)
-        .bind(clientTurnId, conversationId, actor.tenantId, actor.userId, jobId, prompt, purpose, now).run();
+        .bind(clientTurnId, conversationId, actor.tenantId, actor.userId, jobId, prompt, purpose, purposeText, now).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (/UNIQUE|constraint/i.test(message)) {
@@ -153,7 +163,7 @@ export async function getConversation(
   conversationId: string,
 ): Promise<Record<string, unknown>> {
   const conversation = await ownedConversation(db, actor, conversationId);
-  const turns = (await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.position,t.created_at,t.updated_at,
+  const turns = (await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.purpose_text,t.position,t.created_at,t.updated_at,
       j.state AS job_state,j.error_code,j.error_message
     FROM chat_turns t
     JOIN app_jobs j ON j.id=t.job_id AND j.tenant_id=t.tenant_id AND j.user_id=t.user_id
@@ -178,6 +188,7 @@ export async function getConversation(
       job_id: turn.job_id,
       prompt: turn.prompt,
       purpose: turn.purpose,
+      purpose_text: turn.purpose_text,
       position: turn.position,
       job_state: turn.job_state,
       error: turn.error_code || turn.error_message
