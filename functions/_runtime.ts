@@ -31,6 +31,7 @@ export type RuntimeCreateJob = {
   request_id: string;
   prompt: string;
   purpose: string;
+  purpose_text: string | null;
   options: Array<{ key: string; config: Record<string, string> }>;
   files: Array<{
     upload_id: string;
