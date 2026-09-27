@@ -238,8 +238,46 @@ function hydratePersistedTurn(value: unknown): Turn | null {
     ? rawPurpose as PurposeKey
     : 'auto';
   if (!id || !jobIdValue || !prompt) return null;
+  const persistedState = recordText(record, ['job_state', 'state', 'status']).toLowerCase();
+  const persistedError = asRecord(record.error);
   const result = asRecord(record.result);
   if (!Object.keys(result).length) {
+    if (persistedState === 'cancelled' || persistedState === 'canceled') {
+      return { id, prompt, purpose, purposeText, privateMode: false, jobId: jobIdValue, phase: 'cancelled', sections: [], sources: [], error: null };
+    }
+    if (persistedState === 'failed' || persistedState === 'partially_completed' || persistedState === 'partial') {
+      return {
+        id,
+        prompt,
+        purpose,
+        purposeText,
+        privateMode: false,
+        jobId: jobIdValue,
+        phase: 'failed',
+        sections: [],
+        sources: [],
+        error: new ApiError(
+          recordText(persistedError, ['message'], 'Jobを完了できませんでした。'),
+          502,
+          recordText(persistedError, ['code'], 'JOB_FAILED'),
+          value,
+        ),
+      };
+    }
+    if (persistedState === 'completed' || persistedState === 'complete') {
+      return {
+        id,
+        prompt,
+        purpose,
+        purposeText,
+        privateMode: false,
+        jobId: jobIdValue,
+        phase: 'failed',
+        sections: [],
+        sources: [],
+        error: new ApiError('完了済みJobの保存Resultを確認できません。', 502, 'CONVERSATION_RESULT_MISSING', value),
+      };
+    }
     return { id, prompt, purpose, purposeText, privateMode: false, jobId: jobIdValue, phase: 'queued', sections: [], sources: [], error: null };
   }
   try {
