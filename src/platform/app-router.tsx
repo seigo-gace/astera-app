@@ -109,7 +109,7 @@ export default function AppRouter() {
     return <AccountSessionGate><CheckoutRouterPage route={route} /></AccountSessionGate>;
   }
   if (route.id === 'account-subscription') return <LegacyPlanRedirect />;
-  if (route.id === 'app' || route.id === 'new-run') {
+  if (route.id === 'app' || route.id === 'new-run' || route.id === 'chat-detail') {
     return <AccountSessionGate><NativeComposerPage route={route} /></AccountSessionGate>;
   }
   const page = <CanonicalPage route={route} />;
