@@ -305,7 +305,8 @@ test('STORY-COMPOSER-013 sidebar falls back to legacy Result history when Conver
     await menuButton.click();
     await expect(recentSurface).toBeVisible();
   }
-  await expect(recentSurface.locator('a[href="/app/results/result-legacy"]')).toBeVisible();
+  const recentHistory = recentSurface.getByRole('region', { name: '最近の履歴' });
+  await expect(recentHistory.locator('a[href="/app/results/result-legacy"]')).toBeVisible();
 });
 
 test('STORY-COMPOSER-014 persisted failed Job restores the real terminal error instead of queued state', async ({ page }) => {
