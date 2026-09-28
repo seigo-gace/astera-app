@@ -47,7 +47,7 @@ test('auto/manual transitions are also full new analyses', () => {
 
 test('estimate strips revision billing when purpose authority changes', () => {
   const source = readFileSync(new URL('../functions/api/jobs/estimate.ts', import.meta.url), 'utf8');
-  assert.match(source, /SELECT j\.id, j\.state, j\.private_mode, j\.purpose, e\.prompt_sha256/);
+  assert.match(source, /SELECT j\.id, j\.state, j\.private_mode, j\.purpose, j\.purpose_text, e\.prompt_sha256/);
   const authority = source.indexOf('revisionPurposeAuthority(parent.purpose, input.purpose)');
   const downgrade = source.indexOf("if (purposeAuthority.mode === 'full')", authority);
   const parentReset = source.indexOf('effectiveParentJobId: null', downgrade);
