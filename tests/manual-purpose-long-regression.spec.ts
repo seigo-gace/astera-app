@@ -90,6 +90,15 @@ async function installRuntime(page: Page, estimates: Array<Record<string, unknow
   });
 }
 
+async function selectPurpose(page: Page, label: string) {
+  const purposeControl = page.getByLabel('Purposeを選択');
+  await purposeControl.click();
+  const dialog = page.getByRole('dialog', { name: '用途・目的' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: label, exact: true }).click();
+  await expect(purposeControl).toContainText(label);
+}
+
 for (const [purpose, label] of PURPOSES) {
   test(`LONG-${purpose}: 10 x approximately 5000 Japanese characters keep manual purpose fixed`, async ({ page }) => {
     const estimates: Array<Record<string, unknown>> = [];
@@ -98,16 +107,11 @@ for (const [purpose, label] of PURPOSES) {
     await page.goto('/app/new', { waitUntil: 'domcontentloaded' });
     await expect(page.getByLabel('Astera入力')).toBeVisible();
 
-    const purposeControl = page.getByLabel('Purposeを選択');
-    await purposeControl.click();
-    const initialDialog = page.getByRole('dialog', { name: '用途・目的' });
-    await expect(initialDialog).toBeVisible();
-    await initialDialog.getByRole('button', { name: label, exact: true }).click();
-    await expect(purposeControl).toContainText(label);
-
     for (let caseIndex = 0; caseIndex < 10; caseIndex += 1) {
-      if (caseIndex > 0 && await page.getByRole('button', { name: '新規' }).count()) await page.getByRole('button', { name: '新規' }).click();
-      await expect(purposeControl).toContainText(label);
+      if (caseIndex > 0 && await page.getByRole('button', { name: '新規' }).count()) {
+        await page.getByRole('button', { name: '新規' }).click();
+      }
+      await selectPurpose(page, label);
 
       const prompt = buildLongPrompt(purpose, caseIndex);
       const length = [...prompt].length;
