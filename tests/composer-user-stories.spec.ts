@@ -298,12 +298,14 @@ test('STORY-COMPOSER-013 sidebar falls back to legacy Result history when Conver
     legacyHistoryItems: [{ id: 'result-legacy', title: 'Legacy Result' }],
   });
   await openComposer(page);
-  const legacyLinks = page.locator('a[href="/app/results/result-legacy"]');
-  await expect.poll(async () => legacyLinks.evaluateAll((links) => links.filter((link) => {
-    const rect = link.getBoundingClientRect();
-    const style = getComputedStyle(link);
-    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-  }).length)).toBeGreaterThan(0);
+  const menuButton = page.locator('.platform-menu-button');
+  const mobile = await menuButton.isVisible();
+  const recentSurface = mobile ? page.locator('#platform-mobile-drawer') : page.locator('.platform-sidebar');
+  if (mobile) {
+    await menuButton.click();
+    await expect(recentSurface).toBeVisible();
+  }
+  await expect(recentSurface.locator('a[href="/app/results/result-legacy"]')).toBeVisible();
 });
 
 test('STORY-COMPOSER-014 persisted failed Job restores the real terminal error instead of queued state', async ({ page }) => {
