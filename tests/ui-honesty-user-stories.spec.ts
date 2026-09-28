@@ -23,54 +23,64 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
         },
       });
     }
+    if (path === '/api/projects') return json(route, { projects: [] });
+    if (path === '/api/storage/destinations') return json(route, { destinations: [] });
     return json(route, { ok: true });
   });
   await page.goto('/app/new');
 });
 
-async function openComposerMenu(page: import('@playwright/test').Page) {
-  await page.locator('.composer-plus').click();
-  await expect(page.locator('.composer-menu')).toBeVisible();
-  return page.locator('.composer-menu .menu-item');
-}
-
 test('STORY-UI-001 Purpose selection remains single even after choosing another option', async ({ page }) => {
-  await page.getByRole('button', { name: 'Purposeを選択' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Purpose選択' });
+  const purposeButton = page.getByRole('button', { name: 'Purposeを選択' });
+  await purposeButton.click();
+  let dialog = page.getByRole('dialog', { name: '用途・目的' });
   await expect(dialog).toBeVisible();
-  const options = dialog.locator('button');
-  await expect(options).toHaveCount(8);
+  await expect(dialog.locator('.native-purpose-list button.is-selected')).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: /Auto/ })).toHaveClass(/is-selected/);
 
-  await options.nth(0).click();
-  await page.getByRole('button', { name: 'Purposeを選択' }).click();
-  await expect(dialog).toBeVisible();
-  await options.nth(1).click();
-  await page.getByRole('button', { name: 'Purposeを選択' }).click();
-  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /レビュー/ }).click();
+  await expect(purposeButton).toContainText('レビュー');
 
-  await expect(dialog.locator('button.is-selected')).toHaveCount(1);
-  await expect(options.nth(0)).not.toHaveClass(/is-selected/);
-  await expect(options.nth(1)).toHaveClass(/is-selected/);
+  await purposeButton.click();
+  dialog = page.getByRole('dialog', { name: '用途・目的' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.native-purpose-list button.is-selected')).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: /Auto/ })).not.toHaveClass(/is-selected/);
+  await expect(dialog.getByRole('button', { name: /レビュー/ })).toHaveClass(/is-selected/);
+
+  await dialog.getByRole('button', { name: /比較/ }).click();
+  await expect(purposeButton).toContainText('比較');
+  await purposeButton.click();
+  dialog = page.getByRole('dialog', { name: '用途・目的' });
+  await expect(dialog.locator('.native-purpose-list button.is-selected')).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: /比較/ })).toHaveClass(/is-selected/);
 });
 
-test('STORY-UI-002 unavailable Project Source controls are disabled instead of silently doing nothing', async ({ page }) => {
-  const menuItems = await openComposerMenu(page);
-  await menuItems.nth(2).click();
+test('STORY-UI-002 Project context exposes explicit no-Project state and never fabricates unavailable projects', async ({ page }) => {
+  const composer = page.getByRole('textbox', { name: 'Astera入力' });
+  await composer.focus();
+  await composer.press('@');
 
-  const dialog = page.locator('.dialog-content[data-project-source-unavailable="true"]');
+  const dialog = page.getByRole('dialog', { name: 'Option・対象選択' });
   await expect(dialog).toBeVisible();
-  const sourceButtons = dialog.locator('.template-card');
-  await expect(sourceButtons).toHaveCount(3);
-  for (let index = 0; index < 3; index += 1) await expect(sourceButtons.nth(index)).toBeDisabled();
-  await expect(dialog.locator('.dialog-notice')).toContainText('未実装');
+  const project = dialog.getByLabel('Project');
+  await expect(project).toBeVisible();
+  await expect(project.locator('option')).toHaveCount(1);
+  await expect(project.locator('option')).toHaveText(['Projectなし']);
+  await expect(project).toHaveValue('');
 });
 
-test('STORY-UI-003 legacy Settings clearly identifies session-only changes and links to the saved Settings Page', async ({ page }) => {
+test('STORY-UI-003 Settings opens the canonical settings surface instead of legacy session-only controls', async ({ page }) => {
   const settingsTrigger = page.getByText(/^(設定|Settings)$/).last();
   await settingsTrigger.click();
 
-  const dialog = page.locator('.dialog-content[data-session-settings-notice="true"]');
+  const dialog = page.getByRole('dialog', { name: /^(設定|Settings)$/ });
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator('.dialog-notice')).toContainText('現在の表示Sessionだけ');
-  await expect(dialog.getByRole('link', { name: 'Settings Pageを開く' })).toHaveAttribute('href', '/app/settings');
+  const surface = dialog.locator('.settings-surface');
+  await expect(surface).toBeVisible();
+  await expect(surface.locator('a[href="/account"]')).toHaveCount(1);
+  await expect(surface.locator('a[href="/app/settings/language"]')).toHaveCount(1);
+  await expect(surface.locator('a[href="/app/settings/notifications"]')).toHaveCount(1);
+  await expect(surface.locator('a[href="/app/settings/data-privacy"]')).toHaveCount(1);
+  await expect(surface.locator('a[href="/app/settings/legal-support"]')).toHaveCount(1);
 });
