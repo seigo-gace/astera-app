@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../src/platform/platform.css', import.meta.url), 'utf8');
 const nativeCss = readFileSync(new URL('../src/features/composer/native-composer.css', import.meta.url), 'utf8');
-const nativeComposer = readFileSync(new URL('../src/features/composer/NativeComposerPage.tsx', import.meta.url), 'utf8');
+const nativeComposer = readFileSync(new URL('../src/features/composer/NativeComposerConversation.tsx', import.meta.url), 'utf8');
 const compatibilityCss = readFileSync(new URL('../src/device-compatibility.css', import.meta.url), 'utf8');
 const horizontalCss = readFileSync(new URL('../src/horizontal-stability.css', import.meta.url), 'utf8');
 const orientationCss = readFileSync(new URL('../src/orientation-stability.css', import.meta.url), 'utf8');
