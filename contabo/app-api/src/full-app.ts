@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
-import { ClamAvStreamClient } from './clamav-stream-client.js';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp } from './index.js';
 import { PrivateDataBroker, registerPrivateDataBrokerApi } from './private-data-broker.js';
-import { PrivateFileMaterializer } from './private-file-materializer.js';
+import { PrivateFileMaterializer, PrivateFileMaterializerError } from './private-file-materializer.js';
 import { PrivateMaterializingRuntimeService } from './private-materializing-runtime-service.js';
 import { registerPrivateDataMetadataApi } from './private-data-metadata-api.js';
 import { registerStorageBinaryApi } from './storage-binary-api.js';
@@ -24,15 +23,24 @@ export function createFullApp(
     await privateDataBroker.destroyObject(objectId, tenantId, userId);
   };
 
+  // Scanner/Extractor/OCR product selection is an explicit architecture gate.
+  // Until that authority is decided, the default runtime must fail closed rather
+  // than silently adopting a candidate product such as ClamAV/Tika/Tesseract.
+  const unavailableScanner = {
+    scan: async () => {
+      throw new PrivateFileMaterializerError(
+        'PRIVATE_PIPELINE_UNAVAILABLE',
+        'Private malware scanner runtime has not been selected and connected.',
+        true,
+      );
+    },
+  };
+
   const runtimeService = service ?? new PrivateMaterializingRuntimeService(
     config,
     new PrivateFileMaterializer(
       privateDataBroker,
-      new ClamAvStreamClient({
-        host: config.clamavHost?.trim() || '',
-        port: config.clamavPort ?? 3310,
-        timeoutMs: config.clamavTimeoutMs ?? 30_000,
-      }),
+      unavailableScanner,
       {
         version: config.fileSecurityPolicyVersion?.trim() || '',
         maxExtractedTextBytes: config.fileSecurityMaxExtractedTextBytes ?? 0,

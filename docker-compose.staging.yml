@@ -1,13 +1,4 @@
 services:
-  astera-file-scanner-staging:
-    image: clamav/clamav:1.5.4
-    container_name: astera-file-scanner-staging
-    networks:
-      - astera-app-staging
-    volumes:
-      - astera-clamav-db:/var/lib/clamav
-    restart: unless-stopped
-
   astera-app-api-staging:
     build:
       context: .
@@ -20,9 +11,6 @@ services:
       LIBRAL_VAULT_INTERNAL_ORIGIN: http://libral-vault-libral-vault-1:8791
       ASTERA_PRIVATE_DATA_TMP_DIR: /run/astera-private-data
       ASTERA_PRIVATE_UPLOAD_MAX_BYTES: "20971520"
-      ASTERA_CLAMAV_HOST: astera-file-scanner-staging
-      ASTERA_CLAMAV_PORT: "3310"
-      ASTERA_CLAMAV_TIMEOUT_MS: "30000"
       ASTERA_FILE_SECURITY_POLICY_VERSION: file-security-v1
       ASTERA_FILE_SECURITY_MAX_EXTRACTED_TEXT_BYTES: "20971520"
     tmpfs:
@@ -34,9 +22,6 @@ services:
     networks:
       - astera-app-staging
       - libral-vault_default
-    depends_on:
-      astera-file-scanner-staging:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test:
@@ -84,7 +69,3 @@ networks:
   libral-vault_default:
     external: true
     name: libral-vault_default
-
-volumes:
-  astera-clamav-db:
-    name: astera-clamav-db
