@@ -5,6 +5,7 @@ import {
   requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
+import { describePrivateRuntimeFile, type PrivateBrokerEnv } from '../../_private-data-broker-client';
 import {
   calculateRequiredCredits,
   creditState,
@@ -44,14 +45,8 @@ type RevisionBillingDecision = {
   resetReason: 'REVISION_PURPOSE_MISMATCH' | 'REVISION_PURPOSE_TEXT_MISMATCH' | null;
 };
 
-type Env = AsteraFunctionEnv & { PRIVATE_UPLOAD_TTL_SECONDS?: string };
+type Env = AsteraFunctionEnv & PrivateBrokerEnv;
 type PagesContext = { request: Request; env: Env };
-
-function privateUploadTtl(value: string | undefined): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 300) return 3600;
-  return Math.min(24 * 60 * 60, parsed);
-}
 
 async function loadUploads(
   context: PagesContext,
@@ -59,8 +54,27 @@ async function loadUploads(
   userId: string,
   fileIds: string[],
   privateMode: boolean,
+  correlationId: string,
 ): Promise<UploadRow[]> {
   if (fileIds.length === 0) return [];
+
+  if (privateMode) {
+    return Promise.all(fileIds.map(async (id) => {
+      const file = await describePrivateRuntimeFile(context.env, { tenantId, userId, objectId: id, correlationId });
+      if (Date.parse(file.expires_at) <= Date.now()) {
+        throw new FunctionHttpError(409, 'UPLOAD_EXPIRED', 'Private Fileの有効期限が切れています。', { upload_id: id });
+      }
+      return {
+        id: file.upload_id,
+        size_bytes: file.size_bytes,
+        sha256: file.sha256,
+        private_mode: 1,
+        status: 'ready',
+        expires_at: file.expires_at,
+      };
+    }));
+  }
+
   const placeholders = fileIds.map((_, index) => `?${index + 3}`).join(', ');
   const result = await context.env.ASTERA_DB.prepare(
     `SELECT id, size_bytes, sha256, private_mode, status, expires_at
@@ -71,21 +85,9 @@ async function loadUploads(
   if (rows.length !== fileIds.length) throw new FunctionHttpError(409, 'UPLOAD_REFERENCE_NOT_FOUND', '指定されたFileの一部を確認できません。');
   const byId = new Map(rows.map((row) => [row.id, row]));
   const ordered = fileIds.map((id) => byId.get(id)).filter((row): row is UploadRow => Boolean(row));
-  const now = Date.now();
   for (const row of ordered) {
     if (row.status !== 'ready') throw new FunctionHttpError(409, 'UPLOAD_NOT_READY', 'File UploadがReady状態ではありません。', { upload_id: row.id, status: row.status });
-    if (row.expires_at && Date.parse(row.expires_at) <= now) throw new FunctionHttpError(409, 'UPLOAD_EXPIRED', 'Private Fileの有効期限が切れています。', { upload_id: row.id });
-    if (privateMode && !Boolean(row.private_mode)) {
-      const expiresAt = new Date(now + privateUploadTtl(context.env.PRIVATE_UPLOAD_TTL_SECONDS) * 1000).toISOString();
-      const updated = await context.env.ASTERA_DB.prepare(
-        `UPDATE upload_objects
-         SET private_mode = 1, expires_at = ?1, updated_at = ?2
-         WHERE id = ?3 AND tenant_id = ?4 AND user_id = ?5 AND status = 'ready' AND private_mode = 0`,
-      ).bind(expiresAt, new Date(now).toISOString(), row.id, tenantId, userId).run();
-      if (updated.success === false) throw new FunctionHttpError(409, 'UPLOAD_PRIVATE_PROMOTION_FAILED', 'FileをPrivate Modeへ切り替えられませんでした。', { upload_id: row.id });
-      row.private_mode = 1;
-      row.expires_at = expiresAt;
-    } else if (!privateMode && Boolean(row.private_mode)) {
+    if (Boolean(row.private_mode)) {
       throw new FunctionHttpError(409, 'PRIVATE_UPLOAD_NORMAL_JOB_FORBIDDEN', 'Private Fileを通常保存Jobへ戻すことはできません。', { upload_id: row.id });
     }
   }
@@ -145,7 +147,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     const purposeText = normalizePurposeText(rawRequest);
     const [policy, uploads] = await Promise.all([
       loadActiveCreditPolicy(context.env.ASTERA_DB),
-      loadUploads(context, actor.profile.tenant_id, actor.user.id, input.fileIds, input.privateMode),
+      loadUploads(context, actor.profile.tenant_id, actor.user.id, input.fileIds, input.privateMode, requestId),
     ]);
 
     const totalFileBytes = uploads.reduce((sum, row) => sum + Number(row.size_bytes), 0);
