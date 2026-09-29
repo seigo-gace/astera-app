@@ -34,6 +34,22 @@ const SUPPORTED = new Map<string, Readonly<{ detectedMime: string; acceptedMime:
   ['.json', { detectedMime: 'application/json', acceptedMime: ['application/json', 'text/json'], json: true }],
 ]);
 
+type BinarySignature = Readonly<{
+  name: string;
+  offset: number;
+  bytes: readonly number[];
+}>;
+
+const KNOWN_BINARY_SIGNATURES: readonly BinarySignature[] = [
+  { name: 'PDF', offset: 0, bytes: [0x25, 0x50, 0x44, 0x46, 0x2d] },
+  { name: 'ZIP', offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] },
+  { name: 'ZIP_EMPTY', offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] },
+  { name: 'ZIP_SPANNED', offset: 0, bytes: [0x50, 0x4b, 0x07, 0x08] },
+  { name: 'PNG', offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { name: 'JPEG', offset: 0, bytes: [0xff, 0xd8, 0xff] },
+  { name: 'WEBP_RIFF', offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] },
+];
+
 function extension(name: string): string {
   const normalized = name.trim().toLowerCase();
   const dot = normalized.lastIndexOf('.');
@@ -44,7 +60,34 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function hasSignature(bytes: Uint8Array, signature: BinarySignature): boolean {
+  if (bytes.byteLength < signature.offset + signature.bytes.length) return false;
+  return signature.bytes.every((byte, index) => bytes[signature.offset + index] === byte);
+}
+
+function hasWebpSignature(bytes: Uint8Array): boolean {
+  return hasSignature(bytes, KNOWN_BINARY_SIGNATURES[6]!)
+    && bytes.byteLength >= 12
+    && bytes[8] === 0x57
+    && bytes[9] === 0x45
+    && bytes[10] === 0x42
+    && bytes[11] === 0x50;
+}
+
+function rejectKnownBinaryMasquerade(bytes: Uint8Array): void {
+  for (const signature of KNOWN_BINARY_SIGNATURES) {
+    if (signature.name === 'WEBP_RIFF') continue;
+    if (hasSignature(bytes, signature)) {
+      throw new PrivateFileMaterializerError('MIME_MISMATCH', `File bytes match ${signature.name} while the approved input type is text.`, false);
+    }
+  }
+  if (hasWebpSignature(bytes)) {
+    throw new PrivateFileMaterializerError('MIME_MISMATCH', 'File bytes match WEBP while the approved input type is text.', false);
+  }
+}
+
 function validateTextBytes(bytes: Uint8Array, json: boolean): void {
+  rejectKnownBinaryMasquerade(bytes);
   if (!isUtf8(bytes) || bytes.includes(0)) {
     throw new PrivateFileMaterializerError('MIME_MISMATCH', 'File bytes do not match an approved UTF-8 text format.', false);
   }
@@ -100,8 +143,8 @@ export class PrivateFileMaterializer {
           throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Private object metadata does not match decrypted bytes.', false);
         }
 
-        // Type/MIME candidate validation happens before malware scanning without
-        // creating an extracted plaintext string or a temporary plaintext file.
+        // Candidate type/MIME/magic validation happens before malware scanning
+        // without creating an extracted plaintext string or temporary plaintext file.
         validateTextBytes(bytes, format.json);
         await this.scanner.scan(bytes, signal);
 

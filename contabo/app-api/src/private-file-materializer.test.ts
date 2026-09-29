@@ -84,7 +84,7 @@ test('unsupported PDF is blocked before reading or scanning it', async () => {
   assert.equal(scanned, false);
 });
 
-test('MIME mismatch is rejected before private bytes are decrypted', async () => {
+test('Browser MIME mismatch is rejected before private bytes are decrypted', async () => {
   const source = new Uint8Array(Buffer.from('plain text', 'utf8'));
   let read = false;
   const runtime = new PrivateFileMaterializer(
@@ -99,15 +99,63 @@ test('MIME mismatch is rejected before private bytes are decrypted', async () =>
   assert.equal(read, false);
 });
 
-test('invalid JSON fails closed and decrypted bytes are wiped', async () => {
+test('PDF magic masquerading as TXT is rejected before malware scan and decrypted bytes are wiped', async () => {
+  const source = new Uint8Array(Buffer.from('%PDF-1.7\nprivate', 'ascii'));
+  const original = new Uint8Array(source);
+  let scanned = false;
+  await assert.rejects(
+    materializer(source, async () => { scanned = true; }).materialize(input('fake.txt', 'text/plain', original)),
+    (error: unknown) => (error as { code?: string }).code === 'MIME_MISMATCH',
+  );
+  assert.equal(scanned, false);
+  assert.deepEqual(source, new Uint8Array(source.byteLength));
+});
+
+test('ZIP magic masquerading as Markdown is rejected before malware scan', async () => {
+  const source = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x31, 0x32, 0x33, 0x34]);
+  const original = new Uint8Array(source);
+  let scanned = false;
+  await assert.rejects(
+    materializer(source, async () => { scanned = true; }).materialize(input('fake.md', 'text/plain', original)),
+    (error: unknown) => (error as { code?: string }).code === 'MIME_MISMATCH',
+  );
+  assert.equal(scanned, false);
+});
+
+test('malware rejection stops extraction acceptance and wipes decrypted bytes', async () => {
+  const source = new Uint8Array(Buffer.from('scan me before extraction acceptance', 'utf8'));
+  const original = new Uint8Array(source);
+  await assert.rejects(
+    materializer(source, async () => {
+      throw Object.assign(new Error('infected'), { code: 'MALWARE_DETECTED', retryable: false });
+    }).materialize(input('evidence.txt', 'text/plain', original)),
+    (error: unknown) => (error as { code?: string }).code === 'MALWARE_DETECTED',
+  );
+  assert.deepEqual(source, new Uint8Array(source.byteLength));
+});
+
+test('invalid JSON is scanned before structural extraction fails and decrypted bytes are wiped', async () => {
   const source = new Uint8Array(Buffer.from('{invalid', 'utf8'));
   const original = new Uint8Array(source);
-  const runtime = materializer(source);
+  let scanned = false;
+  const runtime = materializer(source, async () => { scanned = true; });
   await assert.rejects(
     runtime.materialize(input('evidence.json', 'application/json', original)),
     (error: unknown) => (error as { code?: string }).code === 'EXTRACT_FAILED',
   );
+  assert.equal(scanned, true);
   assert.deepEqual(source, new Uint8Array(source.byteLength));
+});
+
+test('JSON with non-JSON leading bytes fails MIME/magic gate before scanner', async () => {
+  const source = new Uint8Array(Buffer.from('not-json', 'utf8'));
+  const original = new Uint8Array(source);
+  let scanned = false;
+  await assert.rejects(
+    materializer(source, async () => { scanned = true; }).materialize(input('fake.json', 'application/json', original)),
+    (error: unknown) => (error as { code?: string }).code === 'MIME_MISMATCH',
+  );
+  assert.equal(scanned, false);
 });
 
 test('missing versioned File Security policy fails closed before decrypting bytes', async () => {
