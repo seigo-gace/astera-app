@@ -38,9 +38,15 @@ export class PrivateMaterializingRuntimeService extends AsteraRuntimeService {
 
   private async destroyInputFiles(input: RuntimeCreateRequest): Promise<void> {
     const objectIds = [...new Set(input.files.map((file) => file.upload_id))];
+    let firstFailure: unknown = null;
     for (const objectId of objectIds) {
-      await this.destroyPrivateObject({ objectId, tenantId: input.tenant_id, userId: input.user_id });
+      try {
+        await this.destroyPrivateObject({ objectId, tenantId: input.tenant_id, userId: input.user_id });
+      } catch (error) {
+        firstFailure ??= error;
+      }
     }
+    if (firstFailure) throw firstFailure;
   }
 
   override async execute(input: RuntimeCreateRequest): Promise<void> {
