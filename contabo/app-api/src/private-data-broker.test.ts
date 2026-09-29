@@ -75,6 +75,7 @@ async function sandbox() {
     root,
     vault,
     broker,
+    now: () => now,
     advance(ms: number) { now += ms; },
     async dispose() {
       await broker.close().catch(() => undefined);
@@ -88,20 +89,13 @@ test('private broker encrypts bytes on disk, reads them back, and destroys key p
   try {
     const canary = 'PRIVATE-CANARY-PLAINTEXT-MUST-NOT-REMAIN';
     const bytes = Buffer.from(`${canary}\n${'x'.repeat(128 * 1024)}`, 'utf8');
-    const created = await env.broker.createObject({
-      tenantId: 'tenant-1',
-      userId: 'user-1',
-      name: 'evidence.txt',
-      contentType: 'text/plain',
-      bytes,
-    });
+    const created = await env.broker.createObject({ tenantId: 'tenant-1', userId: 'user-1', name: 'evidence.txt', contentType: 'text/plain', bytes });
     assert.match(created.storageKey, /^private:/);
     assert.equal(created.sizeBytes, bytes.byteLength);
     assert.equal(env.vault.keys.size, 1);
 
     const objectDir = join(env.root, created.objectId);
-    const files = await readdir(objectDir);
-    assert.ok(files.includes('0.agcm'));
+    assert.ok((await readdir(objectDir)).includes('0.agcm'));
     const sealed = await readFile(join(objectDir, '0.agcm'));
     assert.equal(sealed.includes(Buffer.from(canary)), false, 'plaintext canary must not appear in encrypted chunk');
     const manifest = await readFile(join(objectDir, 'manifest.json'), 'utf8');
@@ -110,7 +104,6 @@ test('private broker encrypts bytes on disk, reads them back, and destroys key p
     const restored = await env.broker.readObject(created.objectId, 'tenant-1', 'user-1');
     assert.equal(Buffer.from(restored).equals(bytes), true);
     restored.fill(0);
-
     await env.broker.destroyObject(created.objectId, 'tenant-1', 'user-1');
     assert.equal(env.vault.keys.size, 0);
     assert.equal(env.vault.removed.length, 1);
@@ -125,13 +118,7 @@ test('private broker refuses cross-owner reads without exposing object existence
   const env = await sandbox();
   try {
     const bytes = Buffer.from('owner-bound-private-file');
-    const created = await env.broker.createObject({
-      tenantId: 'tenant-1',
-      userId: 'user-1',
-      name: 'owner.txt',
-      contentType: 'text/plain',
-      bytes,
-    });
+    const created = await env.broker.createObject({ tenantId: 'tenant-1', userId: 'user-1', name: 'owner.txt', contentType: 'text/plain', bytes });
     await assert.rejects(
       env.broker.readObject(created.objectId, 'tenant-1', 'user-2'),
       (error: unknown) => error instanceof PrivateDataBrokerError && error.code === 'PRIVATE_OBJECT_NOT_FOUND' && error.status === 404,
@@ -146,13 +133,7 @@ test('private broker absolute TTL cleanup revokes the Vault key and removes ciph
   const env = await sandbox();
   try {
     const bytes = Buffer.from('ttl-private-file');
-    const created = await env.broker.createObject({
-      tenantId: 'tenant-ttl',
-      userId: 'user-ttl',
-      name: 'ttl.txt',
-      contentType: 'text/plain',
-      bytes,
-    });
+    const created = await env.broker.createObject({ tenantId: 'tenant-ttl', userId: 'user-ttl', name: 'ttl.txt', contentType: 'text/plain', bytes });
     env.advance(privateDataPolicy.absoluteTtlSeconds * 1000 + 1);
     assert.equal(await env.broker.cleanupExpired(), 1);
     assert.equal(env.vault.keys.size, 0);
@@ -163,6 +144,50 @@ test('private broker absolute TTL cleanup revokes the Vault key and removes ciph
     bytes.fill(0);
   } finally {
     await env.dispose();
+  }
+});
+
+test('private broker startup recovery cleans an expired recovered object', async () => {
+  const env = await sandbox();
+  let recovered: PrivateDataBroker | null = null;
+  try {
+    const bytes = Buffer.from('recovery-expired-private-file');
+    const created = await env.broker.createObject({ tenantId: 'tenant-recovery', userId: 'user-recovery', name: 'recovery.txt', contentType: 'text/plain', bytes });
+    env.advance(privateDataPolicy.absoluteTtlSeconds * 1000 + 1);
+    recovered = new PrivateDataBroker(
+      { privateDataTmpDir: env.root, privateUploadMaxBytes: 32 * 1024 * 1024 },
+      env.vault,
+      { requireTmpfs: false, cleanupIntervalMs: 0, now: env.now },
+    );
+    await recovered.ready();
+    assert.equal(env.vault.keys.size, 0);
+    assert.ok(env.vault.removed.length >= 1);
+    await assert.rejects(readFile(join(env.root, created.objectId, 'manifest.json')), /ENOENT/);
+    bytes.fill(0);
+  } finally {
+    await recovered?.close().catch(() => undefined);
+    await env.dispose();
+  }
+});
+
+test('private broker removes the object directory when Vault key creation fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'astera-private-broker-key-fail-'));
+  const vault = new FakeVault();
+  vault.storeSecret = async () => { throw Object.assign(new Error('key store failed'), { code: 'LIBRAL_VAULT_UNAVAILABLE' }); };
+  const broker = new PrivateDataBroker(
+    { privateDataTmpDir: root, privateUploadMaxBytes: 20 * 1024 * 1024 },
+    vault,
+    { requireTmpfs: false, cleanupIntervalMs: 0 },
+  );
+  await broker.ready();
+  try {
+    const bytes = Buffer.from('key-store-fail-private-file');
+    await assert.rejects(broker.createObject({ tenantId: 'tenant', userId: 'user', name: 'key-fail.txt', contentType: 'text/plain', bytes }), /key store failed/);
+    assert.deepEqual(await readdir(root), []);
+    bytes.fill(0);
+  } finally {
+    await broker.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
   }
 });
 
