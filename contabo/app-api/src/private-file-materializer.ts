@@ -111,6 +111,14 @@ function decodeUtf8(bytes: Uint8Array): string {
   }
 }
 
+function scrubMaterials(materials: VerifiedFileMaterial[]): void {
+  for (const material of materials) {
+    material.extractedText = '';
+    material.inspection.reasons.length = 0;
+  }
+  materials.length = 0;
+}
+
 export class PrivateFileMaterializer {
   constructor(
     private readonly reader: PrivateFileReader,
@@ -127,53 +135,61 @@ export class PrivateFileMaterializer {
     }
 
     const materials: VerifiedFileMaterial[] = [];
-    for (const file of input.files) {
-      const format = SUPPORTED.get(extension(file.name));
-      if (!format) {
-        throw new PrivateFileMaterializerError('FILE_TYPE_BLOCKED', 'File type does not have an approved in-memory extractor.', false);
-      }
-      const browserMime = file.content_type.trim().toLowerCase();
-      if (!format.acceptedMime.includes(browserMime)) {
-        throw new PrivateFileMaterializerError('MIME_MISMATCH', 'Browser MIME and approved file type do not match.', false);
-      }
-
-      const bytes = await this.reader.readObject(file.upload_id, input.tenant_id, input.user_id);
-      try {
-        if (bytes.byteLength !== file.size_bytes || sha256(bytes) !== file.sha256.toLowerCase()) {
-          throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Private object metadata does not match decrypted bytes.', false);
+    try {
+      for (const file of input.files) {
+        const format = SUPPORTED.get(extension(file.name));
+        if (!format) {
+          throw new PrivateFileMaterializerError('FILE_TYPE_BLOCKED', 'File type does not have an approved in-memory extractor.', false);
+        }
+        const browserMime = file.content_type.trim().toLowerCase();
+        if (!format.acceptedMime.includes(browserMime)) {
+          throw new PrivateFileMaterializerError('MIME_MISMATCH', 'Browser MIME and approved file type do not match.', false);
         }
 
-        // Candidate type/MIME/magic validation happens before malware scanning
-        // without creating an extracted plaintext string or temporary plaintext file.
-        validateTextBytes(bytes, format.json);
-        await this.scanner.scan(bytes, signal);
+        const bytes = await this.reader.readObject(file.upload_id, input.tenant_id, input.user_id);
+        try {
+          if (bytes.byteLength !== file.size_bytes || sha256(bytes) !== file.sha256.toLowerCase()) {
+            throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Private object metadata does not match decrypted bytes.', false);
+          }
 
-        const extractedText = decodeUtf8(bytes);
-        if (format.json) {
-          try { JSON.parse(extractedText); }
-          catch { throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'JSON file is structurally invalid.', false); }
+          // Candidate type/MIME/magic validation happens before malware scanning
+          // without creating an extracted plaintext string or temporary plaintext file.
+          validateTextBytes(bytes, format.json);
+          await this.scanner.scan(bytes, signal);
+
+          const extractedText = decodeUtf8(bytes);
+          if (format.json) {
+            try { JSON.parse(extractedText); }
+            catch { throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'JSON file is structurally invalid.', false); }
+          }
+
+          const extractedBytes = Buffer.byteLength(extractedText, 'utf8');
+          if (extractedBytes <= 0 || extractedBytes > this.policy.maxExtractedTextBytes) {
+            throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Extracted text exceeds the configured File Security policy.', false);
+          }
+
+          materials.push({
+            inspection: {
+              fileId: file.upload_id,
+              sha256: file.sha256.toLowerCase(),
+              size: file.size_bytes,
+              detectedMime: format.detectedMime,
+              status: 'accepted',
+              reasons: [],
+            },
+            extractedText,
+          });
+        } finally {
+          bytes.fill(0);
         }
-
-        const extractedBytes = Buffer.byteLength(extractedText, 'utf8');
-        if (extractedBytes <= 0 || extractedBytes > this.policy.maxExtractedTextBytes) {
-          throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Extracted text exceeds the configured File Security policy.', false);
-        }
-
-        materials.push({
-          inspection: {
-            fileId: file.upload_id,
-            sha256: file.sha256.toLowerCase(),
-            size: file.size_bytes,
-            detectedMime: format.detectedMime,
-            status: 'accepted',
-            reasons: [],
-          },
-          extractedText,
-        });
-      } finally {
-        bytes.fill(0);
       }
+      return materials;
+    } catch (error) {
+      // A later file may fail after earlier files were already extracted. Drop every
+      // accumulated plaintext reference before propagating the failure so a failed
+      // multi-file request cannot retain accepted material from earlier files.
+      scrubMaterials(materials);
+      throw error;
     }
-    return materials;
   }
 }

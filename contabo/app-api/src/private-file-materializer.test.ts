@@ -158,6 +158,44 @@ test('JSON with non-JSON leading bytes fails MIME/magic gate before scanner', as
   assert.equal(scanned, false);
 });
 
+test('multi-file failure wipes every decrypted byte buffer and never returns earlier accepted material', async () => {
+  const first = new Uint8Array(Buffer.from('first private material', 'utf8'));
+  const firstOriginal = new Uint8Array(first);
+  const second = new Uint8Array(Buffer.from('second private material', 'utf8'));
+  const secondOriginal = new Uint8Array(second);
+  const request = input('first.txt', 'text/plain', firstOriginal);
+  request.files.push({
+    upload_id: '22222222-2222-4222-8222-222222222222',
+    storage_key: 'private:22222222-2222-4222-8222-222222222222',
+    name: 'second.txt',
+    content_type: 'text/plain',
+    size_bytes: secondOriginal.byteLength,
+    sha256: sha256(secondOriginal),
+    private_mode: true,
+  });
+  const sources = new Map<string, Uint8Array>([
+    ['11111111-1111-4111-8111-111111111111', first],
+    ['22222222-2222-4222-8222-222222222222', second],
+  ]);
+  let scans = 0;
+  const runtime = new PrivateFileMaterializer(
+    { readObject: async (objectId) => sources.get(objectId)! },
+    { scan: async () => {
+      scans += 1;
+      if (scans === 2) throw Object.assign(new Error('infected second file'), { code: 'MALWARE_DETECTED', retryable: false });
+    } },
+    { version: 'file-security-test-v1', maxExtractedTextBytes: 64 * 1024 },
+  );
+
+  await assert.rejects(
+    runtime.materialize(request),
+    (error: unknown) => (error as { code?: string }).code === 'MALWARE_DETECTED',
+  );
+  assert.equal(scans, 2);
+  assert.deepEqual(first, new Uint8Array(first.byteLength));
+  assert.deepEqual(second, new Uint8Array(second.byteLength));
+});
+
 test('missing versioned File Security policy fails closed before decrypting bytes', async () => {
   const source = new Uint8Array(Buffer.from('private text', 'utf8'));
   let read = false;
