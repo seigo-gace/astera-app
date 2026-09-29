@@ -187,6 +187,7 @@ test('post-Core cleanup failure still attempts every remaining private object', 
     },
     extractedText: `private facts ${index + 1}`,
   }));
+  const materialRefs = [...materials];
   const attempts: string[] = [];
   const service = new PrivateMaterializingRuntimeService(
     config,
@@ -218,6 +219,7 @@ test('post-Core cleanup failure still attempts every remaining private object', 
   assert.equal(service.getPrivateResult('job-post-core-cleanup'), null);
   assert.equal(attempts.includes('22222222-2222-4222-8222-222222222222'), true);
   assert.equal(attempts.at(-1), '22222222-2222-4222-8222-222222222222');
-  assert.equal(materials[0]!.extractedText, '');
-  assert.equal(materials[1]!.extractedText, '');
+  assert.equal(materials.length, 0);
+  assert.equal(materialRefs[0]!.extractedText, '');
+  assert.equal(materialRefs[1]!.extractedText, '');
 });
