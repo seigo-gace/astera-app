@@ -1,0 +1,92 @@
+name: PR67 Staging Layout Preview
+
+on:
+  push:
+    branches:
+      - fix/gpt-chat-layout-history-evidence-20260927
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'functions/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
+      - '.github/workflows/pr67-staging-layout-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr67-staging-layout-preview
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VITE_PREVIEW_WITHOUT_AUTH: 'false'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLAREACCOUNTAPI }}
+      CLOUDFLARE_PAGES_PROJECT: 'astera-app-staging'
+      STAGING_DOMAIN: 'staging.asterav8.jp'
+    steps:
+      - name: Checkout exact PR67 commit
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+
+      - name: Require deploy credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN}"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Cloudflare Functions
+        run: npm run cloudflare:functions:build
+
+      - name: Write staging preview marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '{"github_sha":"%s","source_branch":"%s","target":"staging-layout-preview","auth_mode":"real"}\n' "${GITHUB_SHA}" "${GITHUB_REF_NAME}" > dist/__staging_deployment.json
+
+      - name: Deploy exact PR67 build to staging custom domain
+        run: npx wrangler pages deploy dist --project-name="${CLOUDFLARE_PAGES_PROJECT}" --branch=main
+
+      - name: Verify staging serves exact PR67 build
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const expectedSha = process.env.GITHUB_SHA;
+          const domain = process.env.STAGING_DOMAIN;
+          let last = '';
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            try {
+              const response = await fetch(`https://${domain}/__staging_deployment.json?sha=${expectedSha}&attempt=${attempt}`, {
+                headers: { 'Cache-Control': 'no-cache' },
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const body = await response.json();
+              if (body.github_sha === expectedSha && body.target === 'staging-layout-preview' && body.auth_mode === 'real') {
+                console.log(`Verified https://${domain}/ -> ${expectedSha}`);
+                process.exit(0);
+              }
+              last = JSON.stringify(body);
+            } catch (error) {
+              last = error instanceof Error ? error.message : String(error);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          }
+          throw new Error(`staging exact-SHA readback failed: ${last}`);
+          NODE
