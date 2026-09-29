@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -15,6 +15,16 @@ class FakeVault implements PrivateDataVault {
   }
 }
 
+class FailingVault implements PrivateDataVault {
+  async sealJson(_value: unknown): Promise<{ ciphertext: string; iv: string }> {
+    throw Object.assign(new Error('vault unavailable'), { code: 'VAULT_UNAVAILABLE' });
+  }
+
+  async unsealJson<T>(_payload: { ciphertext: string; iv: string }): Promise<T> {
+    throw new Error('not used by create cleanup regression');
+  }
+}
+
 class CleanupFailureBroker extends PrivateDataBroker {
   failObjectId = '';
   readonly attempts: string[] = [];
@@ -25,6 +35,21 @@ class CleanupFailureBroker extends PrivateDataBroker {
       throw Object.assign(new Error('cleanup failed'), { code: 'PRIVATE_OBJECT_CLEANUP_FAILED' });
     }
     await super.destroyObject(objectId, tenantId, userId);
+  }
+}
+
+class CreateCleanupFailureBroker extends PrivateDataBroker {
+  failRemoval = true;
+  failedObjectId = '';
+  readonly removalAttempts: string[] = [];
+
+  protected override async removeObjectDirectory(objectId: string): Promise<void> {
+    this.removalAttempts.push(objectId);
+    if (this.failRemoval) {
+      this.failedObjectId = objectId;
+      throw Object.assign(new Error('directory cleanup failed'), { code: 'EACCES' });
+    }
+    await super.removeObjectDirectory(objectId);
   }
 }
 
@@ -62,6 +87,36 @@ test('expired cleanup surfaces failure, continues later objects, and retries the
     broker.failObjectId = '';
     firstBytes.fill(0);
     secondBytes.fill(0);
+    await broker.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('creation cleanup failure becomes authoritative and the orphan remains retryable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'astera-private-create-cleanup-'));
+  const broker = new CreateCleanupFailureBroker(
+    { privateDataTmpDir: root, privateUploadMaxBytes: 1024 * 1024 },
+    new FailingVault(),
+    { requireTmpfs: false, cleanupIntervalMs: 0 },
+  );
+  const bytes = Buffer.from('private-create-cleanup-regression');
+
+  try {
+    await broker.ready();
+    await assert.rejects(
+      broker.createObject({ tenantId: 'tenant-cleanup', userId: 'user-cleanup', name: 'create.txt', contentType: 'text/plain', bytes }),
+      (error: unknown) => error instanceof Error && (error as { code?: string }).code === 'PRIVATE_OBJECT_CLEANUP_FAILED',
+    );
+    assert.match(broker.failedObjectId, /^[0-9a-f-]{36}$/i);
+    assert.equal((await readdir(root)).includes(broker.failedObjectId), true, 'failed create directory must remain visible until cleanup succeeds');
+
+    broker.failRemoval = false;
+    assert.equal(await broker.cleanupExpired(), 0, 'unregistered orphan cleanup must not inflate registered-object removal count');
+    assert.equal((await readdir(root)).includes(broker.failedObjectId), false, 'pending create orphan must be removed on retry');
+    assert.equal(await broker.cleanupExpired(), 0, 'resolved orphan must not be retried again');
+  } finally {
+    broker.failRemoval = false;
+    bytes.fill(0);
     await broker.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }

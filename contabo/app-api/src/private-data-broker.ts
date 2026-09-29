@@ -121,6 +121,7 @@ export class PrivateDataBroker {
   private readonly cleanupIntervalMs: number;
   private readonly now: () => number;
   private readonly objects = new Map<string, PrivateObjectManifest>();
+  private readonly pendingCleanupObjectIds = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private initialized = false;
 
@@ -137,6 +138,9 @@ export class PrivateDataBroker {
     return join(this.root, objectId);
   }
   private manifestPath(objectId: string): string { return join(this.objectDir(objectId), 'manifest.json'); }
+  protected async removeObjectDirectory(objectId: string): Promise<void> {
+    await rm(this.objectDir(objectId), { recursive: true, force: true });
+  }
   private async writeManifest(manifest: PrivateObjectManifest): Promise<void> {
     const destination = this.manifestPath(manifest.objectId);
     const temporary = `${destination}.${randomUUID()}.tmp`;
@@ -155,7 +159,7 @@ export class PrivateDataBroker {
         const manifest = validateManifest(JSON.parse(await readFile(this.manifestPath(entry.name), 'utf8')));
         this.objects.set(manifest.objectId, manifest);
       } catch {
-        await rm(this.objectDir(entry.name), { recursive: true, force: true });
+        await this.removeObjectDirectory(entry.name);
       }
     }
     await this.cleanupExpired();
@@ -211,7 +215,12 @@ export class PrivateDataBroker {
       this.objects.set(objectId, manifest);
       return Object.freeze({ objectId, storageKey: `private:${objectId}`, name, contentType, sizeBytes: manifest.sizeBytes, sha256: manifest.sha256, expiresAt: absoluteExpiresAt });
     } catch (error) {
-      await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+      try {
+        await this.removeObjectDirectory(objectId);
+      } catch {
+        this.pendingCleanupObjectIds.add(objectId);
+        throw new PrivateDataBrokerError(500, 'PRIVATE_OBJECT_CLEANUP_FAILED', 'Private Object cleanup failed after creation failure.');
+      }
       throw error;
     }
   }
@@ -263,7 +272,7 @@ export class PrivateDataBroker {
     const manifest = this.objects.get(objectId);
     if (!manifest) return;
     if (tenantId !== undefined && userId !== undefined) this.owned(objectId, tenantId, userId);
-    await rm(this.objectDir(objectId), { recursive: true, force: true });
+    await this.removeObjectDirectory(objectId);
     this.objects.delete(objectId);
   }
   async cleanupExpired(): Promise<number> {
@@ -271,6 +280,14 @@ export class PrivateDataBroker {
     const now = this.now();
     let removed = 0;
     let firstFailure: unknown = null;
+    for (const objectId of [...this.pendingCleanupObjectIds]) {
+      try {
+        await this.removeObjectDirectory(objectId);
+        this.pendingCleanupObjectIds.delete(objectId);
+      } catch (error) {
+        if (firstFailure === null) firstFailure = error;
+      }
+    }
     for (const manifest of [...this.objects.values()]) {
       const idleExpired = manifest.chunks.length === 0 && manifest.lastTouchedAt + PRIVATE_UPLOAD_IDLE_TTL_MS <= now;
       if (!idleExpired && manifest.absoluteExpiresAt > now) continue;
@@ -288,6 +305,14 @@ export class PrivateDataBroker {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     const failures: unknown[] = [];
+    for (const objectId of [...this.pendingCleanupObjectIds]) {
+      try {
+        await this.removeObjectDirectory(objectId);
+        this.pendingCleanupObjectIds.delete(objectId);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     for (const manifest of [...this.objects.values()]) {
       try { await this.destroyObject(manifest.objectId); } catch (error) { failures.push(error); }
     }
