@@ -167,7 +167,9 @@ export class PrivateDataBroker {
     this.initialized = true;
     try { await this.recover(); } catch (error) { this.initialized = false; this.objects.clear(); throw error; }
     if (this.cleanupIntervalMs > 0) {
-      this.timer = setInterval(() => void this.cleanupExpired().catch(() => undefined), this.cleanupIntervalMs);
+      this.timer = setInterval(() => void this.cleanupExpired().catch((error) => {
+        console.error(JSON.stringify({ level: 'error', event: 'private_broker_cleanup_failed', code: errorCode(error) || 'PRIVATE_OBJECT_CLEANUP_FAILED' }));
+      }), this.cleanupIntervalMs);
       this.timer.unref?.();
     }
   }
@@ -268,11 +270,18 @@ export class PrivateDataBroker {
     if (!this.initialized) return 0;
     const now = this.now();
     let removed = 0;
+    let firstFailure: unknown = null;
     for (const manifest of [...this.objects.values()]) {
       const idleExpired = manifest.chunks.length === 0 && manifest.lastTouchedAt + PRIVATE_UPLOAD_IDLE_TTL_MS <= now;
       if (!idleExpired && manifest.absoluteExpiresAt > now) continue;
-      try { await this.destroyObject(manifest.objectId); removed += 1; } catch { /* retry on next cleanup */ }
+      try {
+        await this.destroyObject(manifest.objectId);
+        removed += 1;
+      } catch (error) {
+        if (firstFailure === null) firstFailure = error;
+      }
     }
+    if (firstFailure !== null) throw firstFailure;
     return removed;
   }
   async close(): Promise<void> {
