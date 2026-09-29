@@ -48,6 +48,22 @@ export type CreateJobRequest = {
   estimateId: string;
 };
 
+export type FileInspection = {
+  fileId: string;
+  sha256: string;
+  size: number;
+  detectedMime: string;
+  status: 'accepted' | 'rejected' | 'quarantined';
+  reasons: string[];
+};
+
+export type PrivateObjectLease = {
+  objectId: string;
+  encryptedManifestId: string;
+  expiresAt: string;
+  state: 'created' | 'uploading' | 'sealed' | 'processing' | 'output_ready' | 'destroyed';
+};
+
 export function canReserveEstimate(estimate: JobEstimate): boolean {
   return estimate.requiredCredits > 0 && estimate.availableCredits >= estimate.requiredCredits;
 }

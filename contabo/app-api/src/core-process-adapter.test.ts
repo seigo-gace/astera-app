@@ -20,6 +20,20 @@ const MAIN8 = [
 
 const MANUAL_PURPOSES = ['review', 'compare', 'verify', 'improve', 'research', 'plan', 'consider'] as const;
 
+const FILE_SHA = 'a'.repeat(64);
+const FILE_REFERENCE = { upload_id: 'file-1', sha256: FILE_SHA };
+const ACCEPTED_FILE = {
+  inspection: {
+    fileId: 'file-1',
+    sha256: FILE_SHA,
+    size: 12,
+    detectedMime: 'text/plain',
+    status: 'accepted' as const,
+    reasons: [],
+  },
+  extractedText: '利用者が添付した本文',
+};
+
 test('all seven App manual purposes have complete deterministic contracts', () => {
   assert.deepEqual(Object.keys(MANUAL_PURPOSE_CONTRACTS), [...MANUAL_PURPOSES]);
   for (const purpose of MANUAL_PURPOSES) {
@@ -120,10 +134,79 @@ test('unsupported manual purpose fails closed instead of silently reaching Core'
   );
 });
 
-test('file-bearing jobs fail closed until a real content bridge exists', () => {
+test('file-bearing jobs still fail closed when verified extracted material is missing', () => {
   assert.throws(
-    () => buildCoreProcessRequest({ prompt: '添付を確認', purpose: 'review', files: [{ id: 'f1' }] }),
+    () => buildCoreProcessRequest({ prompt: '添付を確認', purpose: 'review', files: [FILE_REFERENCE] }),
     (error: unknown) => (error as { code?: string }).code === 'ASTERA_FILE_INPUT_BRIDGE_NOT_CONNECTED',
+  );
+});
+
+test('accepted inspected material is mapped to Core context without changing user prompt', () => {
+  const request = buildCoreProcessRequest({
+    prompt: '添付を確認',
+    purpose: 'review',
+    files: [FILE_REFERENCE],
+    verified_file_materials: [ACCEPTED_FILE],
+  });
+  assert.equal(request.question, '添付を確認');
+  const parsed = JSON.parse(request.context!);
+  assert.deepEqual(parsed.user_supplied_files, [{
+    file_id: 'file-1',
+    sha256: FILE_SHA,
+    size: 12,
+    detected_mime: 'text/plain',
+    content: '利用者が添付した本文',
+  }]);
+  assert.deepEqual(parsed.app_purpose_contract, MANUAL_PURPOSE_CONTRACTS.review);
+});
+
+test('rejected or quarantined inspection never reaches Core', () => {
+  for (const status of ['rejected', 'quarantined'] as const) {
+    assert.throws(
+      () => buildCoreProcessRequest({
+        prompt: '添付を確認',
+        purpose: 'verify',
+        files: [FILE_REFERENCE],
+        verified_file_materials: [{ ...ACCEPTED_FILE, inspection: { ...ACCEPTED_FILE.inspection, status } }],
+      }),
+      (error: unknown) => (error as { code?: string }).code === 'ASTERA_FILE_INSPECTION_NOT_ACCEPTED',
+    );
+  }
+});
+
+test('inspection SHA mismatch fails closed', () => {
+  assert.throws(
+    () => buildCoreProcessRequest({
+      prompt: '添付を確認',
+      purpose: 'verify',
+      files: [FILE_REFERENCE],
+      verified_file_materials: [{ ...ACCEPTED_FILE, inspection: { ...ACCEPTED_FILE.inspection, sha256: 'b'.repeat(64) } }],
+    }),
+    (error: unknown) => (error as { code?: string }).code === 'ASTERA_FILE_INSPECTION_SHA_MISMATCH',
+  );
+});
+
+test('empty extracted text fails closed', () => {
+  assert.throws(
+    () => buildCoreProcessRequest({
+      prompt: '添付を確認',
+      purpose: 'verify',
+      files: [FILE_REFERENCE],
+      verified_file_materials: [{ ...ACCEPTED_FILE, extractedText: '   ' }],
+    }),
+    (error: unknown) => (error as { code?: string }).code === 'ASTERA_FILE_EXTRACTED_TEXT_EMPTY',
+  );
+});
+
+test('orphan extracted material without a file reference fails closed', () => {
+  assert.throws(
+    () => buildCoreProcessRequest({
+      prompt: '確認して',
+      purpose: 'auto',
+      files: [],
+      verified_file_materials: [ACCEPTED_FILE],
+    }),
+    (error: unknown) => (error as { code?: string }).code === 'ASTERA_FILE_INPUT_BRIDGE_MISMATCH',
   );
 });
 
