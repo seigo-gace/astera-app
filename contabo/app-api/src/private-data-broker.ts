@@ -3,7 +3,6 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, rm, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { RuntimeConfig } from './config.js';
-import { VaultClient } from './vault-client.js';
 
 const TMPFS_MAGIC = 0x01021994;
 const PRIVATE_CHUNK_BYTES = 8 * 1024 * 1024;
@@ -110,32 +109,31 @@ function canonicalBase64(value: string, code: string): Buffer {
 }
 
 function validateManifest(value: unknown): PrivateObjectManifest {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new PrivateDataBrokerError(500, 'PRIVATE_MANIFEST_INVALID', 'Private manifest is invalid.');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new PrivateDataBrokerError(500, 'PRIVATE_MANIFEST_INVALID', 'Private manifest is invalid.');
+  }
   const source = value as Partial<PrivateObjectManifest>;
   if (
-    source.version !== 1 ||
-    typeof source.objectId !== 'string' || !UUID.test(source.objectId) ||
-    typeof source.keyRef !== 'string' || !source.keyRef ||
-    typeof source.tenantId !== 'string' || !source.tenantId ||
-    typeof source.userId !== 'string' || !source.userId ||
-    typeof source.name !== 'string' || !source.name ||
-    typeof source.contentType !== 'string' || !source.contentType ||
-    typeof source.sizeBytes !== 'number' || !Number.isSafeInteger(source.sizeBytes) || source.sizeBytes <= 0 ||
-    typeof source.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(source.sha256) ||
-    typeof source.createdAt !== 'number' || !Number.isSafeInteger(source.createdAt) || source.createdAt <= 0 ||
-    typeof source.lastTouchedAt !== 'number' || !Number.isSafeInteger(source.lastTouchedAt) || source.lastTouchedAt <= 0 ||
-    typeof source.absoluteExpiresAt !== 'number' || !Number.isSafeInteger(source.absoluteExpiresAt) || source.absoluteExpiresAt <= source.createdAt ||
-    !Array.isArray(source.chunks)
+    source.version !== 1 || typeof source.objectId !== 'string' || !UUID.test(source.objectId) ||
+    typeof source.keyRef !== 'string' || !source.keyRef || typeof source.tenantId !== 'string' || !source.tenantId ||
+    typeof source.userId !== 'string' || !source.userId || typeof source.name !== 'string' || !source.name ||
+    typeof source.contentType !== 'string' || !source.contentType || typeof source.sizeBytes !== 'number' ||
+    !Number.isSafeInteger(source.sizeBytes) || source.sizeBytes <= 0 || typeof source.sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(source.sha256) || typeof source.createdAt !== 'number' || !Number.isSafeInteger(source.createdAt) ||
+    source.createdAt <= 0 || typeof source.lastTouchedAt !== 'number' || !Number.isSafeInteger(source.lastTouchedAt) ||
+    source.lastTouchedAt <= 0 || typeof source.absoluteExpiresAt !== 'number' || !Number.isSafeInteger(source.absoluteExpiresAt) ||
+    source.absoluteExpiresAt <= source.createdAt || !Array.isArray(source.chunks)
   ) {
     throw new PrivateDataBrokerError(500, 'PRIVATE_MANIFEST_INVALID', 'Private manifest is invalid.');
   }
   const chunks = source.chunks.map((chunk, index) => {
-    if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) throw new PrivateDataBrokerError(500, 'PRIVATE_MANIFEST_INVALID', 'Private chunk manifest is invalid.');
+    if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) {
+      throw new PrivateDataBrokerError(500, 'PRIVATE_MANIFEST_INVALID', 'Private chunk manifest is invalid.');
+    }
     const item = chunk as Partial<PrivateChunkManifest>;
     if (
-      item.order !== index ||
-      typeof item.file !== 'string' || item.file !== `${index}.agcm` ||
-      typeof item.plainSize !== 'number' || !Number.isSafeInteger(item.plainSize) || item.plainSize <= 0 || item.plainSize > PRIVATE_CHUNK_BYTES ||
+      item.order !== index || item.file !== `${index}.agcm` || typeof item.plainSize !== 'number' ||
+      !Number.isSafeInteger(item.plainSize) || item.plainSize <= 0 || item.plainSize > PRIVATE_CHUNK_BYTES ||
       typeof item.sealedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(item.sealedSha256) ||
       typeof item.tagBase64 !== 'string' || !item.tagBase64
     ) {
@@ -221,12 +219,16 @@ export class PrivateDataBroker {
         throw new PrivateDataBrokerError(503, 'PRIVATE_TMPFS_REQUIRED', 'Private Data Broker root is not mounted on tmpfs.');
       }
     }
-    await this.recover();
     this.initialized = true;
+    try {
+      await this.recover();
+    } catch (error) {
+      this.initialized = false;
+      this.objects.clear();
+      throw error;
+    }
     if (this.cleanupIntervalMs > 0) {
-      this.timer = setInterval(() => {
-        void this.cleanupExpired().catch(() => undefined);
-      }, this.cleanupIntervalMs);
+      this.timer = setInterval(() => void this.cleanupExpired().catch(() => undefined), this.cleanupIntervalMs);
       this.timer.unref?.();
     }
   }
@@ -257,18 +259,18 @@ export class PrivateDataBroker {
     await mkdir(directory, { recursive: false, mode: 0o700 });
 
     let keyRef = '';
-    const dek = randomBytes(32);
     try {
-      keyRef = await this.vault.storeSecret({
-        value: dek,
-        allowedConsumers: [PRIVATE_CONSUMER],
-        expiresAt: absoluteExpiresAt,
-      });
-    } finally {
-      dek.fill(0);
-    }
+      const dek = randomBytes(32);
+      try {
+        keyRef = await this.vault.storeSecret({
+          value: dek,
+          allowedConsumers: [PRIVATE_CONSUMER],
+          expiresAt: absoluteExpiresAt,
+        });
+      } finally {
+        dek.fill(0);
+      }
 
-    try {
       const chunks: PrivateChunkManifest[] = [];
       for (let offset = 0, order = 0; offset < input.bytes.byteLength; offset += PRIVATE_CHUNK_BYTES, order += 1) {
         const plaintext = input.bytes.subarray(offset, Math.min(input.bytes.byteLength, offset + PRIVATE_CHUNK_BYTES));
@@ -407,7 +409,7 @@ export class PrivateDataBroker {
   }
 
   async cleanupExpired(): Promise<number> {
-    if (!this.initialized && this.objects.size === 0) return 0;
+    if (!this.initialized) return 0;
     const now = this.now();
     let removed = 0;
     for (const manifest of [...this.objects.values()]) {
@@ -417,7 +419,7 @@ export class PrivateDataBroker {
         await this.destroyObject(manifest.objectId);
         removed += 1;
       } catch {
-        // Keep the manifest in memory so the next cleanup cycle retries.
+        // Keep the manifest so a later cleanup cycle retries instead of claiming success.
       }
     }
     return removed;
@@ -461,7 +463,9 @@ export function registerPrivateDataBrokerApi(app: Hono, broker: PrivateDataBroke
       const userId = requiredHeader(context.req.raw.headers, 'X-Astera-User-ID', 'PRIVATE_USER_ID_REQUIRED');
       const encodedName = requiredHeader(context.req.raw.headers, 'X-Astera-File-Name-B64', 'PRIVATE_FILE_NAME_REQUIRED');
       const declared = Number(context.req.raw.headers.get('content-length') ?? 0);
-      if (Number.isFinite(declared) && declared > broker.maxBytes) throw new PrivateDataBrokerError(413, 'PRIVATE_FILE_TOO_LARGE', 'Private File exceeds the direct-upload limit.');
+      if (Number.isFinite(declared) && declared > broker.maxBytes) {
+        throw new PrivateDataBrokerError(413, 'PRIVATE_FILE_TOO_LARGE', 'Private File exceeds the direct-upload limit.');
+      }
       bytes = new Uint8Array(await context.req.arrayBuffer());
       const created = await broker.createObject({
         tenantId,
