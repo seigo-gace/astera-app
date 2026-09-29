@@ -18,9 +18,9 @@ export type RuntimeConfig = {
   storageUploadTmpDir?: string;
   privateDataTmpDir?: string;
   privateUploadMaxBytes?: number;
-  clamavHost: string;
-  clamavPort: number;
-  clamavTimeoutMs: number;
+  clamavHost?: string;
+  clamavPort?: number;
+  clamavTimeoutMs?: number;
 };
 
 function required(value: string | undefined, name: string): string {
