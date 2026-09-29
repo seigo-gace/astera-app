@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp } from './index.js';
 import { PrivateDataBroker, registerPrivateDataBrokerApi } from './private-data-broker.js';
+import { registerPrivateDataMetadataApi } from './private-data-metadata-api.js';
 import { registerStorageBinaryApi } from './storage-binary-api.js';
 import { VaultClient } from './vault-client.js';
 
@@ -30,6 +31,7 @@ export function createFullApp(
   // Private temporary-object broker. Private objects never use the normal lane.
   registerStorageBinaryApi(app, config);
   registerPrivateDataBrokerApi(app, privateDataBroker);
+  registerPrivateDataMetadataApi(app, config);
 
   const runtime = createApp(config, service);
   app.route('/', runtime.app);
