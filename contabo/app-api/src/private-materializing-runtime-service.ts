@@ -36,17 +36,24 @@ export class PrivateMaterializingRuntimeService extends AsteraRuntimeService {
     this.bindPrivateObjectDestroyer(destroyPrivateObject);
   }
 
-  private async destroyInputFiles(input: RuntimeCreateRequest): Promise<void> {
-    const objectIds = [...new Set(input.files.map((file) => file.upload_id))];
+  private async destroyObjectIds(objectIds: string[], tenantId: string, userId: string): Promise<void> {
     let firstFailure: unknown = null;
-    for (const objectId of objectIds) {
+    for (const objectId of [...new Set(objectIds)]) {
       try {
-        await this.destroyPrivateObject({ objectId, tenantId: input.tenant_id, userId: input.user_id });
+        await this.destroyPrivateObject({ objectId, tenantId, userId });
       } catch (error) {
         firstFailure ??= error;
       }
     }
     if (firstFailure) throw firstFailure;
+  }
+
+  private async destroyInputFiles(input: RuntimeCreateRequest): Promise<void> {
+    await this.destroyObjectIds(
+      input.files.map((file) => file.upload_id),
+      input.tenant_id,
+      input.user_id,
+    );
   }
 
   override async execute(input: RuntimeCreateRequest): Promise<void> {
@@ -119,10 +126,19 @@ export class PrivateMaterializingRuntimeService extends AsteraRuntimeService {
     }
 
     const enriched = input as MaterializedRuntimeCreateRequest;
+    const postCoreCleanup = {
+      objectIds: input.files.map((file) => file.upload_id),
+      tenantId: input.tenant_id,
+      userId: input.user_id,
+    };
     enriched.verified_file_materials = materials ?? [];
     try {
       await super.execute(input);
     } finally {
+      const terminal = await this.database.get(input.job_id).catch(() => null);
+      if (terminal?.error_code === 'PRIVATE_OBJECT_CLEANUP_FAILED') {
+        await this.destroyObjectIds(postCoreCleanup.objectIds, postCoreCleanup.tenantId, postCoreCleanup.userId).catch(() => undefined);
+      }
       wipeMaterials(materials);
       delete enriched.verified_file_materials;
     }
