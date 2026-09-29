@@ -70,49 +70,71 @@ export class VaultClient {
     return this.request('/internal/v1/health', undefined, 'GET');
   }
 
+  async sealBytes(input: { keyRef: string; consumer: string; value: Uint8Array }): Promise<VaultEnvelope> {
+    const payload = await this.request('/internal/v1/crypto/seal', {
+      key_ref: input.keyRef,
+      consumer: input.consumer,
+      plaintext_base64: Buffer.from(input.value.buffer, input.value.byteOffset, input.value.byteLength).toString('base64'),
+    });
+    const ciphertext = text(payload.ciphertext);
+    const iv = text(payload.iv);
+    if (!ciphertext || !iv) throw Object.assign(new Error('Vault seal response is incomplete.'), { code: 'LIBRAL_VAULT_SEAL_RESPONSE_INVALID' });
+    return { ciphertext, iv };
+  }
+
+  async unsealBytes(input: { keyRef: string; consumer: string; ciphertext: string; iv: string }): Promise<Uint8Array> {
+    const response = await this.request('/internal/v1/crypto/unseal', {
+      key_ref: input.keyRef,
+      consumer: input.consumer,
+      ciphertext: input.ciphertext,
+      iv: input.iv,
+    });
+    const encoded = text(response.plaintext_base64);
+    if (!encoded) throw Object.assign(new Error('Vault unseal response is incomplete.'), { code: 'LIBRAL_VAULT_UNSEAL_RESPONSE_INVALID' });
+    return Buffer.from(encoded, 'base64');
+  }
+
   async sealJson(value: unknown): Promise<VaultEnvelope> {
     const encoded = Buffer.from(JSON.stringify(value), 'utf8');
     try {
-      const payload = await this.request('/internal/v1/crypto/seal', {
-        key_ref: this.jobKeyRef,
-        consumer: 'astera-app-runtime',
-        plaintext_base64: encoded.toString('base64'),
-      });
-      const ciphertext = text(payload.ciphertext);
-      const iv = text(payload.iv);
-      if (!ciphertext || !iv) throw Object.assign(new Error('Vault seal response is incomplete.'), { code: 'LIBRAL_VAULT_SEAL_RESPONSE_INVALID' });
-      return { ciphertext, iv };
+      return await this.sealBytes({ keyRef: this.jobKeyRef, consumer: 'astera-app-runtime', value: encoded });
     } finally {
       encoded.fill(0);
     }
   }
 
   async unsealJson<T>(payload: VaultEnvelope): Promise<T> {
-    const response = await this.request('/internal/v1/crypto/unseal', {
-      key_ref: this.jobKeyRef,
+    const plaintext = await this.unsealBytes({
+      keyRef: this.jobKeyRef,
       consumer: 'astera-app-runtime',
       ciphertext: payload.ciphertext,
       iv: payload.iv,
     });
-    const encoded = text(response.plaintext_base64);
-    if (!encoded) throw Object.assign(new Error('Vault unseal response is incomplete.'), { code: 'LIBRAL_VAULT_UNSEAL_RESPONSE_INVALID' });
-    const plaintext = Buffer.from(encoded, 'base64');
     try {
-      return JSON.parse(plaintext.toString('utf8')) as T;
+      return JSON.parse(Buffer.from(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).toString('utf8')) as T;
     } finally {
       plaintext.fill(0);
     }
   }
 
   async storeSecret(input: { value: Uint8Array; allowedConsumers: string[]; expiresAt?: number }): Promise<string> {
-    const payload = await this.request('/internal/v1/secrets', {
-      value_base64: Buffer.from(input.value).toString('base64'),
-      allowed_consumers: input.allowedConsumers,
-      ...(input.expiresAt === undefined ? {} : { expires_at: input.expiresAt }),
-    });
-    const id = text(asRecord(payload.secret).id);
-    if (!id) throw Object.assign(new Error('Vault secret reference is missing.'), { code: 'LIBRAL_VAULT_SECRET_REFERENCE_MISSING' });
-    return id;
+    const copy = Buffer.from(input.value);
+    try {
+      const payload = await this.request('/internal/v1/secrets', {
+        value_base64: copy.toString('base64'),
+        allowed_consumers: input.allowedConsumers,
+        ...(input.expiresAt === undefined ? {} : { expires_at: input.expiresAt }),
+      });
+      const id = text(asRecord(payload.secret).id);
+      if (!id) throw Object.assign(new Error('Vault secret reference is missing.'), { code: 'LIBRAL_VAULT_SECRET_REFERENCE_MISSING' });
+      return id;
+    } finally {
+      copy.fill(0);
+    }
+  }
+
+  async removeSecret(input: { secretId: string; consumer: string }): Promise<void> {
+    await this.request(`/internal/v1/secrets/${encodeURIComponent(input.secretId)}`, { consumer: input.consumer }, 'DELETE');
   }
 
   async providerJson(input: {

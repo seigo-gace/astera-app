@@ -3,8 +3,9 @@ import { loadConfig } from './config.js';
 import { createFullApp } from './full-app.js';
 
 const config = loadConfig();
-const { app, service } = createFullApp(config);
+const { app, service, privateDataBroker } = createFullApp(config);
 
+await privateDataBroker.ready();
 await service.database.ready();
 await service.recover();
 
@@ -19,6 +20,7 @@ console.log(JSON.stringify({
   event: 'astera_app_api_started',
   port: config.port,
   process_origin: new URL(config.processOrigin).origin,
+  private_broker: 'ready',
 }));
 
 let shuttingDown = false;
@@ -33,6 +35,9 @@ async function shutdown(signal: string) {
   force.unref();
   server.close(async () => {
     for (const controller of service.active.values()) controller.abort('server_shutdown');
+    await privateDataBroker.close().catch((error) => {
+      console.error(JSON.stringify({ level: 'error', event: 'private_broker_cleanup_failed', error: error instanceof Error ? error.message : String(error) }));
+    });
     await service.database.close().catch((error) => {
       console.error(JSON.stringify({ level: 'error', event: 'database_close_failed', error: error instanceof Error ? error.message : String(error) }));
     });
