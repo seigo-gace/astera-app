@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import type { VerifiedFileMaterial } from './core-process-adapter.js';
 import type { RuntimeCreateRequest } from './index.js';
@@ -43,11 +44,25 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function validateTextBytes(bytes: Uint8Array, json: boolean): void {
+  if (!isUtf8(bytes) || bytes.includes(0)) {
+    throw new PrivateFileMaterializerError('MIME_MISMATCH', 'File bytes do not match an approved UTF-8 text format.', false);
+  }
+  if (!json) return;
+  let first = -1;
+  for (const byte of bytes) {
+    if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+    first = byte;
+    break;
+  }
+  if (first !== 0x7b && first !== 0x5b) {
+    throw new PrivateFileMaterializerError('MIME_MISMATCH', 'JSON bytes do not have an approved JSON leading token.', false);
+  }
+}
+
 function decodeUtf8(bytes: Uint8Array): string {
   try {
-    const text = UTF8.decode(bytes);
-    if (text.includes('\u0000')) throw new Error('NUL byte');
-    return text;
+    return UTF8.decode(bytes);
   } catch {
     throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Text file is not valid UTF-8.', false);
   }
@@ -85,13 +100,17 @@ export class PrivateFileMaterializer {
           throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Private object metadata does not match decrypted bytes.', false);
         }
 
+        // Type/MIME candidate validation happens before malware scanning without
+        // creating an extracted plaintext string or a temporary plaintext file.
+        validateTextBytes(bytes, format.json);
+        await this.scanner.scan(bytes, signal);
+
         const extractedText = decodeUtf8(bytes);
         if (format.json) {
           try { JSON.parse(extractedText); }
           catch { throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'JSON file is structurally invalid.', false); }
         }
 
-        await this.scanner.scan(bytes, signal);
         const extractedBytes = Buffer.byteLength(extractedText, 'utf8');
         if (extractedBytes <= 0 || extractedBytes > this.policy.maxExtractedTextBytes) {
           throw new PrivateFileMaterializerError('EXTRACT_FAILED', 'Extracted text exceeds the configured File Security policy.', false);

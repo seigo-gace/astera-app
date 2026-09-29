@@ -23,6 +23,8 @@ services:
       ASTERA_CLAMAV_HOST: astera-file-scanner-staging
       ASTERA_CLAMAV_PORT: "3310"
       ASTERA_CLAMAV_TIMEOUT_MS: "30000"
+      ASTERA_FILE_SECURITY_POLICY_VERSION: file-security-v1
+      ASTERA_FILE_SECURITY_MAX_EXTRACTED_TEXT_BYTES: "20971520"
     tmpfs:
       - /run/astera-private-data:size=268435456,mode=0700,uid=10001,gid=10001
     extra_hosts:

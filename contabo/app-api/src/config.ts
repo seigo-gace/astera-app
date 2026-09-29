@@ -21,6 +21,8 @@ export type RuntimeConfig = {
   clamavHost?: string;
   clamavPort?: number;
   clamavTimeoutMs?: number;
+  fileSecurityPolicyVersion?: string;
+  fileSecurityMaxExtractedTextBytes?: number;
 };
 
 function required(value: string | undefined, name: string): string {
@@ -82,6 +84,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     clamavHost: env.ASTERA_CLAMAV_HOST?.trim() || '',
     clamavPort: integer(env.ASTERA_CLAMAV_PORT, 3310, 1, 65_535),
     clamavTimeoutMs: integer(env.ASTERA_CLAMAV_TIMEOUT_MS, 30_000, 1_000, 120_000),
+    fileSecurityPolicyVersion: env.ASTERA_FILE_SECURITY_POLICY_VERSION?.trim() || 'file-security-v1',
+    fileSecurityMaxExtractedTextBytes: integer(env.ASTERA_FILE_SECURITY_MAX_EXTRACTED_TEXT_BYTES, 20 * 1024 * 1024, 1, 100 * 1024 * 1024),
   };
 }
 

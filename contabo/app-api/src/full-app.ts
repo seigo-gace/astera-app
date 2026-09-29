@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
+import { ClamAvStreamClient } from './clamav-stream-client.js';
 import { constantTimeTokenEqual, type RuntimeConfig } from './config.js';
 import { AsteraRuntimeService, createApp } from './index.js';
 import { PrivateDataBroker, registerPrivateDataBrokerApi } from './private-data-broker.js';
+import { PrivateFileMaterializer } from './private-file-materializer.js';
+import { PrivateMaterializingRuntimeService } from './private-materializing-runtime-service.js';
 import { registerPrivateDataMetadataApi } from './private-data-metadata-api.js';
 import { registerStorageBinaryApi } from './storage-binary-api.js';
 import { VaultClient } from './vault-client.js';
@@ -13,14 +16,32 @@ function bearerToken(value: string | undefined): string {
 
 export function createFullApp(
   config: RuntimeConfig,
-  service = new AsteraRuntimeService(config),
+  service?: AsteraRuntimeService,
   privateDataBroker = new PrivateDataBroker(config, new VaultClient(config)),
 ) {
   const app = new Hono();
-
-  service.bindPrivateObjectDestroyer(async ({ objectId, tenantId, userId }) => {
+  const destroyPrivateObject = async ({ objectId, tenantId, userId }: { objectId: string; tenantId: string; userId: string }) => {
     await privateDataBroker.destroyObject(objectId, tenantId, userId);
-  });
+  };
+
+  const runtimeService = service ?? new PrivateMaterializingRuntimeService(
+    config,
+    new PrivateFileMaterializer(
+      privateDataBroker,
+      new ClamAvStreamClient({
+        host: config.clamavHost?.trim() || '',
+        port: config.clamavPort ?? 3310,
+        timeoutMs: config.clamavTimeoutMs ?? 30_000,
+      }),
+      {
+        version: config.fileSecurityPolicyVersion?.trim() || '',
+        maxExtractedTextBytes: config.fileSecurityMaxExtractedTextBytes ?? 0,
+      },
+    ),
+    destroyPrivateObject,
+  );
+
+  if (service) runtimeService.bindPrivateObjectDestroyer(destroyPrivateObject);
 
   app.use('/api/*', async (context, next) => {
     const token = bearerToken(context.req.header('authorization'));
@@ -37,7 +58,7 @@ export function createFullApp(
   registerPrivateDataBrokerApi(app, privateDataBroker);
   registerPrivateDataMetadataApi(app, config);
 
-  const runtime = createApp(config, service);
+  const runtime = createApp(config, runtimeService);
   app.route('/', runtime.app);
-  return { app, service, privateDataBroker };
+  return { app, service: runtimeService, privateDataBroker };
 }
