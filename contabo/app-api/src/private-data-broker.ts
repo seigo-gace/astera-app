@@ -232,7 +232,7 @@ export class PrivateDataBroker {
     const plains: Uint8Array[] = [];
     try {
       for (const chunk of manifest.chunks) {
-        const sealed = new Uint8Array(await readFile(join(this.objectDir(objectId), chunk.file));
+        const sealed = new Uint8Array(await readFile(join(this.objectDir(objectId), chunk.file)));
         try {
           const plain = await session.openChunk({ order: chunk.order, hashSha256: chunk.hashSha256, tagBase64: chunk.tagBase64 }, sealed);
           if (plain.byteLength !== chunk.plainSize) { wipePrivateBytes(plain); throw new PrivateDataBrokerError(500, 'PRIVATE_CHUNK_SIZE_MISMATCH', 'Private decrypted Chunk size check failed.'); }
