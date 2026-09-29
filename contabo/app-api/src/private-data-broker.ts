@@ -229,22 +229,32 @@ export class PrivateDataBroker {
     let key: CryptoKey;
     try { key = await importDek(raw); } finally { wipePrivateBytes(raw); }
     const session = new PrivateObjectCryptoSession(objectId, key);
-    const plains: Uint8Array[] = [];
+    const combined = new Uint8Array(manifest.sizeBytes);
+    let offset = 0;
+    let transferred = false;
     try {
       for (const chunk of manifest.chunks) {
         const sealed = new Uint8Array(await readFile(join(this.objectDir(objectId), chunk.file)));
+        let plain: Uint8Array | null = null;
         try {
-          const plain = await session.openChunk({ order: chunk.order, hashSha256: chunk.hashSha256, tagBase64: chunk.tagBase64 }, sealed);
-          if (plain.byteLength !== chunk.plainSize) { wipePrivateBytes(plain); throw new PrivateDataBrokerError(500, 'PRIVATE_CHUNK_SIZE_MISMATCH', 'Private decrypted Chunk size check failed.'); }
-          plains.push(plain);
-        } finally { wipePrivateBytes(sealed); }
+          plain = await session.openChunk({ order: chunk.order, hashSha256: chunk.hashSha256, tagBase64: chunk.tagBase64 }, sealed);
+          if (plain.byteLength !== chunk.plainSize) throw new PrivateDataBrokerError(500, 'PRIVATE_CHUNK_SIZE_MISMATCH', 'Private decrypted Chunk size check failed.');
+          if (offset + plain.byteLength > combined.byteLength) throw new PrivateDataBrokerError(500, 'PRIVATE_CHUNK_SIZE_MISMATCH', 'Private decrypted Chunk exceeds the declared object size.');
+          combined.set(plain, offset);
+          offset += plain.byteLength;
+        } finally {
+          if (plain) wipePrivateBytes(plain);
+          wipePrivateBytes(sealed);
+        }
       }
-      const combined = Buffer.concat(plains.map((part) => Buffer.from(part)), manifest.sizeBytes);
-      if (combined.byteLength !== manifest.sizeBytes || sha256(combined) !== manifest.sha256) { combined.fill(0); throw new PrivateDataBrokerError(500, 'PRIVATE_OBJECT_HASH_MISMATCH', 'Private Object checksum does not match.'); }
+      if (offset !== manifest.sizeBytes || sha256(combined) !== manifest.sha256) throw new PrivateDataBrokerError(500, 'PRIVATE_OBJECT_HASH_MISMATCH', 'Private Object checksum does not match.');
       manifest.lastTouchedAt = this.now();
       await this.writeManifest(manifest);
-      return new Uint8Array(combined);
-    } finally { for (const part of plains) wipePrivateBytes(part); }
+      transferred = true;
+      return combined;
+    } finally {
+      if (!transferred) wipePrivateBytes(combined);
+    }
   }
   async destroyObject(objectId: string, tenantId?: string, userId?: string): Promise<void> {
     this.requireReady();
