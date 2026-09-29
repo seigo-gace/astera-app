@@ -160,3 +160,64 @@ test('materializer rejection fails closed, never calls Core, destroys private in
   assert.equal(input.prompt, '');
   assert.equal(input.files.length, 0);
 });
+
+test('post-Core cleanup failure still attempts every remaining private object', async () => {
+  const input = request();
+  input.job_id = 'job-post-core-cleanup';
+  input.request_id = 'request-post-core-cleanup';
+  input.files.push({
+    upload_id: '22222222-2222-4222-8222-222222222222',
+    storage_key: 'private:22222222-2222-4222-8222-222222222222',
+    name: 'second.txt',
+    content_type: 'text/plain',
+    size_bytes: 14,
+    sha256: 'b'.repeat(64),
+    private_mode: true,
+  });
+  const database = new RuntimeDatabase();
+  await insert(database, input);
+  const materials: VerifiedFileMaterial[] = input.files.map((file, index) => ({
+    inspection: {
+      fileId: file.upload_id,
+      sha256: file.sha256,
+      size: file.size_bytes,
+      detectedMime: 'text/plain',
+      status: 'accepted',
+      reasons: [],
+    },
+    extractedText: `private facts ${index + 1}`,
+  }));
+  const attempts: string[] = [];
+  const service = new PrivateMaterializingRuntimeService(
+    config,
+    { materialize: async () => materials },
+    async ({ objectId }) => {
+      attempts.push(objectId);
+      if (objectId === '11111111-1111-4111-8111-111111111111') throw new Error('first object cleanup failed');
+    },
+  );
+  Object.assign(service, { database });
+
+  const originalFetch = globalThis.fetch;
+  let coreCalled = false;
+  globalThis.fetch = async () => {
+    coreCalled = true;
+    return new Response(coreResponse(), { status: 200, headers: { 'content-type': 'text/plain' } });
+  };
+  try {
+    await service.execute(input);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const job = await database.get('job-post-core-cleanup');
+  assert.equal(coreCalled, true);
+  assert.equal(job?.state, 'failed');
+  assert.equal(job?.error_code, 'PRIVATE_OBJECT_CLEANUP_FAILED');
+  assert.equal(job?.retryable, true);
+  assert.equal(service.getPrivateResult('job-post-core-cleanup'), null);
+  assert.equal(attempts.includes('22222222-2222-4222-8222-222222222222'), true);
+  assert.equal(attempts.at(-1), '22222222-2222-4222-8222-222222222222');
+  assert.equal(materials[0]!.extractedText, '');
+  assert.equal(materials[1]!.extractedText, '');
+});
