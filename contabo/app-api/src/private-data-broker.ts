@@ -107,7 +107,7 @@ function validateManifest(value: unknown): PrivateObjectManifest {
 }
 async function importDek(raw: Uint8Array): Promise<CryptoKey> {
   if (raw.byteLength !== 32) throw new PrivateDataBrokerError(500, 'PRIVATE_WRAPPED_DEK_INVALID', 'Private Object DEK length is invalid.');
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.importKey('raw', raw as BufferSource, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 function errorCode(error: unknown): string {
   return error && typeof error === 'object' && typeof (error as { code?: unknown }).code === 'string' ? String((error as { code: string }).code) : '';
