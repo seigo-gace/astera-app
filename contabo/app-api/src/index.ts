@@ -68,6 +68,7 @@ type PrivateResultEnvelope = {
 };
 
 type TransientResult = Pick<PrivateResultEnvelope, 'result' | 'usage'>;
+type PrivateObjectDestroyer = (input: { objectId: string; tenantId: string; userId: string }) => Promise<void>;
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -119,6 +120,13 @@ function validateCreateRequest(value: unknown): RuntimeCreateRequest {
       throw Object.assign(new Error('File参照が不完全です。'), { code: 'FILE_REFERENCE_INVALID' });
     }
     if (normalized.private_mode !== privateMode) throw Object.assign(new Error('FileとJobのPrivate Modeが一致しません。'), { code: 'FILE_PRIVACY_MODE_MISMATCH' });
+    if (privateMode) {
+      if (normalized.storage_key !== `private:${normalized.upload_id}`) {
+        throw Object.assign(new Error('Private File参照が一時Object契約と一致しません。'), { code: 'PRIVATE_FILE_REFERENCE_INVALID' });
+      }
+    } else if (normalized.storage_key.startsWith('private:')) {
+      throw Object.assign(new Error('通常Mode JobへPrivate File参照を渡せません。'), { code: 'PRIVATE_FILE_REFERENCE_INVALID' });
+    }
     return normalized;
   }) : [];
   const reservedCredits = Number(source.reserved_credits);
@@ -207,11 +215,37 @@ export class AsteraRuntimeService {
   readonly active = new Map<string, AbortController>();
   readonly vault: VaultClient;
   private readonly privateResults = new Map<string, PrivateResultEnvelope>();
+  private privateObjectDestroyer: PrivateObjectDestroyer | null = null;
 
   constructor(config: RuntimeConfig, database = new RuntimeDatabase(), vault = new VaultClient(config)) {
     this.config = config;
     this.database = database;
     this.vault = vault;
+  }
+
+  bindPrivateObjectDestroyer(destroyer: PrivateObjectDestroyer): void {
+    this.privateObjectDestroyer = destroyer;
+  }
+
+  private async destroyPrivateInputFiles(input: RuntimeCreateRequest): Promise<void> {
+    if (!input.private_mode || input.files.length === 0) return;
+    if (!this.privateObjectDestroyer) {
+      throw Object.assign(new Error('Private Object Cleanup経路が接続されていません。'), {
+        code: 'PRIVATE_OBJECT_CLEANUP_UNAVAILABLE',
+        retryable: false,
+      });
+    }
+    const objectIds = [...new Set(input.files.map((file) => file.upload_id))];
+    for (const objectId of objectIds) {
+      try {
+        await this.privateObjectDestroyer({ objectId, tenantId: input.tenant_id, userId: input.user_id });
+      } catch {
+        throw Object.assign(new Error(`Private Objectを破棄できませんでした: ${objectId}`), {
+          code: 'PRIVATE_OBJECT_CLEANUP_FAILED',
+          retryable: true,
+        });
+      }
+    }
   }
 
   private discardPrivateResult(jobId: string): void {
@@ -282,6 +316,12 @@ export class AsteraRuntimeService {
   async execute(input: RuntimeCreateRequest): Promise<void> {
     if (this.active.has(input.job_id)) return;
     const controller = new AbortController();
+    let privateFilesDestroyed = false;
+    const destroyPrivateFiles = async (): Promise<void> => {
+      if (privateFilesDestroyed) return;
+      await this.destroyPrivateInputFiles(input);
+      privateFilesDestroyed = true;
+    };
     this.active.set(input.job_id, controller);
     try {
       const current = await this.database.transition(
@@ -291,8 +331,12 @@ export class AsteraRuntimeService {
         input.correlation_id,
         { resumed: false },
       );
-      if (!current || ['completed', 'partially_completed', 'failed', 'cancelled'].includes(current.state)) return;
+      if (!current || ['completed', 'partially_completed', 'failed', 'cancelled'].includes(current.state)) {
+        await destroyPrivateFiles();
+        return;
+      }
       if (current.state === 'cancel_requested') {
+        await destroyPrivateFiles();
         await this.database.finish(input.job_id, { state: 'cancelled', errorCode: 'JOB_CANCELLED', errorMessage: '実行前に取り消しました。' }, input.correlation_id);
         return;
       }
@@ -312,6 +356,7 @@ export class AsteraRuntimeService {
       }
       const checked = validateResult(resultPayload);
       await this.database.transition(input.job_id, ['running'], 'assembling_result', input.correlation_id);
+      await destroyPrivateFiles();
       if (input.private_mode) this.storePrivateResult(input.job_id, checked.result, usage);
       await this.database.finish(input.job_id, {
         state: checked.partial ? 'partially_completed' : 'completed',
@@ -320,7 +365,14 @@ export class AsteraRuntimeService {
       }, input.correlation_id);
     } catch (caught) {
       this.discardPrivateResult(input.job_id);
-      const error = caught as ProcessError;
+      let error = caught as ProcessError;
+      if (!privateFilesDestroyed) {
+        try {
+          await destroyPrivateFiles();
+        } catch (cleanupError) {
+          error = cleanupError as ProcessError;
+        }
+      }
       const code = error.code || 'ASTERA_RUNTIME_EXECUTION_FAILED';
       const cancelled = code === 'JOB_CANCELLED' || controller.signal.aborted;
       await this.database.finish(input.job_id, {

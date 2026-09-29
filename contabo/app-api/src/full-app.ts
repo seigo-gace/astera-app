@@ -18,6 +18,10 @@ export function createFullApp(
 ) {
   const app = new Hono();
 
+  service.bindPrivateObjectDestroyer(async ({ objectId, tenantId, userId }) => {
+    await privateDataBroker.destroyObject(objectId, tenantId, userId);
+  });
+
   app.use('/api/*', async (context, next) => {
     const token = bearerToken(context.req.header('authorization'));
     if (!token || !constantTimeTokenEqual(token, config.internalServiceToken)) {
