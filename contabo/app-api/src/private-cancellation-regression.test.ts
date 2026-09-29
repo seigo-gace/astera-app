@@ -171,6 +171,47 @@ test('private cleanup failure overrides an in-flight cancellation and remains fa
   assert.equal(input.files.length, 0);
 });
 
+test('multi-file cleanup keeps trying later private objects after one destroy failure', async () => {
+  const input = request('job-multi-cleanup-best-effort');
+  input.files.push({
+    upload_id: '22222222-2222-4222-8222-222222222222',
+    storage_key: 'private:22222222-2222-4222-8222-222222222222',
+    name: 'second.txt',
+    content_type: 'text/plain',
+    size_bytes: 14,
+    sha256: 'b'.repeat(64),
+    private_mode: true,
+  });
+  const database = new RuntimeDatabase();
+  await seed(database, input);
+  const attempts: string[] = [];
+  const service = new PrivateMaterializingRuntimeService(
+    config,
+    {
+      materialize: async () => {
+        throw Object.assign(new Error('scanner unavailable'), { code: 'PRIVATE_PIPELINE_UNAVAILABLE', retryable: true });
+      },
+    },
+    async ({ objectId }) => {
+      attempts.push(objectId);
+      if (objectId === '11111111-1111-4111-8111-111111111111') throw new Error('first cleanup failed');
+    },
+  );
+  Object.assign(service, { database });
+
+  await service.execute(input);
+
+  const job = await database.get(input.job_id);
+  assert.deepEqual(attempts, [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+  ]);
+  assert.equal(job?.state, 'failed');
+  assert.equal(job?.error_code, 'PRIVATE_OBJECT_CLEANUP_FAILED');
+  assert.equal(job?.retryable, true);
+  assert.equal(input.files.length, 0);
+});
+
 test('database terminal authority cannot report cleanup failure as cancelled', async () => {
   const input = request('job-terminal-cleanup-invariant');
   const database = new RuntimeDatabase();
