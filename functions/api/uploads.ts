@@ -5,6 +5,7 @@ import {
   requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../_account-projection';
+import { uploadPrivateRuntimeFile, type PrivateBrokerEnv } from '../_private-data-broker-client';
 
 type R2ObjectBody = { key: string; size: number; etag: string };
 type R2Bucket = {
@@ -12,10 +13,9 @@ type R2Bucket = {
   delete: (key: string) => Promise<void>;
 };
 
-type Env = AsteraFunctionEnv & {
-  ASTERA_UPLOADS: R2Bucket;
+type Env = AsteraFunctionEnv & PrivateBrokerEnv & {
+  ASTERA_UPLOADS?: R2Bucket;
   DIRECT_UPLOAD_MAX_BYTES?: string;
-  PRIVATE_UPLOAD_TTL_SECONDS?: string;
 };
 type PagesContext = { request: Request; env: Env };
 
@@ -38,10 +38,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   let storageKey = '';
   try {
     const actor = await requireAsteraActor(context.request, context.env);
-    if (!context.env.ASTERA_UPLOADS) throw new FunctionHttpError(503, 'UPLOAD_BUCKET_NOT_CONFIGURED', 'Astera Upload用R2 Bucketが設定されていません。');
     const contentLength = Number(context.request.headers.get('content-length') ?? 0);
     const directLimit = positiveInteger(context.env.DIRECT_UPLOAD_MAX_BYTES, 20 * 1024 * 1024, 100 * 1024 * 1024);
-    if (contentLength > directLimit) {
+    if (contentLength > directLimit + 64 * 1024) {
       throw new FunctionHttpError(413, 'MULTIPART_UPLOAD_REQUIRED', 'このFile SizeはMultipart Uploadが必要です。', { direct_limit_bytes: directLimit });
     }
 
@@ -52,24 +51,28 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     if (value.size > directLimit) throw new FunctionHttpError(413, 'MULTIPART_UPLOAD_REQUIRED', 'このFile SizeはMultipart Uploadが必要です。', { direct_limit_bytes: directLimit });
     const privateMode = form.get('private_mode') === 'true';
 
-    // Private Mode must never fall back to the normal R2 path. The canonical
-    // encrypted temporary-object broker (Vault grant + per-object DEK + cleanup)
-    // is a separate runtime boundary and is not yet connected here.
     if (privateMode) {
-      throw new FunctionHttpError(
-        503,
-        'PRIVATE_UPLOAD_BROKER_NOT_READY',
-        'Private Modeの暗号化一時Object Brokerが未接続のため、Fileを通常R2へ保存せず安全停止しました。',
-      );
+      const payload = await uploadPrivateRuntimeFile(context.env, {
+        tenantId: actor.profile.tenant_id,
+        userId: actor.user.id,
+        file: value,
+        correlationId: requestId,
+      });
+      return Response.json(payload, {
+        status: 201,
+        headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId },
+      });
+    }
+
+    if (!context.env.ASTERA_UPLOADS) {
+      throw new FunctionHttpError(503, 'UPLOAD_BUCKET_NOT_CONFIGURED', 'Astera Upload用R2 Bucketが設定されていません。');
     }
 
     const bytes = await value.arrayBuffer();
     const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
     const uploadId = crypto.randomUUID();
     const now = new Date();
-    const privateTtl = positiveInteger(context.env.PRIVATE_UPLOAD_TTL_SECONDS, 3600, 24 * 60 * 60);
-    const expiresAt = privateMode ? new Date(now.getTime() + privateTtl * 1000).toISOString() : null;
-    storageKey = `${actor.profile.tenant_id}/${privateMode ? 'private' : 'normal'}/${uploadId}/${encodeURIComponent(safeName(value.name))}`;
+    storageKey = `${actor.profile.tenant_id}/normal/${uploadId}/${encodeURIComponent(safeName(value.name))}`;
 
     const stored = await context.env.ASTERA_UPLOADS.put(storageKey, bytes, {
       httpMetadata: { contentType: value.type || 'application/octet-stream' },
@@ -78,7 +81,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         user_id: actor.user.id,
         upload_id: uploadId,
         sha256,
-        private_mode: String(privateMode),
+        private_mode: 'false',
       },
     });
     if (!stored) throw new FunctionHttpError(502, 'UPLOAD_OBJECT_WRITE_FAILED', 'R2へFileを書き込めませんでした。');
@@ -88,7 +91,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         `INSERT INTO upload_objects
           (id, tenant_id, user_id, storage_key, original_name, content_type, size_bytes, sha256,
            status, private_mode, expires_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'ready', ?9, ?10, ?11, ?11)`,
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'ready', 0, NULL, ?9, ?9)`,
       ).bind(
         uploadId,
         actor.profile.tenant_id,
@@ -98,8 +101,6 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         value.type || 'application/octet-stream',
         value.size,
         sha256,
-        privateMode ? 1 : 0,
-        expiresAt,
         now.toISOString(),
       ).run();
     } catch (error) {
@@ -118,8 +119,8 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         size_bytes: value.size,
         sha256,
         status: 'ready',
-        private_mode: privateMode,
-        expires_at: expiresAt,
+        private_mode: false,
+        expires_at: null,
       },
     }, { status: 201, headers: { 'Cache-Control': 'no-store', 'X-Correlation-ID': requestId } });
   } catch (error) {
