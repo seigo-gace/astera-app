@@ -87,21 +87,23 @@ export class PrivateMaterializingRuntimeService extends AsteraRuntimeService {
       }
     } catch (caught) {
       let error = caught as RuntimeError;
+      let cleanupFailed = false;
       try {
         await this.destroyInputFiles(input);
       } catch {
+        cleanupFailed = true;
         error = Object.assign(new Error('Private Object Cleanupに失敗しました。'), {
           code: 'PRIVATE_OBJECT_CLEANUP_FAILED',
           retryable: true,
         });
       }
-      const code = error.code || 'PRIVATE_PIPELINE_UNAVAILABLE';
-      const cancelled = code === 'JOB_CANCELLED' || controller.signal.aborted;
+      const cancelled = !cleanupFailed && (error.code === 'JOB_CANCELLED' || controller.signal.aborted);
+      const code = cancelled ? 'JOB_CANCELLED' : (error.code || 'PRIVATE_PIPELINE_UNAVAILABLE');
       await this.database.finish(input.job_id, {
         state: cancelled ? 'cancelled' : 'failed',
         errorCode: code,
-        errorMessage: error.message || 'Private File Security Pipelineに失敗しました。',
-        retryable: error.retryable === true,
+        errorMessage: cancelled ? 'File Security Pipeline実行中にJobを取り消しました。' : (error.message || 'Private File Security Pipelineに失敗しました。'),
+        retryable: cancelled ? false : error.retryable === true,
       }, input.correlation_id).catch(() => undefined);
       wipeMaterials(materials);
       scrubInput(input);
