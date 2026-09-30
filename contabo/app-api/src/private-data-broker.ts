@@ -293,7 +293,7 @@ export class PrivateDataBroker {
       }
     }
     for (const manifest of [...this.objects.values()]) {
-      const idleExpired = manifest.chunks.length === 0 && manifest.lastTouchedAt + PRIVATE_UPLOAD_IDLE_TTL_MS <= now;
+      const idleExpired = manifest.lastTouchedAt + PRIVATE_UPLOAD_IDLE_TTL_MS <= now;
       if (!idleExpired && manifest.absoluteExpiresAt > now) continue;
       try {
         await this.destroyObject(manifest.objectId);

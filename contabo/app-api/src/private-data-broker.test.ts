@@ -89,6 +89,22 @@ test('private broker refuses cross-owner reads without exposing object existence
   } finally { await env.dispose(); }
 });
 
+test('private broker upload idle TTL removes a sealed object that never reaches runtime', async () => {
+  const env = await sandbox();
+  try {
+    const bytes = Buffer.from('idle-private-file');
+    const created = await env.broker.createObject({ tenantId: 'tenant-idle', userId: 'user-idle', name: 'idle.txt', contentType: 'text/plain', bytes });
+    const manifestPath = join(env.root, created.objectId, 'manifest.json');
+    env.advance(privateDataPolicy.uploadIdleTtlSeconds * 1000 - 1);
+    assert.equal(await env.broker.cleanupExpired(), 0);
+    await readFile(manifestPath);
+    env.advance(2);
+    assert.equal(await env.broker.cleanupExpired(), 1);
+    await assert.rejects(readFile(manifestPath), /ENOENT/);
+    bytes.fill(0);
+  } finally { await env.dispose(); }
+});
+
 test('private broker absolute TTL cleanup removes ciphertext and wrapped DEK together', async () => {
   const env = await sandbox();
   try {
