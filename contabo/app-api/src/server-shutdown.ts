@@ -15,7 +15,7 @@ type CloseableResource = Readonly<{
   close(): Promise<void>;
 }>;
 
-function safeErrorCode(error: unknown, fallback: string): string {
+export function safeErrorCode(error: unknown, fallback: string): string {
   if (!error || typeof error !== 'object') return fallback;
   const raw = (error as { code?: unknown }).code;
   if (typeof raw !== 'string') return fallback;

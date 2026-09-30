@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { loadConfig } from './config.js';
 import { createFullApp } from './full-app.js';
-import { closeRuntimeResources } from './server-shutdown.js';
+import { closeRuntimeResources, safeErrorCode } from './server-shutdown.js';
 
 const config = loadConfig();
 const { app, service, privateDataBroker } = createFullApp(config);
@@ -54,9 +54,17 @@ async function shutdown(signal: string) {
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('unhandledRejection', (error) => {
-  console.error(JSON.stringify({ level: 'error', event: 'unhandled_rejection', error: error instanceof Error ? error.message : String(error) }));
+  console.error(JSON.stringify({
+    level: 'error',
+    event: 'unhandled_rejection',
+    code: safeErrorCode(error, 'UNHANDLED_REJECTION'),
+  }));
 });
 process.on('uncaughtException', (error) => {
-  console.error(JSON.stringify({ level: 'fatal', event: 'uncaught_exception', error: error.message }));
+  console.error(JSON.stringify({
+    level: 'fatal',
+    event: 'uncaught_exception',
+    code: safeErrorCode(error, 'UNCAUGHT_EXCEPTION'),
+  }));
   void shutdown('uncaughtException');
 });

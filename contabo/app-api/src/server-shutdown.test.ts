@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { closeRuntimeResources } from './server-shutdown.js';
+import { closeRuntimeResources, safeErrorCode } from './server-shutdown.js';
 
 test('shutdown succeeds only when both runtime resources close successfully', async () => {
   const calls: string[] = [];
@@ -67,7 +67,20 @@ test('all resource closes are attempted and all failures remain visible without 
   assert.equal(serialized.includes('/tmp/db'), false);
 });
 
-test('server shutdown source cannot report cleanup failure as successful exit', async () => {
+test('safe error code preserves approved codes and rejects raw or path-like values', () => {
+  const privateMessage = new Error('PRIVATE-CANARY /run/astera-private-data/object-123');
+  assert.equal(safeErrorCode(privateMessage, 'UNHANDLED_REJECTION'), 'UNHANDLED_REJECTION');
+  assert.equal(
+    safeErrorCode(Object.assign(privateMessage, { code: 'PRIVATE_PIPELINE_UNAVAILABLE' }), 'UNHANDLED_REJECTION'),
+    'PRIVATE_PIPELINE_UNAVAILABLE',
+  );
+  assert.equal(
+    safeErrorCode(Object.assign(new Error('secret'), { code: 'unsafe path /tmp/private' }), 'UNHANDLED_REJECTION'),
+    'UNHANDLED_REJECTION',
+  );
+});
+
+test('server shutdown and fatal handlers cannot log raw error messages', async () => {
   const source = await readFile(new URL('../src/server.ts', import.meta.url), 'utf8');
   assert.equal(source.includes('const closed = await closeRuntimeResources(privateDataBroker, service.database);'), true);
   assert.equal(source.includes('if (!closed.ok)'), true);
@@ -75,4 +88,7 @@ test('server shutdown source cannot report cleanup failure as successful exit', 
   assert.equal(source.includes('process.exit(closed.exitCode)'), true);
   assert.equal(source.includes('process.exit(0)'), false);
   assert.equal(source.includes('await privateDataBroker.close().catch'), false);
+  assert.equal(source.includes('error.message'), false);
+  assert.equal(source.includes("safeErrorCode(error, 'UNHANDLED_REJECTION')"), true);
+  assert.equal(source.includes("safeErrorCode(error, 'UNCAUGHT_EXCEPTION')"), true);
 });
