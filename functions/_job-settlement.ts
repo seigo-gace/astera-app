@@ -250,6 +250,7 @@ export async function releaseFailedJob(
   if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(job.state)) return job;
   validateCreditReservationReleaseTransition('reserved', 'released');
   const now = new Date().toISOString();
+  const persistedMessage = Boolean(job.private_mode) ? null : message;
   await env.ASTERA_DB.batch([
     env.ASTERA_DB.prepare(
       `UPDATE credit_reservations SET status = 'released', updated_at = ?1
@@ -267,12 +268,20 @@ export async function releaseFailedJob(
        SET state = ?1, error_code = ?2, error_message = ?3, updated_at = ?4,
            cancelled_at = CASE WHEN ?1 = 'cancelled' THEN ?4 ELSE cancelled_at END
        WHERE id = ?5`,
-    ).bind(state, code, message, now, job.id),
+    ).bind(state, code, persistedMessage, now, job.id),
     env.ASTERA_DB.prepare(
       `INSERT OR IGNORE INTO job_events
         (id, job_id, from_state, to_state, correlation_id, metadata, created_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-    ).bind(`event:${state}:${job.id}`, job.id, job.state, state, correlationId, JSON.stringify({ code, message }), now),
+    ).bind(
+      `event:${state}:${job.id}`,
+      job.id,
+      job.state,
+      state,
+      correlationId,
+      JSON.stringify(Boolean(job.private_mode) ? { code } : { code, message }),
+      now,
+    ),
   ]);
   return { ...job, state, error_code: code, error_message: message, updated_at: now, cancelled_at: state === 'cancelled' ? now : job.cancelled_at };
 }

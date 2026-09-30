@@ -143,6 +143,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
 
     const input = normalizeEstimateInput(raw);
     const purposeText = normalizePurposeText(raw);
+    const persistedPurposeText = input.privateMode ? null : purposeText;
     const [estimate, policy, files] = await Promise.all([
       context.env.ASTERA_DB.prepare(
         `SELECT id, tenant_id, user_id, request_fingerprint, policy_version, required_credits,
@@ -231,14 +232,14 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
              created_at, updated_at, completed_at, cancelled_at)
            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserving_credit', ?7, ?8, ?9, ?10, ?11, ?12,
                    NULL, ?13, NULL, NULL, NULL, NULL, NULL, ?14, ?14, NULL, NULL)`,
-        ).bind(jobId, actor.profile.tenant_id, actor.user.id, requestId, estimate.id, fingerprint, input.purpose, purposeText, optionSummary, files.length, input.privateMode ? 1 : 0, input.projectId, Number(estimate.required_credits), now.toISOString()),
+        ).bind(jobId, actor.profile.tenant_id, actor.user.id, requestId, estimate.id, fingerprint, input.purpose, persistedPurposeText, optionSummary, files.length, input.privateMode ? 1 : 0, input.projectId, Number(estimate.required_credits), now.toISOString()),
         context.env.ASTERA_DB.prepare(
           `UPDATE job_estimates SET status = 'consumed', consumed_at = ?1 WHERE id = ?2 AND status = 'active'`,
         ).bind(now.toISOString(), estimate.id),
         context.env.ASTERA_DB.prepare(
           `INSERT INTO job_events (id, job_id, from_state, to_state, correlation_id, metadata, created_at)
            VALUES (?1, ?2, NULL, 'reserving_credit', ?3, ?4, ?5)`,
-        ).bind(crypto.randomUUID(), jobId, correlationId, JSON.stringify({ estimate_id: estimate.id, policy_version: policy.version, purpose_text: purposeText }), now.toISOString()),
+        ).bind(crypto.randomUUID(), jobId, correlationId, JSON.stringify({ estimate_id: estimate.id, policy_version: policy.version, purpose_text: persistedPurposeText }), now.toISOString()),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
