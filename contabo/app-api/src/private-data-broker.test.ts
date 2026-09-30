@@ -102,6 +102,27 @@ test('private broker absolute TTL cleanup removes ciphertext and wrapped DEK tog
   } finally { await env.dispose(); }
 });
 
+test('correct owner can explicitly destroy an expired object while cross-owner destroy remains hidden', async () => {
+  const env = await sandbox();
+  try {
+    const bytes = Buffer.from('expired-owner-destroy-private-file');
+    const created = await env.broker.createObject({ tenantId: 'tenant-expired', userId: 'user-expired', name: 'expired.txt', contentType: 'text/plain', bytes });
+    const manifestPath = join(env.root, created.objectId, 'manifest.json');
+    env.advance(privateDataPolicy.absoluteTtlSeconds * 1000 + 1);
+    await assert.rejects(
+      env.broker.readObject(created.objectId, 'tenant-expired', 'user-expired'),
+      (error: unknown) => error instanceof PrivateDataBrokerError && error.code === 'PRIVATE_OBJECT_EXPIRED' && error.status === 410,
+    );
+    await assert.rejects(
+      env.broker.destroyObject(created.objectId, 'tenant-expired', 'other-user'),
+      (error: unknown) => error instanceof PrivateDataBrokerError && error.code === 'PRIVATE_OBJECT_NOT_FOUND' && error.status === 404,
+    );
+    await env.broker.destroyObject(created.objectId, 'tenant-expired', 'user-expired');
+    await assert.rejects(readFile(manifestPath), /ENOENT/);
+    bytes.fill(0);
+  } finally { await env.dispose(); }
+});
+
 test('private broker startup recovery cleans an expired recovered object', async () => {
   const env = await sandbox();
   let recovered: PrivateDataBroker | null = null;

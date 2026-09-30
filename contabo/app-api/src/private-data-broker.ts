@@ -224,11 +224,15 @@ export class PrivateDataBroker {
       throw error;
     }
   }
-  private owned(objectId: string, tenantId: string, userId: string): PrivateObjectManifest {
+  private ownedManifest(objectId: string, tenantId: string, userId: string): PrivateObjectManifest {
     this.requireReady();
     const manifest = this.objects.get(objectId);
     if (!manifest) throw new PrivateDataBrokerError(404, 'PRIVATE_OBJECT_NOT_FOUND', 'Private Object was not found.');
     if (manifest.tenantId !== safeId(tenantId, 'PRIVATE_TENANT_ID_INVALID') || manifest.userId !== safeId(userId, 'PRIVATE_USER_ID_INVALID')) throw new PrivateDataBrokerError(404, 'PRIVATE_OBJECT_NOT_FOUND', 'Private Object was not found.');
+    return manifest;
+  }
+  private owned(objectId: string, tenantId: string, userId: string): PrivateObjectManifest {
+    const manifest = this.ownedManifest(objectId, tenantId, userId);
     if (manifest.absoluteExpiresAt <= this.now()) throw new PrivateDataBrokerError(410, 'PRIVATE_OBJECT_EXPIRED', 'Private Object has expired.');
     return manifest;
   }
@@ -271,7 +275,7 @@ export class PrivateDataBroker {
     this.requireReady();
     const manifest = this.objects.get(objectId);
     if (!manifest) return;
-    if (tenantId !== undefined && userId !== undefined) this.owned(objectId, tenantId, userId);
+    if (tenantId !== undefined && userId !== undefined) this.ownedManifest(objectId, tenantId, userId);
     await this.removeObjectDirectory(objectId);
     this.objects.delete(objectId);
   }
