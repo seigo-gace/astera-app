@@ -23,6 +23,7 @@ const externalNavigation = read('src/platform/external-navigation.ts');
 const checkoutPage = read('src/features/checkout/CheckoutPage.tsx');
 const authPages = read('src/platform/pages/AuthPages.tsx');
 const workspacePages = read('src/platform/pages/WorkspacePages.tsx');
+const resultPage = read('src/features/results/ResultPage.tsx');
 const accountPages = read('src/platform/pages/AccountPages.tsx');
 const compatibilityRuntime = read('src/device-compatibility.ts');
 const compatibilityCss = read('src/device-compatibility.css');
@@ -75,7 +76,7 @@ check('Native browser closes after callback', nativeShell.includes('Browser.clos
 
 check('Square checkout uses external bridge', checkoutPage.includes('await openExternalUrl(destination)'), 'Square must not remain inside Native WebView');
 check('Square direct WebView redirect removed', !checkoutPage.includes('window.location.assign(destination)'), 'Square direct redirect is forbidden');
-check('Square Native callback', checkoutPage.includes("nativeCallback('/account/billing/status')"), 'Square Native callback missing');
+check('Square Native callback', /nativeCallback\((['"])\/account\/billing\/status\1\)/.test(checkoutPage), 'Square Native callback missing');
 
 check('OAuth uses canonical social API', authPages.includes("submitForm('/api/auth/sign-in/social'"), 'OAuth must request the redirect URL through the canonical Better Auth social endpoint');
 check('OAuth uses external bridge', authPages.includes('await openExternalUrl(redirectUrl)'), 'OAuth redirect must use the verified system-browser bridge on Native');
@@ -86,8 +87,8 @@ check('Storage OAuth uses external bridge', workspacePages.includes('await openE
 check('Storage Native callback', workspacePages.includes("nativeCallback('/app/settings/storage-destinations')"), 'Storage Native callback missing');
 check('Credit checkout uses external bridge', accountPages.includes('await openExternalUrl(url)'), 'Credit checkout must use system browser on Native');
 check('Credit Native callback', accountPages.includes("nativeCallback('/account/billing/status')"), 'Credit Native callback missing');
-check('Result download creates Blob URL', workspacePages.includes('URL.createObjectURL(blob)'), 'Result download must use authenticated Blob bridge');
-check('Result download names file', workspacePages.includes('anchor.download ='), 'Result download file name missing');
+check('Result download creates Blob URL', resultPage.includes('URL.createObjectURL(blob)'), 'Result download must use authenticated Blob bridge');
+check('Result download names file', resultPage.includes('anchor.download ='), 'Result download file name missing');
 
 if (requireNative) {
   const nativePlatforms = requestedNativePlatforms.length > 0
