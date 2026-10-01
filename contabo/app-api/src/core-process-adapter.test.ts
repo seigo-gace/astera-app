@@ -91,9 +91,9 @@ test('parseCoreMain8Response separates evidence trailer and maps source ids/URLs
   const raw = `${MAIN8}\n===ASTERA_EVIDENCE===\n${JSON.stringify(payload)}`;
   const parsed = parseCoreMain8Response(raw);
   assert.equal(parsed.result.schema_version, 'astera-result-v2-main8-evidence');
-  assert.deepEqual(parsed.result.sections.fact_check.source_ids, ['E01']);
-  assert.deepEqual(parsed.result.sections.recommendation.source_ids, ['E01']);
-  assert.equal(parsed.result.sections.next_prompt.body, '- 再指示');
+  assert.deepEqual(parsed.result.sections.fact_check!.source_ids, ['E01']);
+  assert.deepEqual(parsed.result.sections.recommendation!.source_ids, ['E01']);
+  assert.equal(parsed.result.sections.next_prompt!.body, '- 再指示');
   assert.equal(parsed.result.sources.length, 1);
   const source = parsed.result.sources[0] as Record<string, unknown>;
   assert.equal(source.id, 'E01'); assert.equal(source.url, 'https://nodejs.org/en/about/previous-releases');
