@@ -142,6 +142,35 @@ test('parseCoreMain8Response maps current Main8 to App result without restoring 
   assert.equal(parsed.result.completion_state, 'complete');
 });
 
+test('Core task-graph blocked control response is classified before Main8 parsing', () => {
+  assert.throws(
+    () => parseCoreMain8Response([
+      'Task Graphを安全に実行できないため、後続処理を停止しました。',
+      'Hard Blocker: TASK_GRAPH_CYCLE',
+      'Unresolved: -',
+      '推測で補完せず、Task/Claim/Evidence処理へ進めていません.',
+    ].join('\n')),
+    (error: unknown) => {
+      const value = error as { code?: string; message?: string };
+      return value.code === 'ASTERA_CORE_TASK_GRAPH_BLOCKED'
+        && value.message?.includes('Hard Blocker: TASK_GRAPH_CYCLE') === true;
+    },
+  );
+});
+
+test('Core clarification control response is classified before Main8 parsing', () => {
+  assert.throws(
+    () => parseCoreMain8Response([
+      'Analysis Taskを抽出できませんでした。対象・行為・完了条件を確認してください。',
+    ].join('\n')),
+    (error: unknown) => {
+      const value = error as { code?: string; message?: string };
+      return value.code === 'ASTERA_CORE_CLARIFICATION_REQUIRED'
+        && value.message?.includes('対象・行為・完了条件') === true;
+    },
+  );
+});
+
 test('invalid Main8 is rejected instead of being silently accepted', () => {
   assert.throws(
     () => parseCoreMain8Response('01 本当の目的\n- only one'),
