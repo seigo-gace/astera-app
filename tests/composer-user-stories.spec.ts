@@ -21,6 +21,7 @@ type MockOptions = {
   estimateDelay?: number;
   estimateFailure?: boolean;
   incompleteResult?: boolean;
+  failedFirstJob?: boolean;
   counters?: { estimates: number; jobs: number; conversations: number };
   preferences?: Partial<PreferenceState>;
   preferencePatches?: Array<Record<string, unknown>>;
@@ -75,14 +76,16 @@ async function installRuntime(page: Page, options: MockOptions = {}): Promise<vo
       const body = request.postDataJSON() as Record<string, unknown>;
       options.jobBodies?.push(body);
       jobSequence += 1;
+      const firstJobFailed = options.failedFirstJob === true && jobSequence === 1;
       return json(route, {
         job: {
           job_id: `job-story-${jobSequence}`,
-          state: 'completed',
-          result: {
+          state: firstJobFailed ? 'failed' : 'completed',
+          result: firstJobFailed ? undefined : {
             sections: options.incompleteResult ? [{ key: 'true_purpose', title: '不足', body: '1項目だけ' }] : completeSections(`回答${jobSequence}`),
             sources: options.incompleteResult ? [] : sources(),
           },
+          error: firstJobFailed ? { code: 'ASTERA_MAIN8_RESPONSE_INCOMPLETE', message: 'Astera Core Main8のSection数が不正です。受信: 1' } : null,
         },
       }, 201);
     }
@@ -190,6 +193,26 @@ test('STORY-COMPOSER-006 edit action uses revision only for the edited turn', as
   expect(jobBodies[1].revision_base_prompt).toBe('元の投稿');
   await expect(page.locator('.native-user-message')).toHaveCount(1);
   await expect(page.locator('.native-user-message > p')).toHaveText('修整後の投稿');
+});
+
+test('STORY-COMPOSER-006B failed terminal turn remains editable for correction and retry', async ({ page }) => {
+  const jobBodies: Array<Record<string, unknown>> = [];
+  await installRuntime(page, { failedFirstJob: true, jobBodies });
+  await openComposer(page);
+  const textarea = page.getByLabel('Astera入力');
+  await textarea.fill('Main8に失敗した投稿');
+  await textarea.press('Control+Enter');
+  await expect(page.locator('.native-error')).toContainText('ASTERA_MAIN8_RESPONSE_INCOMPLETE');
+  const editButton = page.getByLabel('投稿を編集');
+  await expect(editButton).toBeEnabled();
+  await editButton.click();
+  await expect(textarea).toHaveValue('Main8に失敗した投稿');
+  await textarea.fill('修正して再実行する投稿');
+  await textarea.press('Control+Enter');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await expect.poll(() => jobBodies.length).toBe(2);
+  expect(jobBodies[1].revision_of_job_id).toBe('job-story-1');
+  expect(jobBodies[1].revision_base_prompt).toBe('Main8に失敗した投稿');
 });
 
 test('STORY-COMPOSER-007 purpose is always visible next to plus and defaults to Auto', async ({ page }) => {
