@@ -141,6 +141,9 @@ export class PrivateDataBroker {
   protected async removeObjectDirectory(objectId: string): Promise<void> {
     await rm(this.objectDir(objectId), { recursive: true, force: true });
   }
+  protected async removeRecoveryEntry(name: string): Promise<void> {
+    await rm(join(this.root, name), { recursive: true, force: true });
+  }
   private async writeManifest(manifest: PrivateObjectManifest): Promise<void> {
     const destination = this.manifestPath(manifest.objectId);
     const temporary = `${destination}.${randomUUID()}.tmp`;
@@ -160,7 +163,7 @@ export class PrivateDataBroker {
     for (const entry of await readdir(this.root, { withFileTypes: true })) {
       // The broker root is a dedicated Private tmpfs. Anything left there after
       // restart is residual Private state and must not survive into a new process.
-      await rm(join(this.root, entry.name), { recursive: true, force: true });
+      await this.removeRecoveryEntry(entry.name);
     }
     this.objects.clear();
     this.pendingCleanupObjectIds.clear();
