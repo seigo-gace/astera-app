@@ -30,9 +30,10 @@ type UploadedFile = {
   type: string;
   status: 'uploading' | 'ready' | 'error';
   uploadId?: string;
+  uploadPrivateMode?: boolean;
   error?: string;
 };
-type JobEstimate = { estimateId: string; requiredCredits: number; availableCredits: number; expiresAt: string };
+type JobEstimate = { estimateId: string; requiredCredits: number; availableCredits: number; usableCredits: number; creditState: string; expiresAt: string };
 type ResultSection = { key: ResultKey; title: string; body: string; sourceIds: string[] };
 type ResultSource = { id: string; title: string; url: string; status: string; retrievedAt: string };
 type CatalogItem = { id: string; title: string; status?: string };
@@ -55,6 +56,8 @@ type EditBaseline = {
   privateMode: boolean;
   purpose: PurposeKey;
   purposeText: string;
+  revisionAllowed: boolean;
+  restorePrivateMode: boolean;
 };
 
 const MAX_INPUT_CHARACTERS = 200_000;
@@ -114,11 +117,13 @@ function extractEstimate(payload: unknown): JobEstimate {
   const estimateId = recordText(source, ['estimate_id', 'estimateId', 'id']);
   const requiredCredits = numberValue(source.required_credits ?? source.requiredCredits);
   const availableCredits = numberValue(source.available_credits ?? source.availableCredits);
+  const usableCredits = numberValue(source.usable_credits ?? source.usableCredits, availableCredits);
+  const creditState = recordText(source, ['credit_state', 'creditState'], 'unknown').toLowerCase();
   const expiresAt = recordText(source, ['expires_at', 'expiresAt']);
   if (!estimateId || !expiresAt || requiredCredits <= 0) {
     throw new ApiError('Server Estimateの必須項目が不足しています。', 502, 'JOB_ESTIMATE_INVALID', payload);
   }
-  return { estimateId, requiredCredits, availableCredits, expiresAt };
+  return { estimateId, requiredCredits, availableCredits, usableCredits, creditState, expiresAt };
 }
 function sectionBody(value: unknown): string {
   if (typeof value === 'string') return value.trim();
@@ -241,6 +246,7 @@ function hydratePersistedTurn(value: unknown): Turn | null {
   const persistedState = recordText(record, ['job_state', 'state', 'status']).toLowerCase();
   const persistedError = asRecord(record.error);
   const result = asRecord(record.result);
+  const partialState = persistedState === 'partially_completed' || persistedState === 'partial';
   if (!Object.keys(result).length) {
     if (persistedState === 'cancelled' || persistedState === 'canceled') {
       return { id, prompt, purpose, purposeText, privateMode: false, jobId: jobIdValue, phase: 'cancelled', sections: [], sources: [], error: null };
@@ -288,10 +294,17 @@ function hydratePersistedTurn(value: unknown): Turn | null {
       purposeText,
       privateMode: false,
       jobId: jobIdValue,
-      phase: 'completed',
+      phase: partialState ? 'failed' : 'completed',
       sections: normalizeResult({ result }),
       sources: normalizeSources({ result }),
-      error: null,
+      error: partialState
+        ? new ApiError(
+            recordText(persistedError, ['message'], '部分完了したResultです。'),
+            502,
+            recordText(persistedError, ['code'], 'JOB_PARTIALLY_COMPLETED'),
+            value,
+          )
+        : null,
     };
   } catch {
     return {
@@ -350,6 +363,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const [copiedKey, setCopiedKey] = useState('');
   const [conversationId, setConversationId] = useState(route.id === 'chat-detail' ? route.params.id || '' : '');
   const [conversationLoading, setConversationLoading] = useState(route.id === 'chat-detail');
+  const [conversationHydrationFailed, setConversationHydrationFailed] = useState(false);
   const [optionVisibility, setOptionVisibility] = useState<Record<CurrentExecutionOptionKey, boolean>>({
     translation: true,
     'agent-mode': true,
@@ -363,6 +377,8 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const dragIndex = useRef<number | null>(null);
   const privateTurnTimers = useRef(new Map<string, number>());
   const copyTimer = useRef<number | null>(null);
+  const historySavedTurns = useRef(new Set<string>());
+  const resumedJobIds = useRef(new Set<string>());
 
   useEffect(() => {
     document.documentElement.classList.add('native-composer-route');
@@ -422,6 +438,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
 
   useEffect(() => {
     if (route.id !== 'chat-detail' || !route.params.id) {
+      setConversationHydrationFailed(false);
       setConversationLoading(false);
       return;
     }
@@ -432,6 +449,8 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         const root = asRecord(payload);
         const conversation = asRecord(root.conversation ?? root.data ?? root);
         const loaded = asArray(conversation.turns).map(hydratePersistedTurn).filter((turn): turn is Turn => turn !== null);
+        setConversationHydrationFailed(false);
+        for (const turn of loaded) historySavedTurns.current.add(turn.id);
         setTurns(loaded);
         setConversationId(recordText(conversation, ['conversation_id', 'id'], route.params.id));
         setProjectId(recordText(conversation, ['project_id']));
@@ -444,7 +463,10 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         setPhase('draft');
       })
       .catch((caught) => {
-        if (!controller.signal.aborted) setError(caught instanceof ApiError ? caught : new ApiError('Chat履歴を読み込めませんでした。'));
+        if (!controller.signal.aborted) {
+          setConversationHydrationFailed(true);
+          setError(caught instanceof ApiError ? caught : new ApiError('Chat履歴を読み込めませんでした。'));
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setConversationLoading(false);
@@ -465,10 +487,11 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     return { key, destinationId: storageDestinationId, adapterVersion: 'v1', format: 'markdown' };
   }), [agentMode, selectedOptions, storageDestinationId, targetLanguage]);
 
-  const evidenceTurn = useMemo(
-    () => [...turns].reverse().find((turn) => turn.sources.length > 0 || turn.sections.some((section) => section.sourceIds.length > 0)) ?? null,
-    [turns],
-  );
+  const evidenceTurn = useMemo(() => {
+    const latest = turns.at(-1) ?? null;
+    if (!latest) return null;
+    return latest.sources.length > 0 || latest.sections.some((section) => section.sourceIds.length > 0) ? latest : null;
+  }, [turns]);
   const evidenceItems = useMemo(() => {
     if (!evidenceTurn) return [];
     if (evidenceTurn.sources.length) return evidenceTurn.sources;
@@ -485,6 +508,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     if (hasFailedFiles) return new ApiError('Uploadに失敗したFileをRetryまたは削除してください。', 409, 'FILE_UPLOAD_FAILED');
     if (files.length !== readyFileIds.length) return new ApiError('実Byte参照がないFileは実行できません。', 409, 'FILE_UPLOAD_PIPELINE_NOT_CONNECTED');
     if (selectedOptions.includes('translation') && !targetLanguage.trim()) return new ApiError('翻訳先言語を選択してください。', 422, 'TARGET_LANGUAGE_REQUIRED');
+    if (conversationHydrationFailed) return new ApiError('Chat履歴を確認できないため、この画面では実行できません。［新規］で新しいChatを開始してください。', 409, 'CONVERSATION_HYDRATION_FAILED');
     if (selectedOptions.includes('external-storage-transfer') && !storageDestinationId.trim()) return new ApiError('転送先Storageを選択してください。', 422, 'STORAGE_DESTINATION_REQUIRED');
     return null;
   }, [files.length, hasFailedFiles, hasPendingFiles, prompt, purposeText, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
@@ -525,17 +549,27 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     privateTurnTimers.current.set(turnId, timer);
   }, []);
   const completeTurn = useCallback((turnId: string, payload: unknown, isPrivate: boolean) => {
-    const sections = normalizeResult(payload);
-    const sources = normalizeSources(payload);
-    patchTurn(turnId, { phase: 'completed', sections, sources, error: null });
-    setPhase('completed');
-    setEvidenceMode(false);
-    if (isPrivate) {
-      armPrivateTurnExpiry(turnId);
-      setNotice('Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。');
-    } else {
-      setNotice('Resultを保存しました。履歴からいつでも開けます。');
-      window.dispatchEvent(new CustomEvent('astera:history-updated'));
+    try {
+      const sections = normalizeResult(payload);
+      const sources = normalizeSources(payload);
+      patchTurn(turnId, { phase: 'completed', sections, sources, error: null });
+      setPhase('completed');
+      setEvidenceMode(false);
+      if (isPrivate) {
+        historySavedTurns.current.delete(turnId);
+        armPrivateTurnExpiry(turnId);
+        setNotice('Private Mode Resultは保存されません。Outputはこの端末Memoryでも60分後に破棄されます。');
+      } else if (historySavedTurns.current.has(turnId)) {
+        setNotice('Resultを保存しました。履歴からいつでも開けます。');
+        window.dispatchEvent(new CustomEvent('astera:history-updated'));
+      } else {
+        setNotice('Jobは完了しましたがChat履歴の保存に失敗しています。履歴を再読み込みしてください。');
+      }
+    } catch (caught) {
+      const failure = caught instanceof ApiError ? caught : new ApiError('Resultを正しく復元できませんでした。', 502, 'ASTERA_RESPONSE_INVALID');
+      setPhase('failed');
+      patchTurn(turnId, { phase: 'failed', sections: [], sources: [], error: failure });
+      setError(failure);
     }
   }, [armPrivateTurnExpiry, patchTurn]);
 
@@ -546,8 +580,8 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     currentPurpose: PurposeKey,
     currentPurposeText: string,
     isPrivate: boolean,
-  ) => {
-    if (isPrivate) return;
+  ): Promise<boolean> => {
+    if (isPrivate) return true;
     let last: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -567,18 +601,21 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         const nextId = recordText(root, ['conversation_id', 'conversationId']);
         if (nextId) {
           setConversationId(nextId);
-          if (route.id !== 'chat-detail') window.history.replaceState({}, '', `/app/chats/${encodeURIComponent(nextId)}`);
+          if (!window.location.pathname.startsWith('/app/chats/')) window.history.replaceState({}, '', `/app/chats/${encodeURIComponent(nextId)}`);
         }
+        historySavedTurns.current.add(turnId);
         window.dispatchEvent(new CustomEvent('astera:history-updated'));
-        return;
+        return true;
       } catch (caught) {
         last = caught;
         if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 200));
       }
     }
     const persistError = last instanceof ApiError ? last : new ApiError('Chat履歴の保存に失敗しました。', 502, 'CONVERSATION_PERSIST_FAILED');
+    historySavedTurns.current.delete(turnId);
     setNotice(`Jobは実行されていますがChat履歴を保存できませんでした: ${persistError.code}`);
-  }, [conversationId, route.id]);
+    return false;
+  }, [conversationId]);
 
   const pollJob = useCallback(async (turnId: string, id: string, isPrivate: boolean) => {
     pollController.current?.abort();
@@ -617,6 +654,14 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     patchTurn(turnId, { phase: 'failed', error: failure });
   }, [completeTurn, patchTurn]);
 
+  useEffect(() => {
+    if (route.id !== 'chat-detail' || conversationLoading || conversationHydrationFailed) return;
+    const pending = turns.find((turn) => ['queued', 'running', 'assembling_result'].includes(turn.phase) && turn.jobId);
+    if (!pending || resumedJobIds.current.has(pending.jobId)) return;
+    resumedJobIds.current.add(pending.jobId);
+    void pollJob(pending.id, pending.jobId, pending.privateMode);
+  }, [conversationHydrationFailed, conversationLoading, pollJob, route.id, turns]);
+
   const runJob = useCallback(async () => {
     if (executionLock.current) return;
     const validationError = validate();
@@ -636,6 +681,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     const sendPrivateMode = privateMode;
     setPhase('estimating');
     const revisionPayload = edit
+      && edit.revisionAllowed
       && edit.privateMode === sendPrivateMode
       && edit.purpose === sendPurpose
       && edit.purposeText === sendPurposeText
@@ -657,7 +703,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         idempotent: true,
       });
       const estimate = extractEstimate(estimatePayload);
-      if (estimate.availableCredits < estimate.requiredCredits) {
+      if (estimate.creditState === 'insufficient' || estimate.usableCredits < estimate.requiredCredits) {
         throw new ApiError(
           `Creditが不足しています。必要 ${estimate.requiredCredits.toLocaleString()} / 利用可能 ${estimate.availableCredits.toLocaleString()}`,
           409,
@@ -689,7 +735,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       });
       const id = jobId(payload);
       if (!id) throw new ApiError('作成されたJob IDを受信できませんでした。', 502, 'JOB_ID_MISSING', payload);
-      const turnId = edit?.turnId ?? crypto.randomUUID();
+      const turnId = edit?.revisionAllowed ? edit.turnId : crypto.randomUUID();
       const immediate = jobState(payload);
       upsertTurn({
         id: turnId,
@@ -726,7 +772,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     } finally {
       executionLock.current = false;
     }
-  }, [completeTurn, editing, executionOptions, patchTurn, persistTurn, pollJob, privateMode, projectId, prompt, purpose, purposeText, readyFileIds, upsertTurn, validate]);
+  }, [completeTurn, conversationHydrationFailed, editing, executionOptions, patchTurn, persistTurn, pollJob, privateMode, projectId, prompt, purpose, purposeText, readyFileIds, upsertTurn, validate]);
 
   const cancelJob = useCallback(async () => {
     if (!currentJobId) return;
@@ -768,7 +814,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       const source = asRecord(asRecord(payload).file ?? asRecord(payload).data ?? payload);
       const uploadId = recordText(source, ['upload_id', 'object_id', 'storage_reference', 'id']);
       if (!uploadId) throw new ApiError('Upload済み実Byte参照を受信できませんでした。', 502, 'UPLOAD_REFERENCE_MISSING', payload);
-      setFiles((current) => current.map((item) => item.localId === localId ? { ...item, status: 'ready', uploadId, error: undefined } : item));
+      setFiles((current) => current.map((item) => item.localId === localId ? { ...item, status: 'ready', uploadId, uploadPrivateMode: privateMode, error: undefined } : item));
       setPhase('draft');
     } catch (caught) {
       const uploadError = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : 'Uploadに失敗しました。', 0, 'FILE_UPLOAD_FAILED');
@@ -809,6 +855,21 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     return next;
   });
 
+  const togglePrivateMode = () => {
+    if (privateMode && files.some((file) => file.status === 'uploading')) {
+      setNotice('File Upload中はPrivate Modeを変更できません。Upload完了後に変更してください。');
+      return;
+    }
+    if (privateMode) {
+      const privateFiles = files.filter((file) => file.status === 'ready' && file.uploadPrivateMode);
+      if (privateFiles.length) {
+        setFiles((current) => current.filter((file) => !file.uploadPrivateMode));
+        setNotice('Private Fileは通常Modeでは使用できないためQueueから削除しました。必要なFileを再追加してください。');
+      }
+    }
+    setPrivateMode((current) => !current);
+  };
+
   const toggleOption = (key: CurrentExecutionOptionKey) => setSelectedOptions((current) => {
     if (current.includes(key)) {
       if (key === 'external-storage-transfer') setStorageDestinationId('');
@@ -841,11 +902,22 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   };
   const editTurn = (turn: Turn) => {
     if (!turn.jobId || !['completed', 'failed', 'cancelled'].includes(turn.phase)) return;
+    const revisionAllowed = turn.phase === 'completed';
+    const restorePrivateMode = privateMode;
     setPrompt(turn.prompt);
     setPurpose(turn.purpose);
     setPurposeText(turn.purposeText);
     setPrivateMode(turn.privateMode);
-    setEditing({ turnId: turn.id, jobId: turn.jobId, prompt: turn.prompt, privateMode: turn.privateMode, purpose: turn.purpose, purposeText: turn.purposeText });
+    setEditing({
+      turnId: turn.id,
+      jobId: turn.jobId,
+      prompt: turn.prompt,
+      privateMode: turn.privateMode,
+      purpose: turn.purpose,
+      purposeText: turn.purposeText,
+      revisionAllowed,
+      restorePrivateMode,
+    });
     setEvidenceMode(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
@@ -859,6 +931,9 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     setPurposeTextDraft('');
     setCurrentJobId('');
     setConversationId('');
+    setProjectId('');
+    setPrivateMode(true);
+    setConversationHydrationFailed(false);
     setError(null);
     setNotice('');
     setPhase('draft');
@@ -914,12 +989,12 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
           {picker === 'purpose' && renderPurposeChoices()}
           {picker === 'purpose-text' && (
             <div className="native-purpose-text-editor">
-              <label><span>この実行で重視する目的</span><textarea aria-label="自由目的" value={purposeTextDraft} onChange={(event) => setPurposeTextDraft(event.target.value)} maxLength={MAX_PURPOSE_TEXT_CHARACTERS} rows={5} placeholder="例：公開前に法的リスクと個人情報保護を重点的に確認する" /></label>
+              <label><span>この実行で重視する目的</span><textarea aria-label="自由目的" value={purposeTextDraft} onChange={(event) => setPurposeTextDraft([...event.target.value].slice(0, MAX_PURPOSE_TEXT_CHARACTERS).join(''))} rows={5} placeholder="例：公開前に法的リスクと個人情報保護を重点的に確認する" /></label>
               <div className="native-purpose-text-count">{[...purposeTextDraft].length.toLocaleString()} / {MAX_PURPOSE_TEXT_CHARACTERS.toLocaleString()}</div>
               <div className="native-purpose-text-actions"><button type="button" onClick={() => { setPurposeTextDraft(purposeText); setPicker('purpose'); }}>キャンセル</button><button type="button" className="native-picker-apply" onClick={() => { setPurposeText(purposeTextDraft.trim()); setPicker(null); }}>適用</button></div>
             </div>
           )}
-          {picker === 'add' && <><button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>{renderVisibleOptions()}<button type="button" className={privateMode ? 'is-selected' : ''} aria-pressed={privateMode} onClick={() => setPrivateMode((current) => !current)}><span>Private Mode</span><b>{privateMode ? 'ON' : 'OFF'}</b></button></>}
+          {picker === 'add' && <><button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>{renderVisibleOptions()}<button type="button" className={privateMode ? 'is-selected' : ''} aria-pressed={privateMode} disabled={files.some((file) => file.status === 'uploading')} onClick={togglePrivateMode}><span>Private Mode</span><b>{privateMode ? 'ON' : 'OFF'}</b></button></>}
           {picker === 'context' && <>{catalogLoading && <p className="native-picker-status">登録済み項目を読み込んでいます…</p>}{renderVisibleOptions()}{selectedOptions.includes('translation') && optionVisibility.translation && <label className="native-picker-field"><span>翻訳先言語</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} /></label>}{selectedOptions.includes('external-storage-transfer') && optionVisibility['external-storage-transfer'] && <label className="native-picker-field"><span>外部Storage転送先</span><select value={storageDestinationId} onChange={(event) => setStorageDestinationId(event.target.value)}><option value="">選択してください</option>{destinations.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}<label className="native-picker-field"><span>Project</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">Projectなし</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button type="button" className="native-picker-apply" onClick={() => setPicker(null)}>完了</button></>}
         </div>
       </section>
@@ -980,7 +1055,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
 
         <section className="native-composer-dock">
           {notice && <div className="native-notice" role="status">{notice}</div>}
-          {editing && <div className="native-editing-banner"><span>投稿を編集しています</span><button type="button" onClick={() => { setEditing(null); setPrompt(''); setPurpose(editing.purpose); setPurposeText(editing.purposeText); }}>キャンセル</button></div>}
+          {editing && <div className="native-editing-banner"><span>投稿を編集しています</span><button type="button" onClick={() => { const restore = editing.restorePrivateMode; setEditing(null); setPrompt(''); setPurpose(editing.purpose); setPurposeText(editing.purposeText); setPrivateMode(restore); }}>キャンセル</button></div>}
           {files.length > 0 && (
             <ul className="native-file-queue" aria-label="File Queue">
               {files.map((file, index) => <li key={file.localId} draggable={file.status !== 'uploading'} onDragStart={() => { dragIndex.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) reorderFile(dragIndex.current, index); dragIndex.current = null; }}><div><strong>{file.name}</strong><small>{file.status === 'ready' ? 'Upload完了' : file.status === 'uploading' ? 'Uploading…' : file.error}</small></div><div>{file.status === 'error' && <button type="button" onClick={() => retryFile(file)}>Retry</button>}<button type="button" onClick={() => setFiles((current) => current.filter((item) => item.localId !== file.localId))} disabled={file.status === 'uploading'}>×</button></div></li>)}
@@ -998,7 +1073,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
                 })}
               </div>
               <div className="native-right-tools">
-                {turns.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer}>新規</button>}
+                {turns.length > 0 && <button type="button" className="native-text-button" onClick={resetComposer} disabled={activeWork}>新規</button>}
                 <button type="button" className="native-run-button" aria-label="実行" onClick={() => void runJob()} disabled={activeWork || !prompt.trim()}><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3.6 4.3 21 12 3.6 19.7l2.2-6.2 8.4-1.5-8.4-1.5-2.2-6.2Z" fill="currentColor" /></svg></button>
               </div>
             </div>
