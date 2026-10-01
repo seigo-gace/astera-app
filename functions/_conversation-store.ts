@@ -89,7 +89,34 @@ export async function appendConversationTurn(
   const now = new Date().toISOString();
   let conversationId = conversationIdInput;
 
-  if (conversationId) {
+  // Resolve an existing client_turn_id before creating a new Conversation.
+  // If the first response was lost after the D1 write succeeded, the frontend
+  // retries the same turn with conversation_id=null. Reusing the existing
+  // Conversation keeps the retry idempotent instead of creating a new orphan
+  // Conversation and then failing on the turn ownership check.
+  const existing = await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.purpose_text,t.position,t.created_at,t.updated_at,
+      j.state AS job_state,j.error_code,j.error_message
+    FROM chat_turns t JOIN app_jobs j ON j.id=t.job_id
+    WHERE t.id=?1 AND t.tenant_id=?2 AND t.user_id=?3 LIMIT 1`)
+    .bind(clientTurnId, actor.tenantId, actor.userId).first<TurnRow>();
+
+  if (existing) {
+    if (existing.job_id !== jobId) {
+      throw new ConversationStoreError(409, 'CONVERSATION_TURN_JOB_MISMATCH', '同じTurn IDが別Jobに使用されています。');
+    }
+    if (existing.conversation_id !== conversationIdInput && conversationIdInput) {
+      throw new ConversationStoreError(409, 'CONVERSATION_TURN_OWNER_MISMATCH', 'Turnは別Conversationに属しています。');
+    }
+    conversationId = existing.conversation_id;
+    const conversation = await ownedConversation(db, actor, conversationId);
+    if (conversation.archived_at) throw new ConversationStoreError(409, 'CONVERSATION_ARCHIVED', 'Archived Conversationには投稿できません。');
+    if (existing.prompt !== prompt || existing.purpose !== purpose || (existing.purpose_text?.trim() || null) !== purposeText) {
+      throw new ConversationStoreError(409, 'CONVERSATION_TURN_PAYLOAD_MISMATCH', '同じTurn IDに異なる投稿内容が指定されています。');
+    }
+    await db.prepare(`UPDATE chat_turns SET updated_at=?1
+      WHERE id=?2 AND conversation_id=?3 AND tenant_id=?4 AND user_id=?5`)
+      .bind(now, clientTurnId, conversationId, actor.tenantId, actor.userId).run();
+  } else if (conversationId) {
     const conversation = await ownedConversation(db, actor, conversationId);
     if (conversation.archived_at) throw new ConversationStoreError(409, 'CONVERSATION_ARCHIVED', 'Archived Conversationには投稿できません。');
   } else {
@@ -99,20 +126,7 @@ export async function appendConversationTurn(
       .bind(conversationId, actor.tenantId, actor.userId, job.project_id, titleFromPrompt(prompt), now).run();
   }
 
-  const existing = await db.prepare(`SELECT t.id,t.conversation_id,t.job_id,t.prompt,t.purpose,t.purpose_text,t.position,t.created_at,t.updated_at,
-      j.state AS job_state,j.error_code,j.error_message
-    FROM chat_turns t JOIN app_jobs j ON j.id=t.job_id
-    WHERE t.id=?1 AND t.tenant_id=?2 AND t.user_id=?3 LIMIT 1`)
-    .bind(clientTurnId, actor.tenantId, actor.userId).first<TurnRow>();
-
-  if (existing) {
-    if (existing.conversation_id !== conversationId) {
-      throw new ConversationStoreError(409, 'CONVERSATION_TURN_OWNER_MISMATCH', 'Turnは別Conversationに属しています。');
-    }
-    await db.prepare(`UPDATE chat_turns SET job_id=?1,prompt=?2,purpose=?3,purpose_text=?4,updated_at=?5
-      WHERE id=?6 AND conversation_id=?7 AND tenant_id=?8 AND user_id=?9`)
-      .bind(jobId, prompt, purpose, purposeText, now, clientTurnId, conversationId, actor.tenantId, actor.userId).run();
-  } else {
+  if (!existing) {
     try {
       await db.prepare(`INSERT INTO chat_turns(id,conversation_id,tenant_id,user_id,job_id,prompt,purpose,purpose_text,position,created_at,updated_at)
         SELECT ?1,?2,?3,?4,?5,?6,?7,?8,COALESCE(MAX(position),0)+1,?9,?9
