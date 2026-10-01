@@ -51,6 +51,14 @@ class CreateCleanupFailureBroker extends PrivateDataBroker {
     }
     await super.removeObjectDirectory(objectId);
   }
+
+  protected override async removeRecoveryEntry(name: string): Promise<void> {
+    if (this.failRemoval) {
+      this.failedObjectId = name;
+      throw Object.assign(new Error('directory cleanup failed'), { code: 'EACCES' });
+    }
+    await super.removeRecoveryEntry(name);
+  }
 }
 
 test('expired cleanup surfaces failure, continues later objects, and retries the failed object', async () => {
