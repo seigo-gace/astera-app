@@ -48,6 +48,23 @@ test('internal Job API preserves all seven manual App purpose contracts through 
     for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
     const question = String(body.question ?? '');
+    if (question === 'CONTROL_BLOCK_TEST') {
+      processCalls += 1;
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end([
+        'Task Graphを安全に実行できないため、後続処理を停止しました。',
+        'Hard Blocker: TASK_GRAPH_CYCLE',
+        'Unresolved: -',
+        '推測で補完せず、Task/Claim/Evidence処理へ進めていません。',
+      ].join('\n'));
+      return;
+    }
+    if (question === 'CONTROL_CLARIFICATION_TEST') {
+      processCalls += 1;
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Analysis Taskを抽出できませんでした。対象・行為・完了条件を確認してください。');
+      return;
+    }
     const expectedPurpose = question.replace('Main API Contract Test:', '');
     assert.ok(MANUAL_PURPOSES.includes(expectedPurpose as (typeof MANUAL_PURPOSES)[number]));
 
@@ -175,6 +192,48 @@ test('internal Job API preserves all seven manual App purpose contracts through 
     assert.equal(result.sections?.next_prompt?.title, '08 主役AI／利用者への再指示');
   }
 
-  assert.equal(processCalls, MANUAL_PURPOSES.length);
+  for (const [prompt, expectedCode] of [
+    ['CONTROL_BLOCK_TEST', 'ASTERA_CORE_TASK_GRAPH_BLOCKED'],
+    ['CONTROL_CLARIFICATION_TEST', 'ASTERA_CORE_CLARIFICATION_REQUIRED'],
+  ] as const) {
+    const jobId = crypto.randomUUID();
+    const created = await app.request('/internal/v1/jobs', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer internal-test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job_id: jobId,
+        tenant_id: 'tenant-test',
+        user_id: 'user-test',
+        request_id: crypto.randomUUID(),
+        prompt,
+        purpose: 'auto',
+        options: [],
+        files: [],
+        private_mode: false,
+        project_id: null,
+        reserved_credits: 10,
+        policy_version: 'test-policy',
+        correlation_id: crypto.randomUUID(),
+      }),
+    });
+    assert.equal(created.status, 201, `${prompt}: create failed`);
+    let failed: Record<string, unknown> | null = null;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const polled = await app.request(`/internal/v1/jobs/${jobId}`, {
+        headers: { Authorization: 'Bearer internal-test-token' },
+      });
+      assert.equal(polled.status, 200, `${prompt}: poll failed`);
+      const payload = await polled.json() as { job: Record<string, unknown> };
+      if (payload.job.state === 'failed') {
+        failed = payload.job;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(failed, `${prompt}: control response did not fail closed`);
+    assert.equal((failed.error as { code?: string })?.code, expectedCode);
+  }
+
+  assert.equal(processCalls, MANUAL_PURPOSES.length + 2);
   assert.deepEqual([...seenPurposes].sort(), [...MANUAL_PURPOSES].sort());
 });
