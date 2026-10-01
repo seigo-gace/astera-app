@@ -215,6 +215,8 @@ test('STORY-COMPOSER-005B normal mode keeps the composer page usable for continu
   await expect(page.locator('.native-result-section')).toHaveCount(16);
   expect(counters.conversations).toBe(2);
   expect(conversationBodies.map((body) => body.prompt)).toEqual(['通常Modeの1回目', '通常Modeの2回目']);
+  expect(conversationBodies[0].conversation_id).toBeNull();
+  expect(conversationBodies[1].conversation_id).toBe('conversation-story');
 });
 
 test('STORY-COMPOSER-006 edit action uses revision only for the edited turn', async ({ page }) => {
