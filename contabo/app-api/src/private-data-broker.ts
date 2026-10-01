@@ -153,16 +153,16 @@ export class PrivateDataBroker {
     }
   }
   private async recover(): Promise<void> {
+    // Private Objects are process-scoped transient state. After a process restart,
+    // the in-memory Job/File context is intentionally lost, so every recovered
+    // object must be destroyed before the new runtime accepts traffic. Keeping
+    // an unexpired object here would violate the Host-restart residual-zero gate.
     for (const entry of await readdir(this.root, { withFileTypes: true })) {
       if (!entry.isDirectory() || !UUID.test(entry.name)) continue;
-      try {
-        const manifest = validateManifest(JSON.parse(await readFile(this.manifestPath(entry.name), 'utf8')));
-        this.objects.set(manifest.objectId, manifest);
-      } catch {
-        await this.removeObjectDirectory(entry.name);
-      }
+      await this.removeObjectDirectory(entry.name);
     }
-    await this.cleanupExpired();
+    this.objects.clear();
+    this.pendingCleanupObjectIds.clear();
   }
   async ready(): Promise<void> {
     if (this.initialized) return;

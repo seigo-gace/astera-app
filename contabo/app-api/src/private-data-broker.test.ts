@@ -139,12 +139,28 @@ test('correct owner can explicitly destroy an expired object while cross-owner d
   } finally { await env.dispose(); }
 });
 
-test('private broker startup recovery cleans an expired recovered object', async () => {
+test('private broker startup recovery destroys every recovered object before runtime readiness', async () => {
+  const env = await sandbox();
+  let recovered: PrivateDataBroker | null = null;
+  try {
+    const bytes = Buffer.from('recovery-unexpired-private-file');
+    const created = await env.broker.createObject({ tenantId: 'tenant-recovery', userId: 'user-recovery', name: 'recovery.txt', contentType: 'text/plain', bytes });
+    const objectDir = join(env.root, created.objectId);
+    assert.ok((await readdir(objectDir)).length > 0);
+    recovered = new PrivateDataBroker({ privateDataTmpDir: env.root, privateUploadMaxBytes: 32 * 1024 * 1024 }, env.vault, { requireTmpfs: false, cleanupIntervalMs: 0, now: env.now });
+    await recovered.ready();
+    await assert.rejects(readFile(join(objectDir, 'manifest.json')), /ENOENT/);
+    assert.deepEqual(await readdir(env.root), []);
+    bytes.fill(0);
+  } finally { await recovered?.close().catch(() => undefined); await env.dispose(); }
+});
+
+test('private broker startup recovery also destroys an expired recovered object', async () => {
   const env = await sandbox();
   let recovered: PrivateDataBroker | null = null;
   try {
     const bytes = Buffer.from('recovery-expired-private-file');
-    const created = await env.broker.createObject({ tenantId: 'tenant-recovery', userId: 'user-recovery', name: 'recovery.txt', contentType: 'text/plain', bytes });
+    const created = await env.broker.createObject({ tenantId: 'tenant-recovery-expired', userId: 'user-recovery-expired', name: 'recovery-expired.txt', contentType: 'text/plain', bytes });
     env.advance(privateDataPolicy.absoluteTtlSeconds * 1000 + 1);
     recovered = new PrivateDataBroker({ privateDataTmpDir: env.root, privateUploadMaxBytes: 32 * 1024 * 1024 }, env.vault, { requireTmpfs: false, cleanupIntervalMs: 0, now: env.now });
     await recovered.ready();
