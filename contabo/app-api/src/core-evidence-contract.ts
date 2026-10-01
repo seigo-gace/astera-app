@@ -6,7 +6,7 @@ export type CoreEvidenceClaimLink = {
   claim_text: string;
   confirmation_status: string | null;
   relation: string;
-  binding_id: string | null;
+  binding_id: string;
 };
 
 export type CoreEvidenceSource = {
@@ -73,13 +73,18 @@ function parseClaimLink(value: unknown): CoreEvidenceClaimLink {
   if (!relation || !['SUPPORTS', 'CONTRADICTS', 'PARTIALLY_SUPPORTS'].includes(relation)) {
     throw contractError('Evidence claim link relation is invalid.');
   }
+  const claimId = stringOrNull(item.claim_id);
+  const claimText = stringOrNull(item.claim_text) || '';
+  if (!claimId && !claimText) throw contractError('Evidence claim link has no claim identity.');
+  const bindingId = stringOrNull(item.binding_id);
+  if (!bindingId) throw contractError('Evidence claim link has no binding identity.');
   return {
     task_id: stringOrNull(item.task_id),
-    claim_id: stringOrNull(item.claim_id),
-    claim_text: stringOrNull(item.claim_text) || '',
+    claim_id: claimId,
+    claim_text: claimText,
     confirmation_status: stringOrNull(item.confirmation_status),
     relation,
-    binding_id: stringOrNull(item.binding_id),
+    binding_id: bindingId,
   };
 }
 function parseSource(value: unknown, index: number): CoreEvidenceSource {
@@ -90,7 +95,9 @@ function parseSource(value: unknown, index: number): CoreEvidenceSource {
   const url = safeUrl(item.url ?? locator.url);
   const canonicalRecordId = stringOrNull(item.canonical_record_id);
   const locatorType = stringOrNull(locator.locator_type) || (url ? 'URL' : 'RECORD_ID');
-  if (!url && !canonicalRecordId && !stringOrNull(item.candidate_id)) throw contractError(`Evidence source ${id} has no replayable locator.`);
+  const locatorReplayable = locator.replayable !== false;
+  const hasReplayableIdentity = Boolean(url) || Boolean(canonicalRecordId && locatorReplayable);
+  if (!hasReplayableIdentity) throw contractError(`Evidence source ${id} has no replayable URL or canonical record locator.`);
   const claimLinks = Array.isArray(item.claim_links) ? item.claim_links.map(parseClaimLink) : [];
   if (!claimLinks.length) throw contractError(`Evidence source ${id} is not linked to any claim.`);
   const publisher = record(item.publisher);
@@ -102,7 +109,7 @@ function parseSource(value: unknown, index: number): CoreEvidenceSource {
     canonical_record_id: canonicalRecordId,
     title: stringOrNull(item.title) || stringOrNull(publisher.name) || url || canonicalRecordId || id,
     url,
-    canonical_locator: { url, locator_type: locatorType, replayable: locator.replayable !== false },
+    canonical_locator: { url, locator_type: locatorType, replayable: locatorReplayable && Boolean(url || canonicalRecordId) },
     provider_id: stringOrNull(item.provider_id),
     source_class: stringOrNull(item.source_class),
     source_role: stringOrNull(item.source_role),
