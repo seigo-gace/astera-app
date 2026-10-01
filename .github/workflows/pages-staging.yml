@@ -109,6 +109,17 @@ jobs:
           fi
 
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0021_purpose_history_index.sql
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0022_chat_conversations.sql
+          app_jobs_purpose_text_count="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT COUNT(*) AS count FROM pragma_table_info('app_jobs') WHERE name = 'purpose_text';" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s);const r=p.flatMap(x=>x.results||[]);process.stdout.write(String(r[0]?.count ?? 0));})")"
+          chat_turns_purpose_text_count="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT COUNT(*) AS count FROM pragma_table_info('chat_turns') WHERE name = 'purpose_text';" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s);const r=p.flatMap(x=>x.results||[]);process.stdout.write(String(r[0]?.count ?? 0));})")"
+          if [ "$app_jobs_purpose_text_count" = "0" ] && [ "$chat_turns_purpose_text_count" = "0" ]; then
+            npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0023_custom_purpose_text.sql
+          elif [ "$app_jobs_purpose_text_count" = "1" ] && [ "$chat_turns_purpose_text_count" = "1" ]; then
+            echo "purpose_text already present; skipping 0023"
+          else
+            echo "purpose_text migration is partially applied" >&2
+            exit 1
+          fi
 
       - name: Verify active Credit Policy
         id: credit_policy
