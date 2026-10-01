@@ -166,6 +166,26 @@ export function parseCoreMain8Response(raw: string): {
   };
 } {
   const normalized = raw.replace(/\r\n/g, '\n').trim();
+  const firstLine = normalized.split('\n', 1)[0]?.trim() || '';
+  if (firstLine === 'Task Graphを安全に実行できないため、後続処理を停止しました.' || firstLine === 'Task Graph execution is blocked by a hard invariant.') {
+    throw adapterError(
+      'ASTERA_CORE_TASK_GRAPH_BLOCKED',
+      normalized,
+      false,
+    );
+  }
+  if (
+    firstLine === '対象が一意に確定していません。対象を指定してください。'
+    || firstLine === 'Analysis Taskを抽出できませんでした。対象・行為・完了条件を確認してください。'
+    || firstLine === 'The target of the request is not uniquely resolved. Specify the target.'
+    || firstLine === 'No analysis task could be extracted. Specify the target, action, and completion condition.'
+  ) {
+    throw adapterError(
+      'ASTERA_CORE_CLARIFICATION_REQUIRED',
+      normalized,
+      false,
+    );
+  }
   const blocks = normalized ? normalized.split(/\n---\n/) : [];
   if (blocks.length !== APP_SECTION_KEYS.length) {
     throw adapterError('ASTERA_MAIN8_RESPONSE_INCOMPLETE', `Astera Core Main8のSection数が不正です。受信: ${blocks.length}`, false);
