@@ -54,6 +54,31 @@ jobs:
       - name: Build Cloudflare Functions
         run: npm run cloudflare:functions:build
 
+      - name: Apply Composer Conversation D1 migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          # PR67 adds chat_conversations/chat_turns and purpose_text. The preview
+          # workflow must bring the shared staging D1 schema to the exact source
+          # contract before exercising the new Functions.
+          npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0022_chat_conversations.sql
+
+          app_jobs_has_purpose_text="$(
+            npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT COUNT(*) AS count FROM pragma_table_info('app_jobs') WHERE name = 'purpose_text';" |
+              node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s);const r=p.flatMap(x=>x.results||[]);process.stdout.write(String(r[0]?.count ?? 0));})"
+          )"
+          if [ "$app_jobs_has_purpose_text" != "1" ]; then
+            npx wrangler d1 execute astera-app-staging --remote --command "ALTER TABLE app_jobs ADD COLUMN purpose_text TEXT CHECK (purpose_text IS NULL OR length(purpose_text) <= 2000);"
+          fi
+
+          chat_turns_has_purpose_text="$(
+            npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT COUNT(*) AS count FROM pragma_table_info('chat_turns') WHERE name = 'purpose_text';" |
+              node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s);const r=p.flatMap(x=>x.results||[]);process.stdout.write(String(r[0]?.count ?? 0));})"
+          )"
+          if [ "$chat_turns_has_purpose_text" != "1" ]; then
+            npx wrangler d1 execute astera-app-staging --remote --command "ALTER TABLE chat_turns ADD COLUMN purpose_text TEXT CHECK (purpose_text IS NULL OR length(purpose_text) <= 2000);"
+          fi
+
       - name: Write staging preview marker
         shell: bash
         run: |
