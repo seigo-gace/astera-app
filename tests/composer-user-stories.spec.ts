@@ -197,6 +197,26 @@ test('STORY-COMPOSER-005 two normal posts remain two turns and second post is no
   expect(jobBodies[1]).not.toHaveProperty('revision_base_prompt');
 });
 
+test('STORY-COMPOSER-005B normal mode keeps the composer page usable for continuous posts and saves each turn', async ({ page }) => {
+  const counters = { estimates: 0, jobs: 0, conversations: 0 };
+  const conversationBodies: Array<Record<string, unknown>> = [];
+  await installRuntime(page, { counters, conversationBodies });
+  await openComposer(page);
+  await setPrivateMode(page, false);
+
+  await page.getByLabel('Astera入力').fill('通常Modeの1回目');
+  await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-user-message')).toHaveCount(1);
+  await expect(page).toHaveURL(/\/app\/chats\/conversation-story$/);
+
+  await page.getByLabel('Astera入力').fill('通常Modeの2回目');
+  await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-user-message')).toHaveCount(2);
+  await expect(page.locator('.native-result-section')).toHaveCount(16);
+  expect(counters.conversations).toBe(2);
+  expect(conversationBodies.map((body) => body.prompt)).toEqual(['通常Modeの1回目', '通常Modeの2回目']);
+});
+
 test('STORY-COMPOSER-006 edit action uses revision only for the edited turn', async ({ page }) => {
   const jobBodies: Array<Record<string, unknown>> = [];
   await installRuntime(page, { jobBodies });
@@ -230,10 +250,10 @@ test('STORY-COMPOSER-006B failed terminal turn remains editable for correction a
   await expect(textarea).toHaveValue('Main8に失敗した投稿');
   await textarea.fill('修正して再実行する投稿');
   await textarea.press('Control+Enter');
-  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await expect(page.locator('.native-result-section')).toHaveCount(16);
   await expect.poll(() => jobBodies.length).toBe(2);
-  expect(jobBodies[1].revision_of_job_id).toBe('job-story-1');
-  expect(jobBodies[1].revision_base_prompt).toBe('Main8に失敗した投稿');
+  expect(jobBodies[1]).not.toHaveProperty('revision_of_job_id');
+  expect(jobBodies[1]).not.toHaveProperty('revision_base_prompt');
 });
 
 test('STORY-COMPOSER-006C uploaded File is passed as a real upload reference on execution', async ({ page }) => {
@@ -266,6 +286,18 @@ test('STORY-COMPOSER-006D history persistence retries after a lost conversation 
   await expect.poll(() => counters.conversations).toBe(2);
   await expect(page).toHaveURL(/\/app\/chats\/conversation-story$/);
   expect(conversationBodies[0].client_turn_id).toBe(conversationBodies[1].client_turn_id);
+});
+
+test('STORY-COMPOSER-006E starting a new chat restores Private Mode default', async ({ page }) => {
+  await installRuntime(page);
+  await openComposer(page);
+  await setPrivateMode(page, false);
+  await page.getByLabel('Astera入力').fill('保存するChat');
+  await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await page.getByRole('button', { name: '新規' }).click();
+  await page.getByLabel('Fileと実行Optionを追加').click();
+  await expect(page.getByRole('dialog', { name: '追加' }).getByRole('button', { name: /Private Mode/ })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('STORY-COMPOSER-007 purpose is always visible next to plus and defaults to Auto', async ({ page }) => {
