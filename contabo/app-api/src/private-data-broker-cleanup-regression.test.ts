@@ -124,22 +124,23 @@ test('creation cleanup failure becomes authoritative and the orphan remains retr
 
 test('startup recovery cleanup failure blocks runtime readiness', async () => {
   const root = await mkdtemp(join(tmpdir(), 'astera-private-recovery-cleanup-failure-'));
-  const broker = new CreateCleanupFailureBroker(
+  const broker = new PrivateDataBroker(
     { privateDataTmpDir: root, privateUploadMaxBytes: 1024 * 1024 },
-    new FailingVault(),
+    new FakeVault(),
     { requireTmpfs: false, cleanupIntervalMs: 0 },
   );
   const objectId = '33333333-3333-4333-8333-333333333333';
 
   try {
     await mkdir(join(root, objectId), { recursive: true, mode: 0o700 });
+    await chmod(root, 0o500);
     await assert.rejects(
       broker.ready(),
-      /directory cleanup failed/,
+      /EACCES|permission denied/i,
     );
     assert.equal((await readdir(root)).includes(objectId), true, 'recovery cleanup failure must prevent readiness and leave evidence for operator recovery');
   } finally {
-    broker.failRemoval = false;
+    await chmod(root, 0o700).catch(() => undefined);
     await broker.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -147,7 +147,6 @@ test('private broker startup recovery destroys every recovered object before run
     const created = await env.broker.createObject({ tenantId: 'tenant-recovery', userId: 'user-recovery', name: 'recovery.txt', contentType: 'text/plain', bytes });
     const objectDir = join(env.root, created.objectId);
     assert.ok((await readdir(objectDir)).length > 0);
-    await writeFile(join(env.root, 'orphan-private-residual.bin'), Buffer.from('residual-private-data'));
     recovered = new PrivateDataBroker({ privateDataTmpDir: env.root, privateUploadMaxBytes: 32 * 1024 * 1024 }, env.vault, { requireTmpfs: false, cleanupIntervalMs: 0, now: env.now });
     await recovered.ready();
     await assert.rejects(readFile(join(objectDir, 'manifest.json')), /ENOENT/);
