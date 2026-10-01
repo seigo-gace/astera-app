@@ -81,6 +81,40 @@ html.native-composer-route .platform-credit-layer {
   gap: 28px;
   padding: 10px 0 44px;
 }
+.native-user-turn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+.native-user-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 28px;
+  padding-right: 3px;
+}
+.native-user-actions button {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--native-muted);
+  cursor: pointer;
+}
+.native-user-actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--native-text) 7%, transparent);
+  color: var(--native-text);
+}
+.native-user-actions button:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
 .native-user-message {
   width: fit-content;
   max-width: min(76%, 640px);
