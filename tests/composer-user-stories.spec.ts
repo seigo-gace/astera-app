@@ -250,7 +250,8 @@ test('STORY-COMPOSER-006B failed terminal turn remains editable for correction a
   await expect(textarea).toHaveValue('Main8に失敗した投稿');
   await textarea.fill('修正して再実行する投稿');
   await textarea.press('Control+Enter');
-  await expect(page.locator('.native-result-section')).toHaveCount(16);
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await expect(page.locator('.native-user-message')).toHaveCount(2);
   await expect.poll(() => jobBodies.length).toBe(2);
   expect(jobBodies[1]).not.toHaveProperty('revision_of_job_id');
   expect(jobBodies[1]).not.toHaveProperty('revision_base_prompt');
