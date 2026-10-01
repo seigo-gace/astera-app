@@ -840,7 +840,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     void loadCatalogs();
   };
   const editTurn = (turn: Turn) => {
-    if (!turn.jobId || turn.phase !== 'completed') return;
+    if (!turn.jobId || !['completed', 'failed', 'cancelled'].includes(turn.phase)) return;
     setPrompt(turn.prompt);
     setPurpose(turn.purpose);
     setPurposeText(turn.purposeText);
@@ -958,7 +958,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
                       <ExpandableUserMessage text={turn.prompt} />
                       <div className="native-user-actions">
                         <button type="button" aria-label="投稿をコピー" title="コピー" onClick={() => void copyText(`turn:${turn.id}`, turn.prompt)}><span aria-hidden="true">{copiedKey === `turn:${turn.id}` ? '✓' : '⧉'}</span></button>
-                        <button type="button" aria-label="投稿を編集" title="編集" disabled={turn.phase !== 'completed'} onClick={() => editTurn(turn)}><span aria-hidden="true">✎</span></button>
+                        <button type="button" aria-label="投稿を編集" title="編集" disabled={!turn.jobId || !['completed', 'failed', 'cancelled'].includes(turn.phase)} onClick={() => editTurn(turn)}><span aria-hidden="true">✎</span></button>
                       </div>
                     </div>
                     {['queued', 'running', 'assembling_result'].includes(turn.phase) && <section className="native-processing" role="status"><span className="native-processing-dot" /><div><strong>{phaseLabel(turn.phase)}</strong><small>{turn.jobId ? `Job ${turn.jobId}` : 'Asteraが処理を進めています'}</small></div>{turn.jobId === currentJobId && <button type="button" onClick={() => void cancelJob()}>取消</button>}</section>}
