@@ -792,7 +792,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError('取消Requestに失敗しました。'));
     }
-  }, [currentJobId, patchTurn, turns]);
+  }, [currentJobId, patchTurn, pollJob, turns]);
 
   const uploadFile = useCallback(async (file: File, localId: string) => {
     setPhase('uploading');
