@@ -778,11 +778,17 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     if (!currentJobId) return;
     const turn = turns.find((item) => item.jobId === currentJobId);
     try {
-      await apiRequest(`/api/jobs/${encodeURIComponent(currentJobId)}/cancel`, { method: 'POST', idempotent: true });
-      pollController.current?.abort();
-      setPhase('cancelled');
-      if (turn) patchTurn(turn.id, { phase: 'cancelled' });
-      setNotice('取消Requestを送信しました。投稿内容は会話に保持しています。');
+      const cancellation = await apiRequest(`/api/jobs/${encodeURIComponent(currentJobId)}/cancel`, { method: 'POST', idempotent: true });
+      const cancellationState = jobState(cancellation);
+      if (['cancelled', 'canceled'].includes(cancellationState)) {
+        pollController.current?.abort();
+        setPhase('cancelled');
+        if (turn) patchTurn(turn.id, { phase: 'cancelled' });
+        setNotice('取消Requestが完了しました。投稿内容は会話に保持しています。');
+      } else if (turn) {
+        setNotice('取消Requestを受け付けました。完了状態になるまで処理を確認します。');
+        await pollJob(turn.id, currentJobId, turn.privateMode);
+      }
     } catch (caught) {
       setError(caught instanceof ApiError ? caught : new ApiError('取消Requestに失敗しました。'));
     }
@@ -1047,7 +1053,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
                   </article>
                 ))}
                 {activeWork && turns.every((turn) => turn.jobId !== currentJobId) && <section className="native-processing" role="status"><span className="native-processing-dot" /><div><strong>{phaseLabel(phase)}</strong><small>送信準備中</small></div></section>}
-                {error && <section className="native-error" role="alert"><div><strong>{error.message}</strong><code>{error.code}</code></div><button type="button" onClick={() => { setError(null); setPhase('draft'); }}>閉じる</button></section>}
+                {error && <section className="native-error" role="alert"><div><strong>{error.message}</strong><code>{error.code}</code></div><button type="button" onClick={() => { if (conversationHydrationFailed) resetComposer(); else { setError(null); setPhase('draft'); } }}>{conversationHydrationFailed ? '新規' : '閉じる'}</button></section>}
               </>
             )}
           </div>
