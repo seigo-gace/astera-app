@@ -1,6 +1,7 @@
 import type { D1Database } from './_account-projection';
 import { MAX_PURPOSE_TEXT_CHARACTERS } from './_purpose-text';
 import { getResult, ResultStoreError } from './_result-store';
+import { promptFingerprint } from './_job-policy';
 
 export type ConversationActor = { userId: string; tenantId: string };
 
@@ -26,7 +27,7 @@ type TurnRow = {
   error_code: string | null;
   error_message: string | null;
 };
-type JobRow = { id: string; private_mode: number; project_id: string | null; state: string; purpose: string; purpose_text: string | null };
+type JobRow = { id: string; private_mode: number; project_id: string | null; state: string; purpose: string; purpose_text: string | null; prompt_sha256: string | null };
 
 export class ConversationStoreError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -51,8 +52,9 @@ async function ownedConversation(db: D1Database, actor: ConversationActor, id: s
 }
 
 async function ownedNormalJob(db: D1Database, actor: ConversationActor, jobId: string): Promise<JobRow> {
-  const row = await db.prepare(`SELECT id,private_mode,project_id,state,purpose,purpose_text FROM app_jobs
-    WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1`)
+  const row = await db.prepare(`SELECT j.id,j.private_mode,j.project_id,j.state,j.purpose,j.purpose_text,e.prompt_sha256
+    FROM app_jobs j LEFT JOIN job_estimates e ON e.id=j.estimate_id
+    WHERE j.id=?1 AND j.tenant_id=?2 AND j.user_id=?3 LIMIT 1`)
     .bind(jobId, actor.tenantId, actor.userId).first<JobRow>();
   if (!row) throw new ConversationStoreError(404, 'CONVERSATION_JOB_NOT_FOUND', 'Conversationへ関連付けるJobを確認できません。');
   if (Boolean(row.private_mode)) throw new ConversationStoreError(409, 'PRIVATE_JOB_CONVERSATION_FORBIDDEN', 'Private Mode JobはConversationへ保存できません。');
@@ -72,8 +74,12 @@ export async function appendConversationTurn(
   const purpose = text(body.purpose);
   const purposeText = nullableText(body.purpose_text ?? body.purposeText);
   if (!clientTurnId) throw new ConversationStoreError(422, 'CONVERSATION_TURN_ID_REQUIRED', 'client_turn_idが必要です。');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientTurnId)) {
+    throw new ConversationStoreError(422, 'CONVERSATION_TURN_ID_INVALID', 'client_turn_idはUUID形式が必要です。');
+  }
   if (!jobId) throw new ConversationStoreError(422, 'CONVERSATION_JOB_ID_REQUIRED', 'job_idが必要です。');
   if (!prompt) throw new ConversationStoreError(422, 'CONVERSATION_PROMPT_REQUIRED', 'Prompt本文が必要です。');
+  if ([...prompt].length > 200_000) throw new ConversationStoreError(413, 'CONVERSATION_PROMPT_TOO_LARGE', 'Prompt本文は200,000文字以内です。');
   if (!['auto','review','compare','verify','improve','research','plan','consider'].includes(purpose)) {
     throw new ConversationStoreError(422, 'CONVERSATION_PURPOSE_INVALID', 'Purposeが不正です。');
   }
@@ -82,6 +88,10 @@ export async function appendConversationTurn(
   }
 
   const job = await ownedNormalJob(db, actor, jobId);
+  const promptSha256 = await promptFingerprint(prompt);
+  if (!job.prompt_sha256 || promptSha256 !== job.prompt_sha256) {
+    throw new ConversationStoreError(409, 'CONVERSATION_PROMPT_MISMATCH', 'Conversationへ保存する本文が実行Jobの本文と一致しません。');
+  }
   if (job.purpose !== purpose) throw new ConversationStoreError(409, 'CONVERSATION_PURPOSE_MISMATCH', 'JobとConversation TurnのPurposeが一致しません。');
   if ((job.purpose_text?.trim() || null) !== purposeText) {
     throw new ConversationStoreError(409, 'CONVERSATION_PURPOSE_TEXT_MISMATCH', 'JobとConversation Turnの自由目的が一致しません。');
@@ -141,7 +151,7 @@ export async function appendConversationTurn(
     }
   }
 
-  await db.prepare(`UPDATE chat_conversations SET project_id=COALESCE(?1,project_id),updated_at=?2
+  await db.prepare(`UPDATE chat_conversations SET project_id=?1,updated_at=?2
     WHERE id=?3 AND tenant_id=?4 AND user_id=?5`)
     .bind(job.project_id, now, conversationId, actor.tenantId, actor.userId).run();
   return { conversation_id: conversationId, turn_id: clientTurnId, job_id: jobId };
