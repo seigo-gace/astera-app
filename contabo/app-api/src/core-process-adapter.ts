@@ -167,7 +167,7 @@ export function parseCoreMain8Response(raw: string): {
 } {
   const normalized = raw.replace(/\r\n/g, '\n').trim();
   const firstLine = normalized.split('\n', 1)[0]?.trim() || '';
-  if (firstLine === 'Task Graphを安全に実行できないため、後続処理を停止しました.' || firstLine === 'Task Graph execution is blocked by a hard invariant.') {
+  if (firstLine === 'Task Graphを安全に実行できないため、後続処理を停止しました。' || firstLine === 'Task Graph execution is blocked by a hard invariant.') {
     throw adapterError(
       'ASTERA_CORE_TASK_GRAPH_BLOCKED',
       normalized,
