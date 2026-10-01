@@ -85,6 +85,10 @@ test('private broker source contract forbids plaintext concat and return-copy pa
   const source = await readFile(new URL('../src/private-data-broker.ts', import.meta.url), 'utf8');
   assert.equal(source.includes('Buffer.concat(plains.map'), false);
   assert.equal(source.includes('return new Uint8Array(combined)'), false);
+  assert.equal(source.includes("new Uint8Array(Buffer.from(value, 'base64'))"), false);
+  assert.equal(source.includes("const bytes = Buffer.from(value, 'base64');"), true);
+  assert.equal(source.includes("Buffer.from(material.raw).toString('base64')"), false);
+  assert.equal(source.includes("Buffer.from(material.raw.buffer, material.raw.byteOffset, material.raw.byteLength).toString('base64')"), true);
   assert.equal(source.includes('const combined = new Uint8Array(manifest.sizeBytes)'), true);
   assert.equal(source.includes('if (plain) wipePrivateBytes(plain)'), true);
   assert.equal(source.includes('if (!transferred) wipePrivateBytes(combined)'), true);

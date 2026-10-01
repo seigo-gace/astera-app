@@ -79,8 +79,8 @@ function decodeFileName(value: string): string {
 function sha256(bytes: Uint8Array): string { return createHash('sha256').update(bytes).digest('hex'); }
 function decodeBase64(value: string, code: string, expectedBytes: number): Uint8Array {
   if (!value || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) throw new PrivateDataBrokerError(500, code, 'Private wrapped DEK is invalid.');
-  const bytes = new Uint8Array(Buffer.from(value, 'base64'));
-  if (bytes.byteLength !== expectedBytes || Buffer.from(bytes).toString('base64') !== value) {
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.byteLength !== expectedBytes || bytes.toString('base64') !== value) {
     wipePrivateBytes(bytes);
     throw new PrivateDataBrokerError(500, code, 'Private wrapped DEK is invalid.');
   }
@@ -197,7 +197,7 @@ export class PrivateDataBroker {
       const material = await createPrivateObjectDekMaterial();
       let wrappedDek: VaultEnvelope;
       try {
-        wrappedDek = await this.vault.sealJson({ version: PRIVATE_WRAP_VERSION, object_id: objectId, algorithm: PRIVATE_ALGORITHM, dek_base64: Buffer.from(material.raw).toString('base64') });
+        wrappedDek = await this.vault.sealJson({ version: PRIVATE_WRAP_VERSION, object_id: objectId, algorithm: PRIVATE_ALGORITHM, dek_base64: Buffer.from(material.raw.buffer, material.raw.byteOffset, material.raw.byteLength).toString('base64') });
       } finally { wipePrivateBytes(material.raw); }
       const session = new PrivateObjectCryptoSession(objectId, material.key);
       const chunks: PrivateChunkManifest[] = [];
