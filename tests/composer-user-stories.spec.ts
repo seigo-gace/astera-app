@@ -30,6 +30,7 @@ type MockOptions = {
   conversationDetail?: Record<string, unknown>;
   conversationListFailure?: boolean;
   legacyHistoryItems?: Array<Record<string, unknown>>;
+  conversationResponseLostOnce?: boolean;
 };
 
 async function installRuntime(page: Page, options: MockOptions = {}): Promise<void> {
@@ -54,8 +55,12 @@ async function installRuntime(page: Page, options: MockOptions = {}): Promise<vo
     }
     if (path === '/api/conversations' && request.method() === 'POST') {
       if (options.counters) options.counters.conversations += 1;
-      options.conversationBodies?.push(request.postDataJSON() as Record<string, unknown>);
-      return json(route, { conversation_id: 'conversation-story', turn_id: (request.postDataJSON() as Record<string, unknown>).client_turn_id }, 201);
+      const body = request.postDataJSON() as Record<string, unknown>;
+      options.conversationBodies?.push(body);
+      if (options.conversationResponseLostOnce && (options.counters?.conversations ?? 0) === 1) {
+        return route.abort('connectionreset');
+      }
+      return json(route, { conversation_id: 'conversation-story', turn_id: body.client_turn_id }, 201);
     }
     if (path.startsWith('/api/conversations/') && request.method() === 'GET') {
       return json(route, options.conversationDetail ?? { conversation: { id: 'conversation-story', turns: [] } });
@@ -247,6 +252,20 @@ test('STORY-COMPOSER-006C uploaded File is passed as a real upload reference on 
   await expect(page.locator('.native-result-section')).toHaveCount(8);
   await expect.poll(() => jobBodies.length).toBe(1);
   expect(jobBodies[0].file_ids).toEqual(['upload-story-1']);
+});
+
+test('STORY-COMPOSER-006D history persistence retries after a lost conversation response', async ({ page }) => {
+  const counters = { estimates: 0, jobs: 0, conversations: 0 };
+  const conversationBodies: Array<Record<string, unknown>> = [];
+  await installRuntime(page, { counters, conversationBodies, conversationResponseLostOnce: true });
+  await openComposer(page);
+  await setPrivateMode(page, false);
+  await page.getByLabel('Astera入力').fill('応答消失後も履歴を継続する');
+  await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await expect.poll(() => counters.conversations).toBe(2);
+  await expect(page).toHaveURL(/\/app\/chats\/conversation-story$/);
+  expect(conversationBodies[0].client_turn_id).toBe(conversationBodies[1].client_turn_id);
 });
 
 test('STORY-COMPOSER-007 purpose is always visible next to plus and defaults to Auto', async ({ page }) => {
