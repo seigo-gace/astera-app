@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -117,6 +117,29 @@ test('creation cleanup failure becomes authoritative and the orphan remains retr
   } finally {
     broker.failRemoval = false;
     bytes.fill(0);
+    await broker.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('startup recovery cleanup failure blocks runtime readiness', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'astera-private-recovery-cleanup-failure-'));
+  const broker = new CreateCleanupFailureBroker(
+    { privateDataTmpDir: root, privateUploadMaxBytes: 1024 * 1024 },
+    new FailingVault(),
+    { requireTmpfs: false, cleanupIntervalMs: 0 },
+  );
+  const objectId = '33333333-3333-4333-8333-333333333333';
+
+  try {
+    await mkdir(join(root, objectId), { recursive: true, mode: 0o700 });
+    await assert.rejects(
+      broker.ready(),
+      /directory cleanup failed/,
+    );
+    assert.equal((await readdir(root)).includes(objectId), true, 'recovery cleanup failure must prevent readiness and leave evidence for operator recovery');
+  } finally {
+    broker.failRemoval = false;
     await broker.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
