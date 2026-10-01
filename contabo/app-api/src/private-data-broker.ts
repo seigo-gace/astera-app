@@ -158,9 +158,8 @@ export class PrivateDataBroker {
     // object must be destroyed before the new runtime accepts traffic. Keeping
     // an unexpired object here would violate the Host-restart residual-zero gate.
     for (const entry of await readdir(this.root, { withFileTypes: true })) {
-      // The broker root is a dedicated Private tmpfs. Anything left there after
-      // restart is residual Private state and must not survive into a new process.
-      await rm(join(this.root, entry.name), { recursive: true, force: true });
+      if (!entry.isDirectory() || !UUID.test(entry.name)) continue;
+      await this.removeObjectDirectory(entry.name);
     }
     this.objects.clear();
     this.pendingCleanupObjectIds.clear();
