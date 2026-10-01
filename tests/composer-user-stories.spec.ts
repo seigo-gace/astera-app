@@ -65,6 +65,22 @@ async function installRuntime(page: Page, options: MockOptions = {}): Promise<vo
     if (path === '/api/projects') return json(route, { projects: [{ id: 'project-1', name: 'Project One' }] });
     if (path === '/api/templates') return json(route, { templates: [{ id: 'template-1', title: 'Personal Template', template_source: 'personal' }] });
     if (path === '/api/storage/destinations') return json(route, { destinations: [{ id: 'storage-1', display_name: 'Google Drive', status: 'connected' }] });
+    if (path === '/api/uploads' && request.method() === 'POST') {
+      return json(route, {
+        file: {
+          upload_id: 'upload-story-1',
+          object_id: 'upload-story-1',
+          storage_reference: 'upload-story-1',
+          name: 'evidence.txt',
+          content_type: 'text/plain',
+          size_bytes: 12,
+          sha256: 'a'.repeat(64),
+          status: 'ready',
+          private_mode: false,
+          expires_at: null,
+        },
+      }, 201);
+    }
     if (path === '/api/jobs/estimate') {
       if (options.counters) options.counters.estimates += 1;
       if (options.estimateDelay) await new Promise((resolve) => setTimeout(resolve, options.estimateDelay));
@@ -213,6 +229,24 @@ test('STORY-COMPOSER-006B failed terminal turn remains editable for correction a
   await expect.poll(() => jobBodies.length).toBe(2);
   expect(jobBodies[1].revision_of_job_id).toBe('job-story-1');
   expect(jobBodies[1].revision_base_prompt).toBe('Main8に失敗した投稿');
+});
+
+test('STORY-COMPOSER-006C uploaded File is passed as a real upload reference on execution', async ({ page }) => {
+  const jobBodies: Array<Record<string, unknown>> = [];
+  await installRuntime(page, { jobBodies });
+  await openComposer(page);
+  await setPrivateMode(page, false);
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'evidence.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('actual bytes'),
+  });
+  await expect(page.locator('.native-file-queue')).toContainText('Upload完了');
+  await page.getByLabel('Astera入力').fill('添付Fileを根拠として検証する');
+  await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-result-section')).toHaveCount(8);
+  await expect.poll(() => jobBodies.length).toBe(1);
+  expect(jobBodies[0].file_ids).toEqual(['upload-story-1']);
 });
 
 test('STORY-COMPOSER-007 purpose is always visible next to plus and defaults to Auto', async ({ page }) => {
