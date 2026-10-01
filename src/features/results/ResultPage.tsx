@@ -14,6 +14,35 @@ function resultId(route: RouteMatch): string {
   return route.params.id || '';
 }
 
+function EvidenceSourceDetail({ source }: { source: JsonObject }) {
+  const publisher = asRecord(source.publisher);
+  const locator = asRecord(source.canonical_locator);
+  const claimLinks = asArray(source.claim_links).map(asRecord);
+  const authority = recordText(source, ['authority_id']) || recordText(publisher, ['name', 'id']);
+  const sourceRole = recordText(source, ['source_role']);
+  const excerpt = recordText(source, ['excerpt']);
+  const canonicalRecord = recordText(source, ['canonical_record_id', 'candidate_id']);
+  const locatorType = recordText(locator, ['locator_type']);
+  const retrievedAt = recordText(source, ['retrievedAt', 'retrieved_at'], '取得時刻不明');
+  const status = recordText(source, ['status', 'verification_status'], 'unverified');
+  return (
+    <div className="result-source-detail">
+      <span>{status} · {retrievedAt}</span>
+      {(sourceRole || authority) && <span>出典種別: {[sourceRole, authority ? `Authority=${authority}` : ''].filter(Boolean).join(' · ')}</span>}
+      {excerpt && <p><strong>確認内容:</strong> {excerpt}</p>}
+      {claimLinks.length > 0 && (
+        <div>
+          <strong>回答との対応:</strong>
+          <ul>
+            {claimLinks.map((link, index) => <li key={recordText(link, ['binding_id'], String(index))}><strong>{recordText(link, ['relation'], 'RELATED')}</strong> · {recordText(link, ['claim_text', 'claim_id'], '対象主張不明')}</li>)}
+          </ul>
+        </div>
+      )}
+      {!recordText(source, ['url', 'source_url']) && (canonicalRecord || locatorType) && <span>Canonical Locator: {[locatorType, canonicalRecord].filter(Boolean).join(':')}</span>}
+    </div>
+  );
+}
+
 export default function ResultPage({ route }: { route: RouteMatch }) {
   const id = resultId(route);
   const [resource, reload] = useResource(`/api/results/${encodeURIComponent(id)}`);
@@ -220,7 +249,7 @@ export default function ResultPage({ route }: { route: RouteMatch }) {
               const source = asRecord(item);
               const url = recordText(source, ['url', 'source_url']);
               const number = textValue(source.displayNumber ?? source.display_number, String(index + 1));
-              return <li key={recordText(source, ['id', 'source_id'], String(index))}><a href={url || undefined} target={url ? '_blank' : undefined} rel={url ? 'noreferrer' : undefined}>[{number}] {recordText(source, ['title'], url || 'Source')}</a>{sourceMode === 'detail' && <span>{recordText(source, ['status', 'verification_status'], 'unverified')} · {recordText(source, ['retrievedAt', 'retrieved_at'], '取得時刻不明')}</span>}</li>;
+              return <li key={recordText(source, ['id', 'source_id'], String(index))}><a href={url || undefined} target={url ? '_blank' : undefined} rel={url ? 'noreferrer' : undefined}>[{number}] {recordText(source, ['title'], url || 'Source')}</a>{sourceMode === 'detail' && <EvidenceSourceDetail source={source} />}</li>;
             })}</ol>}
           </Panel>
         </>
