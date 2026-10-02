@@ -10,14 +10,17 @@ import {
   type AppEventOutboxRecord,
 } from './app-event-outbox-contract.js';
 
+const EVENT_ID = 'app-event:FILE_UPLOAD_READY:file-1';
+const IDEMPOTENCY_KEY = `app-event:${EVENT_ID}`;
+
 function record(state: AppEventOutboxRecord['state'] = 'pending'): AppEventOutboxRecord {
   return {
-    id: 'outbox-1',
-    eventId: 'evt-1',
-    idempotencyKey: 'event:evt-1',
+    id: `outbox:${EVENT_ID}`,
+    eventId: EVENT_ID,
+    idempotencyKey: IDEMPOTENCY_KEY,
     event: {
       schema: 'astera.app.event.v1',
-      eventId: 'evt-1',
+      eventId: EVENT_ID,
       occurredAt: '2026-10-02T09:20:00Z',
       scope: 'user',
       domain: 'file',
@@ -49,7 +52,7 @@ test('pending -> sending requires a bounded lease and increments the fencing att
   assert.equal(next.state, 'sending');
   assert.equal(next.attempt, 1);
   assert.equal(next.leaseExpiresAt, '2026-10-02T09:22:00Z');
-  assert.equal(next.idempotencyKey, 'event:evt-1');
+  assert.equal(next.idempotencyKey, IDEMPOTENCY_KEY);
 });
 
 test('sending -> retry_wait clears lease, requires future retry time and retains TGserver operation identity', () => {
@@ -137,6 +140,13 @@ test('outbox event identity must match embedded event identity', () => {
   const invalid = record();
   invalid.eventId = 'different';
   assert.throws(() => validateOutboxRecord(invalid), /EVENT_ID_MISMATCH/);
+});
+
+test('outbox rejects registered event identity that does not match mutation refs', () => {
+  const invalid = record();
+  invalid.event.eventId = 'app-event:FILE_UPLOAD_READY:file-2';
+  invalid.eventId = invalid.event.eventId;
+  assert.throws(() => validateOutboxRecord(invalid), /APP_EVENT_IDENTITY_MISMATCH:FILE_UPLOAD_READY/);
 });
 
 test('outbox rejects event names outside the closed registry', () => {
