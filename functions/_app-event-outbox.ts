@@ -60,11 +60,6 @@ function boundedLimit(value: number): number {
   return Number.isInteger(value) ? Math.min(200, Math.max(1, value)) : 50;
 }
 
-/**
- * Returns a prepared INSERT so the business mutation owner can include this exact
- * statement in the same D1 batch/transaction as its authoritative state change.
- * This function deliberately does not call run() itself.
- */
 export function prepareAppEventOutboxEnqueue(
   db: D1Database,
   event: AppEventEnvelope,
@@ -109,10 +104,6 @@ export async function listExpiredSendingAppEventOutboxIds(
   return (result.results ?? []).map((row) => row.id).filter(Boolean);
 }
 
-/**
- * Atomically claims one pending/due row. UPDATE ... RETURNING is the fencing point:
- * only one competing sender can increment attempt for the same eligible row.
- */
 export async function claimAppEventOutbox(
   db: D1Database,
   id: string,
@@ -170,6 +161,25 @@ export async function scheduleAppEventOutboxRetry(
        AND updated_at<=?3 AND lease_expires_at=?7 AND lease_expires_at>?3
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
   ).bind(retryAt, tgsOperationId ?? null, at, claim.id, claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
+  const row = firstResult(result);
+  if (!row) throw new Error('APP_EVENT_OUTBOX_CLAIM_STALE_OR_EXPIRED');
+  return rowRecord(row);
+}
+
+export async function markAppEventOutboxDeadLetter(
+  db: D1Database,
+  claim: AppEventOutboxClaim,
+  now: string,
+  tgsOperationId?: string,
+): Promise<AppEventOutboxRecord> {
+  const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
+  const result = await db.prepare(
+    `UPDATE app_event_outbox
+     SET state='dead_letter',lease_expires_at=NULL,next_retry_at=NULL,tgs_operation_id=COALESCE(?1,tgs_operation_id),updated_at=?2
+     WHERE id=?3 AND event_id=?4 AND state='sending' AND attempt=?5
+       AND updated_at<=?2 AND lease_expires_at=?6 AND lease_expires_at>?2
+     RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
+  ).bind(tgsOperationId ?? null, at, claim.id, claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
   const row = firstResult(result);
   if (!row) throw new Error('APP_EVENT_OUTBOX_CLAIM_STALE_OR_EXPIRED');
   return rowRecord(row);
