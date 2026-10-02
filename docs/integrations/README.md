@@ -24,6 +24,8 @@ TGserver Native Object / Operation / Capability / Event APIの最終Schemaを推
 
 Current source tests were added, but CI proof is still pending until the branch workflows complete. Source existence is not treated as verified Runtime behavior.
 
+PR #71 is therefore no longer documentation-only: it contains isolated, non-wired App-side contract/source scaffolds plus tests. It still makes no Runtime cutover, D1 schema mutation, deploy, Staging change, Production change, or TGserver source change.
+
 ## Rule
 
 Integration documentは相手側Repositoryの実装をApp側へ複製しない。
