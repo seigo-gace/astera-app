@@ -20,6 +20,8 @@ Canonical authority: `packages/contracts/src/app-events.ts`。
 - Generated mirrorは`.gitignore`対象で、手書きの第2正本にしない。
 - 既存`contabo/app-api/src/app-event-contract.ts` / `app-event-registry.ts` / `app-event-outbox-contract.ts`はGenerated authorityへの薄いre-exportのみ。
 - Outbox validatorは`validateRegisteredAppEvent()`を必須化し、未登録Event名をdurable Outboxへ入れない。
+- Durable Registry Eventの`attributes`はEventごとのallowlist制。現行15 Eventはallowlist空配列で、任意Attributeをすべてfail-closedで拒否する。
+- Generic Event Contract側の禁止Key検査だけに依存せず、無害なKey名へ機密値を詰める経路もDurable Registry境界で遮断する。
 - Event名はclosed vocabularyとし、任意文字列を許可しない。
 - Registryは`scope`、`domain`、必要なopaque refsを固定する。
 - Current audited User Mutationは`delivery=durable_outbox`を要求する。
@@ -58,7 +60,7 @@ result_id   = result:<jobId>
 revision_id = revision:<jobId>:1
 ```
 
-Therefore terminal Job Event and `RESULT_CREATED` can share one correlation chain without querying or inventing a Result ID after commit.
+Therefore terminal Job Event and `RESULT_CREATED` can share one correlation chain without querying or inventing a Result ID after commit。
 
 Private Mode remains different: `result_payload` is persisted as NULL and the Result trigger does not create recoverable Result content. Private Result body must not be emitted to TGserver.
 
@@ -113,7 +115,7 @@ Pages Functions / Worker     Contabo generated mirror
                              contabo/app-api/src/generated/app-events.ts
 ```
 
-The generated Contabo mirror is not tracked and cannot become an independently edited Contract. Manual Purpose Contract Gate watches the canonical file, sync script, Contabo package scripts and Contabo Source.
+The generated Contabo mirror is not tracked and cannot become an independently edited Contract. Manual Purpose Contract Gate watches the canonical file, sync script, D1 repository source, Contabo package scripts and Contabo Source.
 
 Still forbidden:
 
@@ -127,7 +129,9 @@ Still forbidden:
 `functions/_app-event-outbox.ts` is now the Pages/D1 repository scaffold.
 
 - `prepareAppEventOutboxEnqueue()` returns a prepared INSERT and deliberately does not call `run()` itself. Business mutation owners must place it in their existing authoritative D1 `batch()`.
+- D1 design schema stores `scope` / `domain` alongside `event_json` and enforces equality against the JSON envelope with `CHECK` constraints.
 - Claim is a single `UPDATE ... RETURNING` CAS that moves only `pending` or due `retry_wait` rows to `sending`, increments `attempt`, and installs a bounded lease.
+- Ready rows and expired `sending` rows have separate bounded scans.
 - Delivery and retry completion require exact `id + event_id + attempt + lease_expires_at` match and reject expired leases.
 - Restart recovery only reclaims expired `sending` rows.
 - Contabo transient Runtime DB is not used as Outbox authority.
