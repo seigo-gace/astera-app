@@ -102,7 +102,30 @@ const AGENT_MODE_CHOICES: ReadonlyArray<{ key: AgentMode; label: string }> = [
   { key: 'high', label: 'Deep' },
 ];
 const AGENT_MODE_LABELS: Record<AgentMode, string> = { low: 'Fast', medium: 'Balanced', high: 'Deep' };
+const USER_VISIBLE_ERROR_CODES = new Set([
+  'ASTERA_INPUT_REQUIRED',
+  'ASTERA_INPUT_TOO_LARGE',
+  'PURPOSE_TEXT_TOO_LARGE',
+  'FILE_UPLOAD_IN_PROGRESS',
+  'TARGET_LANGUAGE_REQUIRED',
+  'STORAGE_DESTINATION_REQUIRED',
+  'CREDIT_INSUFFICIENT_FOR_ESTIMATE',
+  'ESTIMATE_EXPIRED',
+  'UNAUTHENTICATED',
+  'UNAUTHORIZED',
+]);
+const USER_VISIBLE_ERROR_PREFIXES = [
+  'CREDIT_', 'PAYMENT_', 'PURCHASE_', 'BILLING_', 'PLAN_', 'LIMIT_', 'RATE_LIMIT_', 'QUOTA_',
+  'FILE_SIZE_', 'FILE_TYPE_', 'UPLOAD_LIMIT_', 'AUTH_',
+] as const;
 
+function userFacingErrorMessage(error: ApiError | null): string {
+  if (!error) return '';
+  const code = String(error.code || '').toUpperCase();
+  if (USER_VISIBLE_ERROR_CODES.has(code)) return error.message;
+  if (USER_VISIBLE_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))) return error.message;
+  return '';
+}
 function defaultLanguage(): string {
   return document.documentElement.lang || navigator.language || 'ja-JP';
 }
@@ -355,6 +378,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const [notice, setNotice] = useState('');
   const [currentJobId, setCurrentJobId] = useState('');
   const [picker, setPicker] = useState<PickerKind>(null);
+  const [pickerNotice, setPickerNotice] = useState('');
   const [projects, setProjects] = useState<CatalogItem[]>([]);
   const [destinations, setDestinations] = useState<CatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -411,11 +435,13 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     const apply = (payload: unknown) => {
       const root = asRecord(payload);
       const data = asRecord(root.preferences ?? root.data ?? root);
-      setOptionVisibility({
+      const nextVisibility: Record<CurrentExecutionOptionKey, boolean> = {
         translation: data.translation !== false,
         'agent-mode': data.agent_mode !== false && data.agentMode !== false,
         'external-storage-transfer': data.storage_transfer !== false && data.storageTransfer !== false,
-      });
+      };
+      setOptionVisibility(nextVisibility);
+      setSelectedOptions((current) => current.filter((key) => key === 'document' || nextVisibility[key]));
     };
     const load = () => {
       controller.abort();
@@ -478,7 +504,6 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   const hasPendingFiles = files.some((file) => file.status === 'uploading');
   const hasFailedFiles = files.some((file) => file.status === 'error');
   const activeWork = ['uploading', 'estimating', 'submitting', 'queued', 'running', 'assembling_result'].includes(phase);
-  const visibleOptionKeys = CURRENT_OPTION_KEYS.filter((key) => optionVisibility[key]);
 
   const executionOptions = useMemo(() => selectedOptions.map((key) => {
     if (key === 'translation') return { key, profileVersion: 'translation-flash-lite', targetLanguage };
@@ -511,7 +536,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     if (conversationHydrationFailed) return new ApiError('Chat履歴を確認できないため、この画面では実行できません。［新規］で新しいChatを開始してください。', 409, 'CONVERSATION_HYDRATION_FAILED');
     if (selectedOptions.includes('external-storage-transfer') && !storageDestinationId.trim()) return new ApiError('転送先Storageを選択してください。', 422, 'STORAGE_DESTINATION_REQUIRED');
     return null;
-  }, [files.length, hasFailedFiles, hasPendingFiles, prompt, purposeText, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
+  }, [conversationHydrationFailed, files.length, hasFailedFiles, hasPendingFiles, prompt, purposeText, readyFileIds.length, selectedOptions, storageDestinationId, targetLanguage]);
 
   const copyText = useCallback(async (key: string, value: string) => {
     try {
@@ -563,10 +588,11 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         setNotice('Resultを保存しました。履歴からいつでも開けます。');
         window.dispatchEvent(new CustomEvent('astera:history-updated'));
       } else {
-        setNotice('Jobは完了しましたがChat履歴の保存に失敗しています。履歴を再読み込みしてください。');
+        console.error('Conversation result completed without persisted history turn', { turnId });
       }
     } catch (caught) {
       const failure = caught instanceof ApiError ? caught : new ApiError('Resultを正しく復元できませんでした。', 502, 'ASTERA_RESPONSE_INVALID');
+      console.error('Composer result normalization failed', failure);
       setPhase('failed');
       patchTurn(turnId, { phase: 'failed', sections: [], sources: [], error: failure });
       setError(failure);
@@ -583,7 +609,8 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
   ): Promise<boolean> => {
     if (isPrivate) return true;
     let last: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    const retryDelayMs = [200, 500, 1_000];
+    for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         last = await apiRequest('/api/conversations', {
           method: 'POST',
@@ -608,12 +635,12 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         return true;
       } catch (caught) {
         last = caught;
-        if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 200));
+        const delay = retryDelayMs[attempt];
+        if (typeof delay === 'number') await new Promise((resolve) => window.setTimeout(resolve, delay));
       }
     }
-    const persistError = last instanceof ApiError ? last : new ApiError('Chat履歴の保存に失敗しました。', 502, 'CONVERSATION_PERSIST_FAILED');
     historySavedTurns.current.delete(turnId);
-    setNotice(`Jobは実行されていますがChat履歴を保存できませんでした: ${persistError.code}`);
+    console.error('Conversation persistence failed after retries', last);
     return false;
   }, [conversationId]);
 
@@ -767,12 +794,13 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       await pollJob(turnId, id, sendPrivateMode);
     } catch (caught) {
       const jobError = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : 'Jobを開始できませんでした。');
+      if (!userFacingErrorMessage(jobError)) console.error('Composer execution failed', jobError);
       setError(jobError);
       setPhase('failed');
     } finally {
       executionLock.current = false;
     }
-  }, [completeTurn, conversationHydrationFailed, editing, executionOptions, patchTurn, persistTurn, pollJob, privateMode, projectId, prompt, purpose, purposeText, readyFileIds, upsertTurn, validate]);
+  }, [completeTurn, editing, executionOptions, patchTurn, persistTurn, pollJob, privateMode, projectId, prompt, purpose, purposeText, readyFileIds, upsertTurn, validate]);
 
   const cancelJob = useCallback(async () => {
     if (!currentJobId) return;
@@ -790,7 +818,9 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
         await pollJob(turn.id, currentJobId, turn.privateMode);
       }
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught : new ApiError('取消Requestに失敗しました。'));
+      const cancellationError = caught instanceof ApiError ? caught : new ApiError('取消Requestに失敗しました。');
+      console.error('Composer cancellation failed', cancellationError);
+      setError(cancellationError);
     }
   }, [currentJobId, patchTurn, pollJob, turns]);
 
@@ -824,7 +854,8 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       setPhase('draft');
     } catch (caught) {
       const uploadError = caught instanceof ApiError ? caught : new ApiError(caught instanceof Error ? caught.message : 'Uploadに失敗しました。', 0, 'FILE_UPLOAD_FAILED');
-      setFiles((current) => current.map((item) => item.localId === localId ? { ...item, status: 'error', error: `${uploadError.message} (${uploadError.code})` } : item));
+      console.error('Composer file upload failed', uploadError);
+      setFiles((current) => current.map((item) => item.localId === localId ? { ...item, status: 'error', error: uploadError.code } : item));
       setPhase('draft');
     }
   }, [privateMode]);
@@ -903,6 +934,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     }
   }, []);
   const openContextPicker = () => {
+    setPickerNotice('');
     setPicker('context');
     void loadCatalogs();
   };
@@ -942,6 +974,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     setConversationHydrationFailed(false);
     setError(null);
     setNotice('');
+    setPickerNotice('');
     setPhase('draft');
     setEditing(null);
     setEvidenceMode(false);
@@ -955,6 +988,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       const end = event.currentTarget.selectionEnd ?? start;
       if (start === end && (start === 0 || /\s/.test(event.currentTarget.value[start - 1] ?? ''))) {
         event.preventDefault();
+        setPickerNotice('');
         if (event.key === '/') setPicker('add');
         else openContextPicker();
         return;
@@ -978,20 +1012,37 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     </div>
   );
 
-  const renderVisibleOptions = () => visibleOptionKeys.map((key) => key === 'agent-mode' ? (
+  const renderEnabledOption = (key: CurrentExecutionOptionKey) => key === 'agent-mode' ? (
     <details key={key} className="native-option-accordion">
       <summary className={selectedOptions.includes(key) ? 'native-option-accordion-trigger is-selected' : 'native-option-accordion-trigger'}><span>{OPTION_LABELS[key]}</span><b>{selectedOptions.includes(key) ? AGENT_MODE_LABELS[agentMode] : '›'}</b></summary>
       <div className="native-agent-mode-choices">
-        {AGENT_MODE_CHOICES.map((choice) => <button key={choice.key} type="button" className={selectedOptions.includes(key) && agentMode === choice.key ? 'is-selected' : ''} onClick={(event) => { selectAgentMode(choice.key); event.currentTarget.closest('details')?.removeAttribute('open'); }}><span>{choice.label}</span>{selectedOptions.includes(key) && agentMode === choice.key && <b>✓</b>}</button>)}
+        {AGENT_MODE_CHOICES.map((choice) => <button key={choice.key} type="button" className={selectedOptions.includes(key) && agentMode === choice.key ? 'is-selected' : ''} onClick={(event) => { selectAgentMode(choice.key); setPickerNotice(''); event.currentTarget.closest('details')?.removeAttribute('open'); }}><span>{choice.label}</span>{selectedOptions.includes(key) && agentMode === choice.key && <b>✓</b>}</button>)}
       </div>
     </details>
-  ) : <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => toggleOption(key)}><span>{OPTION_LABELS[key]}</span></button>);
+  ) : <button key={key} type="button" className={selectedOptions.includes(key) ? 'is-selected' : ''} onClick={() => { setPickerNotice(''); toggleOption(key); }}><span>{OPTION_LABELS[key]}</span></button>;
+
+  const renderVisibleOptions = () => CURRENT_OPTION_KEYS.filter((key) => optionVisibility[key]).map(renderEnabledOption);
+  const renderAddOptions = () => CURRENT_OPTION_KEYS.map((key) => {
+    if (optionVisibility[key]) return renderEnabledOption(key);
+    return (
+      <button
+        key={key}
+        type="button"
+        className="native-option-unavailable"
+        aria-label={`${OPTION_LABELS[key]}は設定でオフです`}
+        onClick={() => setPickerNotice(`${OPTION_LABELS[key]}をオンにしてください。`)}
+      >
+        <span>{OPTION_LABELS[key]}</span><b>OFF</b>
+      </button>
+    );
+  });
 
   const pickerBody = picker && (
     <div className="native-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPicker(null); }}>
       <section className="native-picker" role="dialog" aria-modal="true" aria-label={picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : picker === 'purpose-text' ? '目的を自由入力' : 'Option・対象選択'}>
         <header><strong>{picker === 'add' ? '追加' : picker === 'purpose' ? '用途・目的' : picker === 'purpose-text' ? '目的を自由入力' : 'Option・対象'}</strong><button type="button" aria-label="閉じる" onClick={() => setPicker(null)}>×</button></header>
         <div className="native-picker-body">
+          {pickerNotice && <p className="native-picker-status native-picker-guidance" role="status">{pickerNotice}</p>}
           {picker === 'purpose' && renderPurposeChoices()}
           {picker === 'purpose-text' && (
             <div className="native-purpose-text-editor">
@@ -1000,7 +1051,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
               <div className="native-purpose-text-actions"><button type="button" onClick={() => { setPurposeTextDraft(purposeText); setPicker('purpose'); }}>キャンセル</button><button type="button" className="native-picker-apply" onClick={() => { setPurposeText(purposeTextDraft.trim()); setPicker(null); }}>適用</button></div>
             </div>
           )}
-          {picker === 'add' && <><button type="button" onClick={() => { setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>{renderVisibleOptions()}<button type="button" className={privateMode ? 'is-selected' : ''} aria-pressed={privateMode} disabled={files.some((file) => file.status === 'uploading')} onClick={togglePrivateMode}><span>Private Mode</span><b>{privateMode ? 'ON' : 'OFF'}</b></button></>}
+          {picker === 'add' && <><button type="button" onClick={() => { setPickerNotice(''); setPicker(null); fileInputRef.current?.click(); }}><span>Fileを追加</span><b>＋</b></button>{renderAddOptions()}<button type="button" className={privateMode ? 'is-selected' : ''} aria-pressed={privateMode} disabled={files.some((file) => file.status === 'uploading')} onClick={togglePrivateMode}><span>Private Mode</span><b>{privateMode ? 'ON' : 'OFF'}</b></button></>}
           {picker === 'context' && <>{catalogLoading && <p className="native-picker-status">登録済み項目を読み込んでいます…</p>}{renderVisibleOptions()}{selectedOptions.includes('translation') && optionVisibility.translation && <label className="native-picker-field"><span>翻訳先言語</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} /></label>}{selectedOptions.includes('external-storage-transfer') && optionVisibility['external-storage-transfer'] && <label className="native-picker-field"><span>外部Storage転送先</span><select value={storageDestinationId} onChange={(event) => setStorageDestinationId(event.target.value)}><option value="">選択してください</option>{destinations.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>}<label className="native-picker-field"><span>Project</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">Projectなし</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button type="button" className="native-picker-apply" onClick={() => setPicker(null)}>完了</button></>}
         </div>
       </section>
@@ -1013,6 +1064,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
     onModeChange: (mode: 'main' | 'evidence') => setEvidenceMode(mode === 'evidence'),
   };
   const purposeButtonLabel = purposeText || PURPOSE_LABELS[purpose];
+  const pageErrorMessage = userFacingErrorMessage(error);
 
   if (conversationLoading) {
     return <ResponsivePageShell route={route} fullWidth evidenceControl={evidenceControl}><BusyState label="Chat履歴を読み込んでいます…" /></ResponsivePageShell>;
@@ -1023,7 +1075,7 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
       <div className="native-composer-workspace" data-native-composer="true" onDragOver={(event) => event.preventDefault()} onDrop={onDropFiles}>
         <section className="native-timeline" aria-live="polite">
           <div className="native-timeline-inner">
-            {turns.length === 0 && !activeWork && !error && !evidenceMode && <div className="native-empty-state"><h1>何を判断材料にしますか？</h1></div>}
+            {turns.length === 0 && !activeWork && !pageErrorMessage && !evidenceMode && <div className="native-empty-state"><h1>何を判断材料にしますか？</h1></div>}
             {evidenceMode ? (
               <section className="native-evidence-view" aria-label="根拠一覧">
                 <header><h1>根拠</h1><span>{evidenceItems.length}件</span></header>
@@ -1033,27 +1085,30 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
               </section>
             ) : (
               <>
-                {turns.map((turn) => (
-                  <article className="native-turn" key={turn.id} data-turn-id={turn.id}>
-                    <div className="native-user-turn">
-                      <ExpandableUserMessage text={turn.prompt} />
-                      <div className="native-user-actions">
-                        <button type="button" aria-label="投稿をコピー" title="コピー" onClick={() => void copyText(`turn:${turn.id}`, turn.prompt)}><span aria-hidden="true">{copiedKey === `turn:${turn.id}` ? '✓' : '⧉'}</span></button>
-                        <button type="button" aria-label="投稿を編集" title="編集" disabled={!turn.jobId || !['completed', 'failed', 'cancelled'].includes(turn.phase)} onClick={() => editTurn(turn)}><span aria-hidden="true">✎</span></button>
+                {turns.map((turn) => {
+                  const turnErrorMessage = userFacingErrorMessage(turn.error);
+                  return (
+                    <article className="native-turn" key={turn.id} data-turn-id={turn.id}>
+                      <div className="native-user-turn">
+                        <ExpandableUserMessage text={turn.prompt} />
+                        <div className="native-user-actions">
+                          <button type="button" aria-label="投稿をコピー" title="コピー" onClick={() => void copyText(`turn:${turn.id}`, turn.prompt)}><span aria-hidden="true">{copiedKey === `turn:${turn.id}` ? '✓' : '⧉'}</span></button>
+                          <button type="button" aria-label="投稿を編集" title="編集" disabled={!turn.jobId || !['completed', 'failed', 'cancelled'].includes(turn.phase)} onClick={() => editTurn(turn)}><span aria-hidden="true">✎</span></button>
+                        </div>
                       </div>
-                    </div>
-                    {['queued', 'running', 'assembling_result'].includes(turn.phase) && <section className="native-processing" role="status"><span className="native-processing-dot" /><div><strong>{phaseLabel(turn.phase)}</strong><small>{turn.jobId ? `Job ${turn.jobId}` : 'Asteraが処理を進めています'}</small></div>{turn.jobId === currentJobId && <button type="button" onClick={() => void cancelJob()}>取消</button>}</section>}
-                    {turn.error && <section className="native-error" role="alert"><div><strong>{turn.error.message}</strong><code>{turn.error.code}</code></div></section>}
-                    {turn.sections.length > 0 && (
-                      <section className="native-response">
-                        <header><strong>ASTERA</strong><button type="button" aria-label="回答をコピー" title="コピー" onClick={() => void copyText(`response:${turn.id}`, turn.sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'))}><span aria-hidden="true">{copiedKey === `response:${turn.id}` ? '✓' : '⧉'}</span></button></header>
-                        <div className="native-result-sections">{turn.sections.map((section, index) => <article key={section.key} className="native-result-section"><div className="native-result-heading"><span>{String(index + 1).padStart(2, '0')}</span><h2>{section.title}</h2></div><p>{section.body}</p></article>)}</div>
-                      </section>
-                    )}
-                  </article>
-                ))}
+                      {['queued', 'running', 'assembling_result'].includes(turn.phase) && <section className="native-processing" role="status"><span className="native-processing-dot" /><div><strong>{phaseLabel(turn.phase)}</strong><small>{turn.jobId ? `Job ${turn.jobId}` : 'Asteraが処理を進めています'}</small></div>{turn.jobId === currentJobId && <button type="button" onClick={() => void cancelJob()}>取消</button>}</section>}
+                      {turnErrorMessage && <section className="native-error" role="alert"><div><strong>{turnErrorMessage}</strong></div></section>}
+                      {turn.sections.length > 0 && (
+                        <section className="native-response">
+                          <header><strong>ASTERA</strong><button type="button" aria-label="回答をコピー" title="コピー" onClick={() => void copyText(`response:${turn.id}`, turn.sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'))}><span aria-hidden="true">{copiedKey === `response:${turn.id}` ? '✓' : '⧉'}</span></button></header>
+                          <div className="native-result-sections">{turn.sections.map((section, index) => <article key={section.key} className="native-result-section"><div className="native-result-heading"><span>{String(index + 1).padStart(2, '0')}</span><h2>{section.title}</h2></div><p>{section.body}</p></article>)}</div>
+                        </section>
+                      )}
+                    </article>
+                  );
+                })}
                 {activeWork && turns.every((turn) => turn.jobId !== currentJobId) && <section className="native-processing" role="status"><span className="native-processing-dot" /><div><strong>{phaseLabel(phase)}</strong><small>送信準備中</small></div></section>}
-                {error && <section className="native-error" role="alert"><div><strong>{error.message}</strong><code>{error.code}</code></div><button type="button" onClick={() => { if (conversationHydrationFailed) resetComposer(); else { setError(null); setPhase('draft'); } }}>{conversationHydrationFailed ? '新規' : '閉じる'}</button></section>}
+                {pageErrorMessage && <section className="native-error" role="alert"><div><strong>{pageErrorMessage}</strong></div><button type="button" onClick={() => { setError(null); setPhase('draft'); }}>閉じる</button></section>}
               </>
             )}
           </div>
@@ -1064,15 +1119,15 @@ export default function NativeComposerConversation({ route }: { route: RouteMatc
           {editing && <div className="native-editing-banner"><span>投稿を編集しています</span><button type="button" onClick={() => { const restore = editing.restorePrivateMode; setEditing(null); setPrompt(''); setPurpose(editing.purpose); setPurposeText(editing.purposeText); setPrivateMode(restore); }}>キャンセル</button></div>}
           {files.length > 0 && (
             <ul className="native-file-queue" aria-label="File Queue">
-              {files.map((file, index) => <li key={file.localId} draggable={file.status !== 'uploading'} onDragStart={() => { dragIndex.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) reorderFile(dragIndex.current, index); dragIndex.current = null; }}><div><strong>{file.name}</strong><small>{file.status === 'ready' ? 'Upload完了' : file.status === 'uploading' ? 'Uploading…' : file.error}</small></div><div>{file.status === 'error' && <button type="button" onClick={() => retryFile(file)}>Retry</button>}<button type="button" onClick={() => setFiles((current) => current.filter((item) => item.localId !== file.localId))} disabled={file.status === 'uploading'}>×</button></div></li>)}
+              {files.map((file, index) => <li key={file.localId} draggable={file.status !== 'uploading'} onDragStart={() => { dragIndex.current = index; }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (dragIndex.current !== null) reorderFile(dragIndex.current, index); dragIndex.current = null; }}><div><strong>{file.name}</strong><small>{file.status === 'ready' ? 'Upload完了' : file.status === 'uploading' ? 'Uploading…' : '再試行してください'}</small></div><div>{file.status === 'error' && <button type="button" onClick={() => retryFile(file)}>Retry</button>}<button type="button" onClick={() => setFiles((current) => current.filter((item) => item.localId !== file.localId))} disabled={file.status === 'uploading'}>×</button></div></li>)}
             </ul>
           )}
           <div className="native-composer">
             <textarea ref={textareaRef} value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={handleComposerKeyDown} onPaste={onPaste} maxLength={MAX_INPUT_CHARACTERS} rows={1} placeholder="メッセージを入力" aria-label="Astera入力" />
             <div className="native-composer-actions">
               <div className="native-left-tools">
-                <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => setPicker('add')}>＋</button>
-                <button type="button" className={`native-purpose-button${purposeText ? ' has-custom-purpose' : ''}`} aria-label="Purposeを選択" title={purposeText || PURPOSE_LABELS[purpose]} onClick={() => setPicker('purpose')}><span>{purposeButtonLabel}</span><span aria-hidden="true">⌄</span></button>
+                <button type="button" className="native-round-button" aria-label="Fileと実行Optionを追加" onClick={() => { setPickerNotice(''); setPicker('add'); }}>＋</button>
+                <button type="button" className={`native-purpose-button${purposeText ? ' has-custom-purpose' : ''}`} aria-label="Purposeを選択" title={purposeText || PURPOSE_LABELS[purpose]} onClick={() => { setPickerNotice(''); setPicker('purpose'); }}><span>{purposeButtonLabel}</span><span aria-hidden="true">⌄</span></button>
                 {selectedOptions.filter((key): key is CurrentExecutionOptionKey => key !== 'document').map((key) => {
                   const label = key === 'agent-mode' ? `Agent ${AGENT_MODE_LABELS[agentMode]}` : OPTION_LABELS[key];
                   return <span className="native-form-chip is-option" key={key}><span>{label}</span><button type="button" aria-label={`${label}を削除`} onClick={() => toggleOption(key)}>×</button></span>;
