@@ -1,6 +1,8 @@
 -- DESIGN AUTHORITY ONLY. NOT A D1 MIGRATION.
--- Migration number must be assigned only after the real integration target sequence is reconciled.
--- Current open-branch audit found PR #17 already owns an independent 0024 migration.
+-- Current App main owns migrations through 0023_custom_purpose_text.sql.
+-- Open/Draft PR #17 independently owns 0024_coupon_redemption_concurrency.sql and also carries older-numbered migration files that now overlap current main history.
+-- Do not assign 0024 or assume 0025 is safe until PR #17 is rebased/resequenced and the real integration order is reconciled.
+-- Runtime instrumentation must remain unwired until this design receives an actual non-conflicting D1 migration.
 
 CREATE TABLE app_event_outbox (
   id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 256),
