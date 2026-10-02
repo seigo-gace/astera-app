@@ -43,6 +43,10 @@ function operationId(value: string | undefined): string | null {
   return value === undefined ? null : boundedText(value, 'APP_EVENT_OUTBOX_TGS_OPERATION_ID_INVALID', 512);
 }
 
+function requiredOperationId(value: string): string {
+  return boundedText(value, 'APP_EVENT_OUTBOX_TGS_OPERATION_ID_REQUIRED', 512);
+}
+
 function rowRecord(row: OutboxRow): AppEventOutboxRecord {
   let event: AppEventEnvelope;
   try {
@@ -144,13 +148,13 @@ export async function markAppEventOutboxDelivered(
   db: D1Database,
   claim: AppEventOutboxClaim,
   now: string,
-  tgsOperationId?: string,
+  tgsOperationId: string,
 ): Promise<AppEventOutboxRecord> {
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
-  const remoteOperationId = operationId(tgsOperationId);
+  const remoteOperationId = requiredOperationId(tgsOperationId);
   const result = await db.prepare(
     `UPDATE app_event_outbox
-     SET state='delivered',lease_expires_at=NULL,next_retry_at=NULL,tgs_operation_id=COALESCE(?1,tgs_operation_id),updated_at=?2
+     SET state='delivered',lease_expires_at=NULL,next_retry_at=NULL,tgs_operation_id=?1,updated_at=?2
      WHERE id=?3 AND event_id=?4 AND state='sending' AND attempt=?5
        AND updated_at<=?2 AND lease_expires_at=?6 AND lease_expires_at>?2
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
