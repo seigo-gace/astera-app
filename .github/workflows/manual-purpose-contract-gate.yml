@@ -57,6 +57,10 @@ on:
       - 'tests/purpose-control-plane-regression.test.mjs'
       - '.github/workflows/manual-purpose-contract-gate.yml'
 
+concurrency:
+  group: manual-purpose-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
