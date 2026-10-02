@@ -12,7 +12,15 @@
 
 - `contabo/app-api/src/persistent-object-store.ts` — App-owned persistent object abstraction. Native v1ではRaw Telegram placementをCaller contractへ持ち込まない。
 - `contabo/app-api/src/tgserver-legacy-v15-object-store.ts` — current TGserver v1.5 physical-locator contractを隔離するcompatibility adapter.
+- `contabo/app-api/src/tgserver-legacy-v15-object-store.test.ts` — Legacy locator isolation / delegation / Native locator fail-closed contract tests.
 - `contabo/app-api/src/app-event-contract.ts` — System/User Event envelope、routing intent、secret/private-content key gate.
+- `contabo/app-api/src/app-event-contract.test.ts` — System/User separation、opaque user ref requirement、forbidden attribute gate tests.
+
+## Current Boundary
+
+`PersistentObjectStore` / Legacy adapter / AppEvent contractはSource scaffoldまで追加済み。現RuntimeのStorage pathはまだ既存v1.5 clientを使用しており、TGserver Native v1 Adapter、D1 logical-reference migration、durable Event Outbox、Runtime cutoverは未実装。
+
+TGserver Native Object / Operation / Capability / Event APIの最終Schemaを推測でhardcodeしない。TGserver側Contract確定後にNative adapterとoutbox senderを接続する。
 
 ## Rule
 
