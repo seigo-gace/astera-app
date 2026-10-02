@@ -146,9 +146,12 @@ test('outbox rejects event names outside the closed registry', () => {
 });
 
 test('outbox rejects unknown runtime states instead of trusting TypeScript casts', () => {
-  const invalid = record() as AppEventOutboxRecord & { state: string };
+  const invalid = record() as unknown as { state: string };
   invalid.state = 'teleported';
-  assert.throws(() => validateOutboxRecord(invalid as AppEventOutboxRecord), /OUTBOX_STATE_INVALID/);
+  assert.throws(
+    () => validateOutboxRecord(invalid as unknown as AppEventOutboxRecord),
+    /OUTBOX_STATE_INVALID/,
+  );
 });
 
 test('TGserver operation identity rejects control characters and oversized values', () => {
