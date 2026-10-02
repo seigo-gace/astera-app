@@ -265,9 +265,10 @@ App transaction/state finalization
  + event outbox record
  -> user response
  -> background sender
+ -> claim pending/retry_wait with bounded sending lease
  -> TGserver Native Event API
  -> operation committed
- -> outbox delivered
+ -> compare-and-set delivered using the claimed attempt
 ```
 
 Critical Audit uses durable outbox and idempotency.
@@ -287,11 +288,25 @@ tgs_operation_id
 state=pending|sending|delivered|retry_wait|dead_letter
 attempt
 next_retry_at
+lease_expires_at
 created_at
 updated_at
 ```
 
-Exact D1 migration number is not fixed on this branch because active PR branches already own independent migration sequences. Migration numbering must be rebased against the integration target branch before implementation.
+`attempt` is the monotonic sending-attempt/fencing counter. A sender claim is identified by `(outbox id, attempt, lease_expires_at)` and must not complete a later attempt.
+
+Repository transition rules for Runtime implementation:
+
+- claim `pending`/due `retry_wait` by compare-and-set, increment `attempt`, set `state=sending`, and set a bounded `lease_expires_at`;
+- sender completion/retry/dead-letter update must compare the expected `attempt` so an old sender cannot overwrite a newer attempt;
+- normal sender completion is valid only while its lease is active;
+- if the process crashes while `sending`, a recovery/reaper path detects `lease_expires_at <= now` and moves the record to `retry_wait` before re-dispatch;
+- transition out of `sending` clears the lease; transition out of `retry_wait` clears `next_retry_at`;
+- `delivered` and `dead_letter` remain terminal.
+
+This lease/fencing rule is part of the App-side durable contract. It prevents permanent `sending` rows after restart and prevents stale concurrent workers from falsely completing a newer delivery attempt.
+
+Exact D1 migration number is not fixed on this branch because active PR branches already own independent migration sequences. The current branch already contains migrations through `0023_custom_purpose_text.sql`; migration numbering must be reconciled against the actual integration target branch before an Outbox D1 migration is created.
 
 ## 12. TGserver API usage
 
@@ -366,15 +381,17 @@ Telegram human search is an operator convenience, not the App search authority.
 1. AppEvent contract and validation/redaction gate.
 2. System/User route intent contract.
 3. Domain event registry/inventory.
-4. Durable outbox schema after migration-number reconciliation.
-5. Outbox repository + sender abstraction.
-6. TGserver Native Event adapter after API schema freeze.
-7. Instrument Conversation/Job/Result/File first because they are current repair scope.
-8. Instrument Auth/Security/Account.
-9. Instrument Billing/Credit/Plan/Coupon.
-10. Instrument remaining Project/Share/Template/Notification/Privacy/Developer API.
-11. Replace scattered raw console technical logs where structured event coverage exists.
-12. E2E prove System route -> Group 1 and User route -> Group 2+ through TGserver Registry without App physical-ID coupling.
+4. Outbox state/lease/restart-recovery/fencing contract.
+5. Reconcile D1 migration numbering against the actual integration target branch.
+6. Durable outbox D1 schema + repository with compare-and-set claim/finalization.
+7. Outbox sender abstraction and expired-lease recovery worker/path.
+8. TGserver Native Event adapter after API schema freeze.
+9. Instrument Conversation/Job/Result/File first because they are current repair scope.
+10. Instrument Auth/Security/Account.
+11. Instrument Billing/Credit/Plan/Coupon.
+12. Instrument remaining Project/Share/Template/Notification/Privacy/Developer API.
+13. Replace scattered raw console technical logs where structured event coverage exists.
+14. E2E prove System route -> Group 1 and User route -> Group 2+ through TGserver Registry without App physical-ID coupling.
 
 ## 17. Current implementation status
 
@@ -382,8 +399,11 @@ Telegram human search is an operator convenience, not the App search authority.
 APP_EVENT_CONTRACT=SOURCE_ADDED
 SYSTEM_USER_ROUTE_INTENT=SOURCE_ADDED
 SECRET_KEY_NAME_GATE=SOURCE_ADDED
-CONTRACT_TESTS=SOURCE_ADDED
-DURABLE_OUTBOX=NOT_IMPLEMENTED
+OUTBOX_STATE_CONTRACT=SOURCE_ADDED
+OUTBOX_LEASE_RECOVERY_CONTRACT=SOURCE_ADDED
+CONTRACT_TESTS=SOURCE_ADDED_NOT_YET_CI_PROVEN_FOR_THIS_CHANGE
+DURABLE_OUTBOX_D1=NOT_IMPLEMENTED
+OUTBOX_SENDER=NOT_IMPLEMENTED
 TGS_NATIVE_EVENT_ADAPTER=WAITING_FOR_API_CONTRACT
 FULL_DOMAIN_INSTRUMENTATION=NOT_IMPLEMENTED
 TGSERVER_SOURCE_CHANGE=NONE
