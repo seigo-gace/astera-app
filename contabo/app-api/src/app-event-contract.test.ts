@@ -53,38 +53,44 @@ test('forbidden secret and private-payload attribute keys are rejected', () => {
 });
 
 test('runtime validation rejects malformed schema, time, scope, domain and severity', () => {
-  const schema = base('user') as AppEventEnvelope & { schema: string };
-  schema.schema = 'astera.app.event.v0';
+  const schema = base('user');
+  (schema as unknown as { schema: string }).schema = 'astera.app.event.v0';
   assert.throws(() => validateAppEvent(schema), /APP_EVENT_SCHEMA_INVALID/);
 
   const time = base('user');
   time.occurredAt = 'not-a-time';
   assert.throws(() => validateAppEvent(time), /APP_EVENT_OCCURRED_AT_INVALID/);
 
-  const scope = base('user') as AppEventEnvelope & { scope: string };
-  scope.scope = 'tenant';
+  const scope = base('user');
+  (scope as unknown as { scope: string }).scope = 'tenant';
   assert.throws(() => validateAppEvent(scope), /APP_EVENT_SCOPE_INVALID/);
 
-  const domain = base('user') as AppEventEnvelope & { domain: string };
-  domain.domain = 'unknown';
+  const domain = base('user');
+  (domain as unknown as { domain: string }).domain = 'unknown';
   assert.throws(() => validateAppEvent(domain), /APP_EVENT_DOMAIN_INVALID/);
 
-  const severity = base('user') as AppEventEnvelope & { severity: string };
-  severity.severity = 'fatal';
+  const severity = base('user');
+  (severity as unknown as { severity: string }).severity = 'fatal';
   assert.throws(() => validateAppEvent(severity), /APP_EVENT_SEVERITY_INVALID/);
 });
 
 test('runtime validation rejects unknown/non-string refs and non-primitive attributes', () => {
-  const unknownRef = base('user') as AppEventEnvelope & { refs: Record<string, unknown> };
-  unknownRef.refs = { userRef: 'opaque-user-1', jobId: 'job-1', rawUser: 'x' };
+  const unknownRef = base('user');
+  (unknownRef as unknown as { refs: Record<string, unknown> }).refs = {
+    userRef: 'opaque-user-1', jobId: 'job-1', rawUser: 'x',
+  };
   assert.throws(() => validateAppEvent(unknownRef), /APP_EVENT_REF_NOT_ALLOWED:rawUser/);
 
-  const objectRef = base('user') as AppEventEnvelope & { refs: Record<string, unknown> };
-  objectRef.refs = { userRef: { id: 'raw' }, jobId: 'job-1' };
+  const objectRef = base('user');
+  (objectRef as unknown as { refs: Record<string, unknown> }).refs = {
+    userRef: { id: 'raw' }, jobId: 'job-1',
+  };
   assert.throws(() => validateAppEvent(objectRef), /APP_EVENT_REF_USERREF_REQUIRED/);
 
-  const objectAttribute = base('user') as AppEventEnvelope & { attributes: Record<string, unknown> };
-  objectAttribute.attributes = { note: { body: 'payload' } };
+  const objectAttribute = base('user');
+  (objectAttribute as unknown as { attributes: Record<string, unknown> }).attributes = {
+    note: { body: 'payload' },
+  };
   assert.throws(() => validateAppEvent(objectAttribute), /APP_EVENT_ATTRIBUTE_VALUE_INVALID:note/);
 });
 
