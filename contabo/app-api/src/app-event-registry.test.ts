@@ -1,0 +1,77 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { AppEventEnvelope, AppEventRef } from './app-event-contract.js';
+import {
+  APP_EVENT_REGISTRY,
+  validateRegisteredAppEvent,
+  type AppEventRefKey,
+  type RegisteredAppEventName,
+} from './app-event-registry.js';
+
+const REF_VALUE: Record<AppEventRefKey, string> = {
+  tenantRef: 'opaque-tenant-1',
+  userRef: 'opaque-user-1',
+  conversationId: 'conversation-1',
+  turnId: 'turn-1',
+  jobId: 'job-1',
+  resultId: 'result:job-1',
+  projectId: 'project-1',
+  fileId: 'file-1',
+  operationId: 'operation-1',
+};
+
+function event(name: RegisteredAppEventName): AppEventEnvelope {
+  const definition = APP_EVENT_REGISTRY[name];
+  const refs: AppEventRef = {};
+  for (const ref of definition.requiredRefs) refs[ref] = REF_VALUE[ref];
+  return {
+    schema: 'astera.app.event.v1',
+    eventId: `event-${name.toLowerCase()}`,
+    occurredAt: '2026-10-02T11:20:00Z',
+    scope: definition.scope,
+    domain: definition.domain,
+    event: name,
+    severity: 'info',
+    correlationId: 'corr-1',
+    source: 'app-api',
+    refs,
+  };
+}
+
+test('all registered mutation events validate with their required opaque references', () => {
+  for (const name of Object.keys(APP_EVENT_REGISTRY) as RegisteredAppEventName[]) {
+    assert.doesNotThrow(() => validateRegisteredAppEvent(event(name)), name);
+  }
+});
+
+test('unknown event names fail closed', () => {
+  const input = event('JOB_ACCEPTED');
+  input.event = 'JOB_MAGIC_SUCCESS';
+  assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_NOT_REGISTERED/);
+});
+
+test('registered event domain cannot be changed by the caller', () => {
+  const input = event('RESULT_REVISED');
+  input.domain = 'job';
+  assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_DOMAIN_MISMATCH/);
+});
+
+test('registered user event cannot be converted into a system event', () => {
+  const input = event('STORAGE_OBJECT_STORED');
+  input.scope = 'system';
+  if (input.refs) delete input.refs.userRef;
+  assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_SCOPE_MISMATCH/);
+});
+
+test('required correlation references fail closed when absent', () => {
+  const input = event('RESULT_CREATED');
+  if (input.refs) delete input.refs.resultId;
+  assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_REQUIRED_REF_MISSING:RESULT_CREATED:resultId/);
+});
+
+test('current registry keeps transient upload and persistent storage events separate', () => {
+  assert.equal(APP_EVENT_REGISTRY.FILE_UPLOAD_READY.domain, 'file');
+  assert.equal(APP_EVENT_REGISTRY.STORAGE_OBJECT_STORED.domain, 'storage');
+  assert.deepEqual(APP_EVENT_REGISTRY.FILE_UPLOAD_READY.requiredRefs, ['userRef', 'fileId']);
+  assert.deepEqual(APP_EVENT_REGISTRY.STORAGE_OBJECT_STORED.requiredRefs, ['userRef', 'fileId']);
+});
