@@ -77,8 +77,8 @@ test('legacy adapter fails closed when given a native logical locator', async ()
   const store = new TgserverLegacyV15ObjectStore(client);
   const locator = { kind: 'tgs-native-v1' as const, objectId: 'obj-native', operationId: 'op-1' };
 
-  await assert.rejects(
-    store.read({ objectId: 'obj-native', ownerId: 'user-1', locator, fileName: 'x' }),
+  assert.throws(
+    () => store.read({ objectId: 'obj-native', ownerId: 'user-1', locator, fileName: 'x' }),
     /PERSISTENT_OBJECT_LEGACY_LOCATOR_REQUIRED/,
   );
   await assert.rejects(
