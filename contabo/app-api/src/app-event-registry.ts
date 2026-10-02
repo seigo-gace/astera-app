@@ -1,6 +1,7 @@
 export {
   APP_EVENT_REGISTRY,
   registeredAppEvent,
+  registeredAppEventId,
   validateRegisteredAppEvent,
 } from './generated/app-events.js';
 
