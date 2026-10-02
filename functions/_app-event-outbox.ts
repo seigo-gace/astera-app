@@ -55,6 +55,10 @@ function firstResult<T>(result: { results?: T[] }): T | null {
   return result.results?.[0] ?? null;
 }
 
+function boundedLimit(value: number): number {
+  return Number.isInteger(value) ? Math.min(200, Math.max(1, value)) : 50;
+}
+
 /**
  * Returns a prepared INSERT so the business mutation owner can include this exact
  * statement in the same D1 batch/transaction as its authoritative state change.
@@ -82,12 +86,25 @@ export async function listReadyAppEventOutboxIds(
   limitRaw = 50,
 ): Promise<string[]> {
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
-  const limit = Number.isInteger(limitRaw) ? Math.min(200, Math.max(1, limitRaw)) : 50;
   const result = await db.prepare(
     `SELECT id FROM app_event_outbox
      WHERE state='pending' OR (state='retry_wait' AND next_retry_at<=?1)
      ORDER BY created_at ASC,id ASC LIMIT ?2`,
-  ).bind(at, limit).all<{ id: string }>();
+  ).bind(at, boundedLimit(limitRaw)).all<{ id: string }>();
+  return (result.results ?? []).map((row) => row.id).filter(Boolean);
+}
+
+export async function listExpiredSendingAppEventOutboxIds(
+  db: D1Database,
+  now: string,
+  limitRaw = 50,
+): Promise<string[]> {
+  const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
+  const result = await db.prepare(
+    `SELECT id FROM app_event_outbox
+     WHERE state='sending' AND lease_expires_at IS NOT NULL AND lease_expires_at<=?1
+     ORDER BY lease_expires_at ASC,id ASC LIMIT ?2`,
+  ).bind(at, boundedLimit(limitRaw)).all<{ id: string }>();
   return (result.results ?? []).map((row) => row.id).filter(Boolean);
 }
 
