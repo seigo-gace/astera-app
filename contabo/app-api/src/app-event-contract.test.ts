@@ -99,3 +99,23 @@ test('token-like fields reject free-form payload strings', () => {
   event.state = 'completed with raw user text';
   assert.throws(() => validateAppEvent(event), /APP_EVENT_STATE_INVALID/);
 });
+
+test('event envelope rejects undeclared top-level payload fields', () => {
+  const event = base('user') as AppEventEnvelope & { body?: string };
+  event.body = 'raw user payload must never hitchhike in the envelope';
+  assert.throws(() => validateAppEvent(event), /APP_EVENT_FIELD_NOT_ALLOWED:body/);
+});
+
+test('opaque identities reject email/free-form values', () => {
+  const user = base('user');
+  user.refs = { userRef: 'person@example.com', jobId: 'job-1' };
+  assert.throws(() => validateAppEvent(user), /APP_EVENT_REF_USERREF_INVALID/);
+
+  const correlation = base('user');
+  correlation.correlationId = 'request containing user text';
+  assert.throws(() => validateAppEvent(correlation), /APP_EVENT_CORRELATION_ID_INVALID/);
+
+  const eventId = base('user');
+  eventId.eventId = 'event with spaces';
+  assert.throws(() => validateAppEvent(eventId), /APP_EVENT_EVENT_ID_INVALID/);
+});
