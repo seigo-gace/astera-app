@@ -1,6 +1,6 @@
 # Astera App × TGserver vNext Event / Log Design
 
-Status: SHARED CONTRACT AUTHORITY + D1 OUTBOX REPOSITORY SCAFFOLD / RUNTIME UNWIRED / TGS API FINAL CONTRACT PENDING  
+Status: SHARED CONTRACT + D1 OUTBOX REPOSITORY + TRANSPORT-NEUTRAL SENDER SCAFFOLD / RUNTIME UNWIRED / TGS API FINAL CONTRACT PENDING  
 Date: 2026-10-02 JST  
 App branch: `docs/tgserver-vnext-app-integration-20261002`  
 TGserver design source: `feat/tgserver-vnext-capability-20261002`
@@ -72,6 +72,7 @@ type AppEventEnvelope = {
     turnId?: string;
     jobId?: string;
     resultId?: string;
+    revisionId?: string;
     projectId?: string;
     fileId?: string;
     operationId?: string;
@@ -82,7 +83,11 @@ type AppEventEnvelope = {
 
 User event requires opaque `userRef`. System event must not carry `userRef`.
 
+Runtime入力はTypeScript型を信頼せず、schema / occurredAt / scope / domain / severity / source / state / errorClass / ref key / ref value / attribute shapeを実行時にfail-closedで検証する。
+
 Durable Eventはさらにclosed Registryを通す。RegistryはEvent名・domain・scope・required refs・allowed attributesを固定する。現在登録済み15 Eventは`allowedAttributes=[]`であり、任意Attributeをfail-closedで拒否する。これにより、禁止Key検査だけでなく「無害なKey名へ機密値を入れる」経路もDurable Outbox境界で遮断する。
+
+`RESULT_REVISED`は同一Result内の複数Revisionを区別するため`revisionId`を必須refとする。
 
 ## 4. Route intent
 
@@ -185,8 +190,6 @@ User event answers: "What happened to this user's product state or user-triggere
 
 One incident may produce both, but they must have distinct Event IDs and share one `correlationId`.
 
-Example:
-
 ```text
 User upload accepted
  -> User Event: FILE_UPLOAD_READY after authoritative metadata commit
@@ -217,6 +220,7 @@ Forbidden regardless of route:
 - Private File body/extracted text
 - raw prompt when not explicitly approved by product policy
 - raw user file content
+- Telegram physical locator
 
 The App event contract intentionally has no arbitrary `body` field. Durable Registry EventのAttributeはEvent単位allowlistで追加許可しない限り保存できない。
 
@@ -246,6 +250,7 @@ job_id
 conversation_id
 turn_id
 result_id
+revision_id where applicable
 file_id
 operation_id
 ```
@@ -255,8 +260,6 @@ Frontend, Pages Functions, Contabo App API, Billing and TGserver adapter events 
 ## 11. App durable outbox target
 
 TGserver availability must not decide whether App business state succeeds.
-
-Target pattern:
 
 ```text
 App transaction/state finalization
@@ -269,13 +272,9 @@ App transaction/state finalization
  -> compare-and-set delivered using the claimed attempt
 ```
 
-Canonical Contractは`packages/contracts/src/app-events.ts`。Pages/D1 repository scaffoldは`functions/_app-event-outbox.ts`。Unnumbered D1 schema designは`docs/integrations/tgserver-vnext-app-event-outbox-schema.sql`。
+Canonical Contractは`packages/contracts/src/app-events.ts`。Pages/D1 repository scaffoldは`functions/_app-event-outbox.ts`。Transport-neutral sender scaffoldは`functions/_app-event-outbox-sender.ts`。Unnumbered D1 schema designは`docs/integrations/tgserver-vnext-app-event-outbox-schema.sql`。
 
-Critical Audit uses durable outbox and idempotency.
-
-Operational telemetry may use a lighter path where loss policy explicitly permits it.
-
-Outbox target fields:
+Outbox fields:
 
 ```text
 id
@@ -297,24 +296,40 @@ D1 design schemaは`event_id` / `scope` / `domain`とJSON envelope内の同値�
 
 `prepareAppEventOutboxEnqueue()`は自分で`run()`せずPrepared INSERTを返す。Business mutation ownerが既存のauthoritative D1 `batch()`へそのStatementを加えるためであり、Business stateとOutbox rowを別commitにしない。
 
-`attempt` is the monotonic sending-attempt/fencing counter. A sender claim is identified by `(outbox id, event id, attempt, lease_expires_at)` and must not complete a later attempt.
-
 Repository transition rules:
 
+- 全Clock値をUTC ISOへ正規化してからD1の文字列比較へ使用する。
 - Ready scanは`pending`とdue `retry_wait`だけをbounded listで取得する。
 - Expired lease scanは`state=sending AND lease_expires_at<=now`だけを別bounded listで取得する。
 - claimは単一`UPDATE ... RETURNING`で`pending`/due `retry_wait`を`state=sending`へCASし、`attempt`をincrementしてbounded `lease_expires_at`を設定する。
-- sender completion/retry updateはexact `id + event_id + attempt + lease_expires_at`を比較し、古いsenderが新attemptを上書きできないようにする。
+- state-changing CASは`updated_at <= now`も要求し、regressed clockで先にDBを書き換えることを防ぐ。
+- delivered / retry / dead-letter finalizationはexact `id + event_id + attempt + lease_expires_at`を比較し、古いsenderが新attemptを上書きできないようにする。
 - normal sender completionはlease active中だけ有効。
 - process crash後はrecovery/reaperがexpired `sending`を`retry_wait`へ戻してから再dispatchする。
-- transition out of `sending` clears the lease; transition out of `retry_wait` clears `next_retry_at`。
 - `delivered` and `dead_letter` remain terminal.
 
-This lease/fencing rule prevents permanent `sending` rows after restart and prevents stale concurrent workers from falsely completing a newer delivery attempt.
+Sender/reaper rules:
 
-Exact D1 migration number is not fixed on this branch because active integration branches already own migration sequence through `0023_custom_purpose_text.sql`. The SQL under `docs/integrations/` is design authority only and is not an applied migration. Migration numbering must be reconciled against the actual integration target branch before a real Outbox D1 migration is created.
+- `AppEventDeliveryPort.deliverCommitted()`はremote durable commitまで完了した場合だけresolveする。HTTP acceptedはdelivery completionではない。
+- lease/retry/dead-letter/recovery retry timingはPolicy injectionとし、このBranchで本番値を捏造しない。
+- remote I/O後にClockを再取得し、cycle開始時刻を使ったlease期限越えfinalizeを防ぐ。
+- remote delivery failureとlocal D1 finalize failureを分離する。remote commit後のD1 finalize失敗をtransport failureへ誤分類しない。
+- actual Worker trigger / Cron / Queue wiringは未実装。
 
-## 12. TGserver API usage
+## 12. D1 migration sequencing
+
+Current integration base/branchは`0023_custom_purpose_text.sql`までを含む。
+
+しかしopen PR #17は独立Branchで`0024_coupon_redemption_concurrency.sql`まで所有している。したがってPR #71が`0024`を先取りするとmigration番号衝突になる。
+
+Rules:
+
+- `docs/integrations/tgserver-vnext-app-event-outbox-schema.sql`はDesign Authority only。
+- `migrations/d1/`へ番号付きOutbox migrationをまだ作らない。
+- PR #17のrebase/merge/integration orderを確定してから、実統合先の次番号を割り当てる。
+- migration未適用の現状態でRuntime instrumentationを有効化しない。
+
+## 13. TGserver API usage
 
 TGserver vNext Native API is canonical.
 
@@ -337,9 +352,7 @@ accepted != provider committed != indexed
 
 For Critical Audit, App considers transport complete only at the agreed TGserver durable/committed state, not merely HTTP acceptance.
 
-## 13. Group policy compatibility
-
-Master policy is preserved without Consumer hardcoding.
+## 14. Group policy compatibility
 
 ```text
 System events
@@ -353,11 +366,11 @@ User events
  -> User Group 2+
 ```
 
-If TGserver later rotates or expands User groups, App contract remains unchanged.
+If TGserver later rotates or expands User groups, App contract remains unchanged。
 
 App never directly creates Group 2, Group 3, Topic IDs, or Telegram message IDs.
 
-## 14. Error handling
+## 15. Error handling
 
 TGserver transport failure:
 
@@ -368,7 +381,7 @@ TGserver transport failure:
 
 Business-critical actions that legally/security-wise require audit before completion must define that requirement explicitly at the App domain level rather than globally blocking every request on TGserver.
 
-## 15. Search and operations
+## 16. Search and operations
 
 User-facing App activity/history search remains App/D1 business metadata authority.
 
@@ -382,55 +395,63 @@ TGserver event search is for:
 
 Telegram human search is an operator convenience, not the App search authority.
 
-## 16. Implementation order
+## 17. Implementation order
 
 Completed at Source-contract/scaffold level:
 
-1. AppEvent contract and validation/redaction gate.
+1. AppEvent contract and runtime validation/redaction gate.
 2. System/User route intent contract.
 3. Closed domain event registry for currently audited mutation paths.
 4. Outbox state/lease/restart-recovery/fencing contract.
 5. Single cross-runtime Contract authority + generated Contabo mirror.
-6. D1 Outbox repository scaffold with CAS claim/finalization and expired-lease scan.
+6. D1 Outbox repository scaffold with CAS claim/finalization/dead-letter and expired-lease scan.
 7. Unnumbered D1 schema design outside `migrations/d1/`.
+8. Transport-neutral sender/reaper cycle scaffold.
+9. PR #17 migration collision audit.
 
 Next order:
 
-8. Reconcile D1 migration numbering against the actual integration target branch.
-9. Convert unnumbered design SQL into the real numbered migration only after sequence reconciliation.
-10. Wire Job/Result first because their D1 atomic boundaries are strongest.
-11. Convert normal File Upload / persistent Storage metadata transition + Outbox into the same D1 batch, then wire them.
-12. Repair Conversation authoritative atomic commit boundary, then wire Conversation events.
-13. Add Outbox sender + expired-lease recovery Worker/runtime path.
-14. Add TGserver Native Event adapter only after Native API schema freeze.
-15. Instrument remaining Auth/Security/Account/Billing/Credit/Plan/Coupon/Project/Share/Template/Notification/Privacy/Developer API domains.
-16. Replace scattered raw console technical logs where structured event coverage exists.
-17. E2E prove System route -> Group 1 and User route -> Group 2+ through TGserver Registry without App physical-ID coupling.
+10. Keep current exact-head Typecheck/Contract/Browser Gate green.
+11. Reconcile PR #17 D1 migration ownership/integration order.
+12. Convert unnumbered design SQL into the real numbered migration only after sequence reconciliation.
+13. Wire Job/Result first because their D1 atomic boundaries are strongest.
+14. Convert normal File Upload / persistent Storage metadata transition + Outbox into the same D1 batch, then wire them.
+15. Repair Conversation authoritative atomic commit boundary, then wire Conversation events.
+16. Add actual Worker trigger around the sender/reaper scaffold.
+17. Add TGserver Native Event adapter only after Native API schema freeze.
+18. Instrument remaining Auth/Security/Account/Billing/Credit/Plan/Coupon/Project/Share/Template/Notification/Privacy/Developer API domains.
+19. Add reconciliation/failure-injection E2E before Runtime cutover.
+20. E2E prove System route -> Group 1 and User route -> Group 2+ through TGserver Registry without App physical-ID coupling.
 
-## 17. Current implementation status
+## 18. Current implementation status
 
 ```text
 APP_EVENT_CONTRACT=SHARED_CANONICAL_SOURCE_ADDED
+APP_EVENT_RUNTIME_VALIDATION=SOURCE_ADDED
 SYSTEM_USER_ROUTE_INTENT=SOURCE_ADDED
 SECRET_KEY_NAME_GATE=SOURCE_ADDED
 REGISTERED_EVENT_ATTRIBUTE_ALLOWLIST=SOURCE_ADDED
 CLOSED_EVENT_REGISTRY=SOURCE_ADDED
+RESULT_REVISION_EVENT_IDENTITY=REVISION_REF_REQUIRED
 OUTBOX_STATE_CONTRACT=SOURCE_ADDED
 OUTBOX_LEASE_RECOVERY_CONTRACT=SOURCE_ADDED
+OUTBOX_DEAD_LETTER_FENCING=SOURCE_ADDED
 CONTABO_GENERATED_CONTRACT_MIRROR=SOURCE_ADDED_NOT_TRACKED
 D1_OUTBOX_REPOSITORY=SOURCE_SCAFFOLD_ADDED
 D1_OUTBOX_SCHEMA=UNNUMBERED_DESIGN_ONLY
+OUTBOX_SENDER_REAPER=TRANSPORT_NEUTRAL_SOURCE_SCAFFOLD_ADDED
 REAL_D1_MIGRATION=NOT_IMPLEMENTED
 OUTBOX_BUSINESS_INSTRUMENTATION=NOT_IMPLEMENTED
-OUTBOX_SENDER=NOT_IMPLEMENTED
+WORKER_TRIGGER_WIRING=NOT_IMPLEMENTED
 TGS_NATIVE_EVENT_ADAPTER=WAITING_FOR_API_CONTRACT
 FULL_DOMAIN_INSTRUMENTATION=NOT_IMPLEMENTED
 LAST_PROVEN_HEAD=89ec58d39316582e99c8fc8e9f938a543accbe88
 LAST_PROVEN_CI=37004898233_SUCCESS
+CURRENT_HEAD_CI=IN_PROGRESS_AFTER_LATER_HARDENING
 TGSERVER_SOURCE_CHANGE=NONE
 DEPLOY=NONE
 ```
 
-`89ec58d39316582e99c8fc8e9f938a543accbe88`ではTypecheck App/Functions、Purpose audit/regression、App Runtime contract tests、Composer manual-purpose browser contractが全てSUCCESS。本文書更新後の新HEADは別途exact-head CIで再検証する。
+`89ec58d39316582e99c8fc8e9f938a543accbe88`ではTypecheck App/Functions、Purpose audit/regression、App Runtime contract tests、Composer manual-purpose browser contractが全てSUCCESS。後続hardeningはcurrent exact-head CIで再検証する。
 
 No App runtime path has been switched to TGserver vNext by this document/source scaffold.
