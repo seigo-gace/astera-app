@@ -52,33 +52,118 @@ export type AppEventEnvelope = {
   attributes?: Record<string, string | number | boolean | null>;
 };
 
+const VALID_SCOPES = new Set<string>(['system', 'user']);
+const VALID_DOMAINS = new Set<string>([
+  'runtime', 'auth', 'account', 'security', 'conversation', 'job', 'result', 'project',
+  'file', 'storage', 'billing', 'credit', 'plan', 'share', 'template', 'notification',
+  'privacy', 'developer_api', 'integration', 'reconciliation',
+]);
+const VALID_SEVERITIES = new Set<string>(['trace', 'debug', 'info', 'warn', 'error']);
+const VALID_REF_KEYS = new Set<string>([
+  'tenantRef', 'userRef', 'conversationId', 'turnId', 'jobId', 'resultId',
+  'projectId', 'fileId', 'operationId',
+]);
+const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/;
 const FORBIDDEN_ATTRIBUTE_KEY = /(?:password|passwd|secret|token|authorization|cookie|session|otp|cvv|card|private[_-]?payload|raw[_-]?prompt|raw[_-]?file|dek|api[_-]?key)/i;
 const NO_ATTRIBUTES = [] as const;
+const MAX_IDENTIFIER_LENGTH = 256;
+const MAX_REF_LENGTH = 512;
+const MAX_ATTRIBUTE_COUNT = 32;
+const MAX_ATTRIBUTE_KEY_LENGTH = 64;
+const MAX_ATTRIBUTE_STRING_LENGTH = 512;
 
-function nonEmpty(value: string, name: string): string {
+function requiredText(value: unknown, name: string, max = MAX_IDENTIFIER_LENGTH): string {
+  if (typeof value !== 'string') throw new Error(`APP_EVENT_${name}_REQUIRED`);
   const trimmed = value.trim();
   if (!trimmed) throw new Error(`APP_EVENT_${name}_REQUIRED`);
+  if (trimmed.length > max || /[\u0000-\u001f\u007f]/.test(trimmed)) {
+    throw new Error(`APP_EVENT_${name}_INVALID`);
+  }
   return trimmed;
 }
 
-export function validateAppEvent(input: AppEventEnvelope): AppEventEnvelope {
-  nonEmpty(input.eventId, 'EVENT_ID');
-  nonEmpty(input.occurredAt, 'OCCURRED_AT');
-  nonEmpty(input.event, 'NAME');
-  nonEmpty(input.correlationId, 'CORRELATION_ID');
-  nonEmpty(input.source, 'SOURCE');
+function optionalToken(value: unknown, name: string): void {
+  if (value === undefined) return;
+  const token = requiredText(value, name, 128);
+  if (!SAFE_TOKEN.test(token)) throw new Error(`APP_EVENT_${name}_INVALID`);
+}
 
-  if (input.scope === 'user' && !input.refs?.userRef) {
-    throw new Error('APP_EVENT_USER_REF_REQUIRED');
+function validateRefs(value: unknown): AppEventRef | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('APP_EVENT_REFS_INVALID');
   }
-  if (input.scope === 'system' && input.refs?.userRef) {
-    throw new Error('APP_EVENT_SYSTEM_USER_REF_FORBIDDEN');
+  const refs = value as Record<string, unknown>;
+  for (const [key, refValue] of Object.entries(refs)) {
+    if (!VALID_REF_KEYS.has(key)) throw new Error(`APP_EVENT_REF_NOT_ALLOWED:${key}`);
+    if (refValue === undefined) continue;
+    requiredText(refValue, `REF_${key.toUpperCase()}`, MAX_REF_LENGTH);
   }
+  return refs as AppEventRef;
+}
 
-  for (const key of Object.keys(input.attributes ?? {})) {
+function validateAttributes(value: unknown): Record<string, string | number | boolean | null> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('APP_EVENT_ATTRIBUTES_INVALID');
+  }
+  const attributes = value as Record<string, unknown>;
+  const entries = Object.entries(attributes);
+  if (entries.length > MAX_ATTRIBUTE_COUNT) throw new Error('APP_EVENT_ATTRIBUTES_TOO_MANY');
+  for (const [key, attributeValue] of entries) {
+    if (!key || key.length > MAX_ATTRIBUTE_KEY_LENGTH || /[\u0000-\u001f\u007f]/.test(key)) {
+      throw new Error(`APP_EVENT_ATTRIBUTE_KEY_INVALID:${key}`);
+    }
     if (FORBIDDEN_ATTRIBUTE_KEY.test(key)) {
       throw new Error(`APP_EVENT_FORBIDDEN_ATTRIBUTE:${key}`);
     }
+    if (
+      attributeValue !== null
+      && typeof attributeValue !== 'string'
+      && typeof attributeValue !== 'number'
+      && typeof attributeValue !== 'boolean'
+    ) {
+      throw new Error(`APP_EVENT_ATTRIBUTE_VALUE_INVALID:${key}`);
+    }
+    if (typeof attributeValue === 'number' && !Number.isFinite(attributeValue)) {
+      throw new Error(`APP_EVENT_ATTRIBUTE_VALUE_INVALID:${key}`);
+    }
+    if (
+      typeof attributeValue === 'string'
+      && (attributeValue.length > MAX_ATTRIBUTE_STRING_LENGTH || /[\u0000-\u001f\u007f]/.test(attributeValue))
+    ) {
+      throw new Error(`APP_EVENT_ATTRIBUTE_VALUE_INVALID:${key}`);
+    }
+  }
+  return attributes as Record<string, string | number | boolean | null>;
+}
+
+export function validateAppEvent(input: AppEventEnvelope): AppEventEnvelope {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('APP_EVENT_ENVELOPE_INVALID');
+  if ((input as { schema?: unknown }).schema !== 'astera.app.event.v1') throw new Error('APP_EVENT_SCHEMA_INVALID');
+
+  requiredText(input.eventId, 'EVENT_ID');
+  const occurredAt = requiredText(input.occurredAt, 'OCCURRED_AT', 64);
+  if (!Number.isFinite(Date.parse(occurredAt))) throw new Error('APP_EVENT_OCCURRED_AT_INVALID');
+  if (!VALID_SCOPES.has(input.scope)) throw new Error('APP_EVENT_SCOPE_INVALID');
+  if (!VALID_DOMAINS.has(input.domain)) throw new Error('APP_EVENT_DOMAIN_INVALID');
+  const eventName = requiredText(input.event, 'NAME', 128);
+  if (!SAFE_TOKEN.test(eventName)) throw new Error('APP_EVENT_NAME_INVALID');
+  if (!VALID_SEVERITIES.has(input.severity)) throw new Error('APP_EVENT_SEVERITY_INVALID');
+  requiredText(input.correlationId, 'CORRELATION_ID');
+  const source = requiredText(input.source, 'SOURCE', 128);
+  if (!SAFE_TOKEN.test(source)) throw new Error('APP_EVENT_SOURCE_INVALID');
+  optionalToken(input.state, 'STATE');
+  optionalToken(input.errorClass, 'ERROR_CLASS');
+
+  const refs = validateRefs(input.refs);
+  validateAttributes(input.attributes);
+
+  if (input.scope === 'user' && !refs?.userRef) {
+    throw new Error('APP_EVENT_USER_REF_REQUIRED');
+  }
+  if (input.scope === 'system' && refs?.userRef) {
+    throw new Error('APP_EVENT_SYSTEM_USER_REF_FORBIDDEN');
   }
   return input;
 }
