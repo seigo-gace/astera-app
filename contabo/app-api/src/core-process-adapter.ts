@@ -101,11 +101,31 @@ export const MANUAL_PURPOSE_CONTRACTS: Readonly<Record<ManualPurpose, ManualPurp
   },
 };
 
+export type CoreFileInspection = {
+  fileId: string;
+  sha256: string;
+  size: number;
+  detectedMime: string;
+  status: 'accepted' | 'rejected' | 'quarantined';
+  reasons: string[];
+};
+
+export type VerifiedFileMaterial = {
+  inspection: CoreFileInspection;
+  extractedText: string;
+};
+
+type CoreFileReference = {
+  upload_id?: string;
+  sha256?: string;
+};
+
 export type CoreProcessAdapterInput = {
   prompt: string;
   purpose: string;
   purpose_text?: string | null;
-  files: unknown[];
+  files: CoreFileReference[];
+  verified_file_materials?: readonly VerifiedFileMaterial[];
 };
 
 type AdapterError = Error & { code?: string; retryable?: boolean };
@@ -118,20 +138,59 @@ function manualPurpose(value: string): ManualPurpose | null {
   return MANUAL_PURPOSES.includes(value as ManualPurpose) ? value as ManualPurpose : null;
 }
 
-export function buildCoreProcessRequest(input: CoreProcessAdapterInput): { question: string; context?: string } {
-  if (input.files.length > 0) {
-    throw adapterError(
-      'ASTERA_FILE_INPUT_BRIDGE_NOT_CONNECTED',
-      'File付きJobを最新Astera Coreへ渡すContent Bridgeが未接続です。File内容を解析したふりをせず安全停止しました。',
-      false,
-    );
+function fileContext(input: CoreProcessAdapterInput): Array<Record<string, unknown>> | null {
+  if (input.files.length === 0) {
+    if ((input.verified_file_materials?.length ?? 0) > 0) {
+      throw adapterError('ASTERA_FILE_INPUT_BRIDGE_MISMATCH', 'File参照が無いJobへ抽出済みFile Materialは渡せません。', false);
+    }
+    return null;
   }
+  const materials = input.verified_file_materials ?? [];
+  if (materials.length !== input.files.length) {
+    throw adapterError('ASTERA_FILE_INPUT_BRIDGE_NOT_CONNECTED', 'File付きJobに検証済み抽出Materialが揃っていないため安全停止しました。', false);
+  }
+  const byFileId = new Map(materials.map((material) => [material.inspection.fileId, material]));
+  if (byFileId.size !== materials.length) {
+    throw adapterError('ASTERA_FILE_INSPECTION_DUPLICATED', 'File Inspectionが重複しています。', false);
+  }
+  return input.files.map((file) => {
+    const fileId = file.upload_id?.trim() || '';
+    const sha256 = file.sha256?.trim().toLowerCase() || '';
+    if (!fileId || !/^[a-f0-9]{64}$/.test(sha256)) {
+      throw adapterError('ASTERA_FILE_REFERENCE_INVALID', 'Coreへ渡すFile参照が不完全です。', false);
+    }
+    const material = byFileId.get(fileId);
+    if (!material) throw adapterError('ASTERA_FILE_INSPECTION_MISSING', `File Inspectionがありません: ${fileId}`, false);
+    const inspection = material.inspection;
+    if (inspection.status !== 'accepted') {
+      throw adapterError('ASTERA_FILE_INSPECTION_NOT_ACCEPTED', `File Security Pipelineでacceptedになっていません: ${fileId}`, false);
+    }
+    if (inspection.sha256.toLowerCase() !== sha256) {
+      throw adapterError('ASTERA_FILE_INSPECTION_SHA_MISMATCH', `File InspectionのSHA-256が参照と一致しません: ${fileId}`, false);
+    }
+    if (!Number.isSafeInteger(inspection.size) || inspection.size < 0 || !inspection.detectedMime.trim()) {
+      throw adapterError('ASTERA_FILE_INSPECTION_INVALID', `File Inspectionが不完全です: ${fileId}`, false);
+    }
+    const extractedText = material.extractedText.trim();
+    if (!extractedText) throw adapterError('ASTERA_FILE_EXTRACTED_TEXT_EMPTY', `抽出Textが空です: ${fileId}`, false);
+    return {
+      file_id: fileId,
+      sha256,
+      size: inspection.size,
+      detected_mime: inspection.detectedMime,
+      content: extractedText,
+    };
+  });
+}
 
+export function buildCoreProcessRequest(input: CoreProcessAdapterInput): { question: string; context?: string } {
   const question = input.prompt.trim();
   if (!question) throw adapterError('PROMPT_REQUIRED', 'Promptがありません。');
   const purpose = input.purpose.trim().toLowerCase();
   const purposeText = input.purpose_text?.trim() || '';
   const context: Record<string, unknown> = {};
+  const verifiedFiles = fileContext(input);
+  if (verifiedFiles) context.user_supplied_files = verifiedFiles;
   if (purposeText) {
     context.user_objective = {
       version: 'app-user-objective-v1',

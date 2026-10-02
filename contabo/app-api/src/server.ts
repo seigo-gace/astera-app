@@ -1,10 +1,12 @@
 import { serve } from '@hono/node-server';
 import { loadConfig } from './config.js';
 import { createFullApp } from './full-app.js';
+import { closeRuntimeResources, safeErrorCode } from './server-shutdown.js';
 
 const config = loadConfig();
-const { app, service } = createFullApp(config);
+const { app, service, privateDataBroker } = createFullApp(config);
 
+await privateDataBroker.ready();
 await service.database.ready();
 await service.recover();
 
@@ -19,6 +21,7 @@ console.log(JSON.stringify({
   event: 'astera_app_api_started',
   port: config.port,
   process_origin: new URL(config.processOrigin).origin,
+  private_broker: 'ready',
 }));
 
 let shuttingDown = false;
@@ -33,21 +36,35 @@ async function shutdown(signal: string) {
   force.unref();
   server.close(async () => {
     for (const controller of service.active.values()) controller.abort('server_shutdown');
-    await service.database.close().catch((error) => {
-      console.error(JSON.stringify({ level: 'error', event: 'database_close_failed', error: error instanceof Error ? error.message : String(error) }));
-    });
+    const closed = await closeRuntimeResources(privateDataBroker, service.database);
+    for (const failure of closed.failures) {
+      console.error(JSON.stringify({ level: 'error', ...failure }));
+    }
     clearTimeout(force);
+    if (!closed.ok) {
+      console.error(JSON.stringify({ level: 'error', event: 'shutdown_failed', signal, failure_count: closed.failures.length }));
+      process.exit(closed.exitCode);
+      return;
+    }
     console.log(JSON.stringify({ level: 'info', event: 'shutdown_completed', signal }));
-    process.exit(0);
+    process.exit(closed.exitCode);
   });
 }
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('unhandledRejection', (error) => {
-  console.error(JSON.stringify({ level: 'error', event: 'unhandled_rejection', error: error instanceof Error ? error.message : String(error) }));
+  console.error(JSON.stringify({
+    level: 'error',
+    event: 'unhandled_rejection',
+    code: safeErrorCode(error, 'UNHANDLED_REJECTION'),
+  }));
 });
 process.on('uncaughtException', (error) => {
-  console.error(JSON.stringify({ level: 'fatal', event: 'uncaught_exception', error: error.message }));
+  console.error(JSON.stringify({
+    level: 'fatal',
+    event: 'uncaught_exception',
+    code: safeErrorCode(error, 'UNCAUGHT_EXCEPTION'),
+  }));
   void shutdown('uncaughtException');
 });

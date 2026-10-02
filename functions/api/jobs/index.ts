@@ -5,6 +5,7 @@ import {
   requireAsteraActor,
   type AsteraFunctionEnv,
 } from '../../_account-projection';
+import { describePrivateRuntimeFile, type PrivateBrokerEnv } from '../../_private-data-broker-client';
 import {
   loadActiveCreditPolicy,
   normalizeEstimateInput,
@@ -25,7 +26,7 @@ import {
   validateCreditReservationBeforeInsert,
 } from '../../_credit-reservation-validation';
 
-type Env = AsteraFunctionEnv & RuntimeEnv;
+type Env = AsteraFunctionEnv & RuntimeEnv & PrivateBrokerEnv;
 type PagesContext = { request: Request; env: Env };
 
 type EstimateRow = {
@@ -65,8 +66,30 @@ async function loadFiles(
   userId: string,
   fileIds: string[],
   privateMode: boolean,
+  correlationId: string,
 ): Promise<UploadRow[]> {
   if (fileIds.length === 0) return [];
+
+  if (privateMode) {
+    return Promise.all(fileIds.map(async (id) => {
+      const file = await describePrivateRuntimeFile(context.env, { tenantId, userId, objectId: id, correlationId });
+      if (Date.parse(file.expires_at) <= Date.now()) {
+        throw new FunctionHttpError(409, 'UPLOAD_EXPIRED', 'Private Fileの有効期限が切れています。', { upload_id: id });
+      }
+      return {
+        id: file.upload_id,
+        storage_key: file.storage_key,
+        original_name: file.name,
+        content_type: file.content_type,
+        size_bytes: file.size_bytes,
+        sha256: file.sha256,
+        private_mode: 1,
+        status: 'ready',
+        expires_at: file.expires_at,
+      };
+    }));
+  }
+
   const placeholders = fileIds.map((_, index) => `?${index + 3}`).join(', ');
   const result = await context.env.ASTERA_DB.prepare(
     `SELECT id, storage_key, original_name, content_type, size_bytes, sha256, private_mode, status, expires_at
@@ -77,11 +100,11 @@ async function loadFiles(
   if (rows.length !== fileIds.length) throw new FunctionHttpError(409, 'UPLOAD_REFERENCE_NOT_FOUND', '指定されたFileの一部を確認できません。');
   const byId = new Map(rows.map((row) => [row.id, row]));
   const ordered = fileIds.map((id) => byId.get(id)).filter((row): row is UploadRow => Boolean(row));
-  const now = Date.now();
   for (const row of ordered) {
     if (row.status !== 'ready') throw new FunctionHttpError(409, 'UPLOAD_NOT_READY', 'File UploadがReady状態ではありません。', { upload_id: row.id });
-    if (row.expires_at && Date.parse(row.expires_at) <= now) throw new FunctionHttpError(409, 'UPLOAD_EXPIRED', 'Private Fileの有効期限が切れています。', { upload_id: row.id });
-    if (Boolean(row.private_mode) !== privateMode) throw new FunctionHttpError(409, 'UPLOAD_PRIVACY_MODE_MISMATCH', 'Fileの保存ModeとPrivate Modeが一致しません。', { upload_id: row.id });
+    if (Boolean(row.private_mode)) {
+      throw new FunctionHttpError(409, 'PRIVATE_UPLOAD_NORMAL_JOB_FORBIDDEN', 'Private Fileを通常保存Jobへ戻すことはできません。', { upload_id: row.id });
+    }
   }
   return ordered;
 }
@@ -120,6 +143,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
 
     const input = normalizeEstimateInput(raw);
     const purposeText = normalizePurposeText(raw);
+    const persistedPurposeText = input.privateMode ? null : purposeText;
     const [estimate, policy, files] = await Promise.all([
       context.env.ASTERA_DB.prepare(
         `SELECT id, tenant_id, user_id, request_fingerprint, policy_version, required_credits,
@@ -128,7 +152,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
          FROM job_estimates WHERE id = ?1 LIMIT 1`,
       ).bind(estimateId).first<EstimateRow>(),
       loadActiveCreditPolicy(context.env.ASTERA_DB),
-      loadFiles(context, actor.profile.tenant_id, actor.user.id, input.fileIds, input.privateMode),
+      loadFiles(context, actor.profile.tenant_id, actor.user.id, input.fileIds, input.privateMode, correlationId),
     ]);
     if (!estimate) throw new FunctionHttpError(404, 'JOB_ESTIMATE_NOT_FOUND', 'Job Estimateが見つかりません。');
     if (estimate.tenant_id !== actor.profile.tenant_id || estimate.user_id !== actor.user.id) throw new FunctionHttpError(403, 'JOB_ESTIMATE_OWNERSHIP_MISMATCH', '別Account／TenantのEstimateは使用できません。');
@@ -208,14 +232,14 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
              created_at, updated_at, completed_at, cancelled_at)
            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserving_credit', ?7, ?8, ?9, ?10, ?11, ?12,
                    NULL, ?13, NULL, NULL, NULL, NULL, NULL, ?14, ?14, NULL, NULL)`,
-        ).bind(jobId, actor.profile.tenant_id, actor.user.id, requestId, estimate.id, fingerprint, input.purpose, purposeText, optionSummary, files.length, input.privateMode ? 1 : 0, input.projectId, Number(estimate.required_credits), now.toISOString()),
+        ).bind(jobId, actor.profile.tenant_id, actor.user.id, requestId, estimate.id, fingerprint, input.purpose, persistedPurposeText, optionSummary, files.length, input.privateMode ? 1 : 0, input.projectId, Number(estimate.required_credits), now.toISOString()),
         context.env.ASTERA_DB.prepare(
           `UPDATE job_estimates SET status = 'consumed', consumed_at = ?1 WHERE id = ?2 AND status = 'active'`,
         ).bind(now.toISOString(), estimate.id),
         context.env.ASTERA_DB.prepare(
           `INSERT INTO job_events (id, job_id, from_state, to_state, correlation_id, metadata, created_at)
            VALUES (?1, ?2, NULL, 'reserving_credit', ?3, ?4, ?5)`,
-        ).bind(crypto.randomUUID(), jobId, correlationId, JSON.stringify({ estimate_id: estimate.id, policy_version: policy.version, purpose_text: purposeText }), now.toISOString()),
+        ).bind(crypto.randomUUID(), jobId, correlationId, JSON.stringify({ estimate_id: estimate.id, policy_version: policy.version, purpose_text: persistedPurposeText }), now.toISOString()),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

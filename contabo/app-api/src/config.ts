@@ -16,6 +16,13 @@ export type RuntimeConfig = {
   tgserverStorageToken: string;
   tgserverStorageTimeoutMs: number;
   storageUploadTmpDir?: string;
+  privateDataTmpDir?: string;
+  privateUploadMaxBytes?: number;
+  clamavHost?: string;
+  clamavPort?: number;
+  clamavTimeoutMs?: number;
+  fileSecurityPolicyVersion?: string;
+  fileSecurityMaxExtractedTextBytes?: number;
 };
 
 function required(value: string | undefined, name: string): string {
@@ -72,6 +79,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     tgserverStorageToken: tgserverStorageOrigin ? required(env.TGS_STORAGE_INTERNAL_TOKEN, 'TGS_STORAGE_INTERNAL_TOKEN') : '',
     tgserverStorageTimeoutMs: integer(env.TGS_STORAGE_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
     storageUploadTmpDir: env.ASTERA_STORAGE_UPLOAD_TMP_DIR?.trim() || '/var/lib/astera-storage-upload',
+    privateDataTmpDir: env.ASTERA_PRIVATE_DATA_TMP_DIR?.trim() || '/run/astera-private-data',
+    privateUploadMaxBytes: integer(env.ASTERA_PRIVATE_UPLOAD_MAX_BYTES, 20 * 1024 * 1024, 1, 100 * 1024 * 1024),
+    clamavHost: env.ASTERA_CLAMAV_HOST?.trim() || '',
+    clamavPort: integer(env.ASTERA_CLAMAV_PORT, 3310, 1, 65_535),
+    clamavTimeoutMs: integer(env.ASTERA_CLAMAV_TIMEOUT_MS, 30_000, 1_000, 120_000),
+    fileSecurityPolicyVersion: env.ASTERA_FILE_SECURITY_POLICY_VERSION?.trim() || 'file-security-v1',
+    fileSecurityMaxExtractedTextBytes: integer(env.ASTERA_FILE_SECURITY_MAX_EXTRACTED_TEXT_BYTES, 20 * 1024 * 1024, 1, 100 * 1024 * 1024),
   };
 }
 

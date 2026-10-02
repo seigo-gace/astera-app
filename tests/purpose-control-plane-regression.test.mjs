@@ -72,6 +72,20 @@ test('estimate exposes purpose provenance without rewriting prompt', () => {
   assert.match(source, /purpose_origin:\s*purposeSelectionOrigin\(input\.purpose\)/);
 });
 
+test('private custom purpose text and failure messages stay transient instead of being persisted to D1', () => {
+  const jobs = readFileSync(new URL('../functions/api/jobs/index.ts', import.meta.url), 'utf8');
+  assert.match(jobs, /const persistedPurposeText = input\.privateMode \? null : purposeText;/);
+  assert.match(jobs, /input\.purpose, persistedPurposeText, optionSummary/);
+  assert.match(jobs, /purpose_text: persistedPurposeText/);
+  assert.match(jobs, /purpose_text: purposeText,\n\s+options: input\.options/);
+
+  const settlement = readFileSync(new URL('../functions/_job-settlement.ts', import.meta.url), 'utf8');
+  assert.match(settlement, /const persistedMessage = Boolean\(job\.private_mode\) \? null : message;/);
+  assert.match(settlement, /\.bind\(state, code, persistedMessage, now, job\.id\)/);
+  assert.match(settlement, /JSON\.stringify\(Boolean\(job\.private_mode\) \? \{ code \} : \{ code, message \}\)/);
+  assert.match(settlement, /error_message: message/);
+});
+
 test('result and history preserve selected purpose as provenance instead of reclassifying text', () => {
   const trigger = readFileSync(new URL('../migrations/d1/0009_result_settlement_trigger.sql', import.meta.url), 'utf8');
   const history = readFileSync(new URL('../functions/_history-store.ts', import.meta.url), 'utf8');

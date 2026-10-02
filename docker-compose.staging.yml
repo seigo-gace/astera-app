@@ -9,6 +9,12 @@ services:
     environment:
       ASTERA_PROCESS_ORIGIN: http://host.docker.internal:7374
       LIBRAL_VAULT_INTERNAL_ORIGIN: http://libral-vault-libral-vault-1:8791
+      ASTERA_PRIVATE_DATA_TMP_DIR: /run/astera-private-data
+      ASTERA_PRIVATE_UPLOAD_MAX_BYTES: "20971520"
+      ASTERA_FILE_SECURITY_POLICY_VERSION: file-security-v1
+      ASTERA_FILE_SECURITY_MAX_EXTRACTED_TEXT_BYTES: "20971520"
+    tmpfs:
+      - /run/astera-private-data:size=268435456,mode=0700,uid=10001,gid=10001
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
