@@ -93,11 +93,9 @@ export async function runAppEventOutboxCycle(
     claimed += 1;
     const claim = outboxClaim(sending);
 
+    let receipt: AppEventDeliveryReceipt;
     try {
-      const receipt = await delivery.deliverCommitted(sending.event, sending.idempotencyKey);
-      const completionNow = clock.now();
-      await markAppEventOutboxDelivered(db, claim, completionNow, receipt.operationId);
-      delivered += 1;
+      receipt = await delivery.deliverCommitted(sending.event, sending.idempotencyKey);
     } catch (error) {
       const failureNow = clock.now();
       const retryAt = policy.retryAt(failureNow, sending, error);
@@ -108,7 +106,12 @@ export async function runAppEventOutboxCycle(
         await scheduleAppEventOutboxRetry(db, claim, failureNow, retryAt, sending.tgsOperationId);
         retryScheduled += 1;
       }
+      continue;
     }
+
+    const completionNow = clock.now();
+    await markAppEventOutboxDelivered(db, claim, completionNow, receipt.operationId);
+    delivered += 1;
   }
 
   return {
