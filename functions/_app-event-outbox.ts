@@ -22,14 +22,16 @@ type OutboxRow = {
   updated_at: string;
 };
 
-function iso(value: string, code: string): string {
+function iso(value: unknown, code: string): string {
+  if (typeof value !== 'string') throw new Error(code);
   const trimmed = value.trim();
   const parsed = Date.parse(trimmed);
   if (!trimmed || !Number.isFinite(parsed)) throw new Error(code);
   return new Date(parsed).toISOString();
 }
 
-function boundedText(value: string, code: string, max: number): string {
+function boundedText(value: unknown, code: string, max: number): string {
+  if (typeof value !== 'string') throw new Error(code);
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > max || /[\u0000-\u001f\u007f]/.test(trimmed)) throw new Error(code);
   return trimmed;
@@ -43,7 +45,7 @@ function operationId(value: string | undefined): string | null {
   return value === undefined ? null : boundedText(value, 'APP_EVENT_OUTBOX_TGS_OPERATION_ID_INVALID', 512);
 }
 
-function requiredOperationId(value: string): string {
+function requiredOperationId(value: unknown): string {
   return boundedText(value, 'APP_EVENT_OUTBOX_TGS_OPERATION_ID_REQUIRED', 512);
 }
 
