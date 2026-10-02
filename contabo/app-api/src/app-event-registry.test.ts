@@ -69,9 +69,17 @@ test('required correlation references fail closed when absent', () => {
   assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_REQUIRED_REF_MISSING:RESULT_CREATED:resultId/);
 });
 
+test('safe-looking arbitrary attributes are rejected unless the registry explicitly allows them', () => {
+  const input = event('JOB_COMPLETED');
+  input.attributes = { note: 'must not carry arbitrary payload' };
+  assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_ATTRIBUTE_NOT_ALLOWED:JOB_COMPLETED:note/);
+});
+
 test('current registry keeps transient upload and persistent storage events separate', () => {
   assert.equal(APP_EVENT_REGISTRY.FILE_UPLOAD_READY.domain, 'file');
   assert.equal(APP_EVENT_REGISTRY.STORAGE_OBJECT_STORED.domain, 'storage');
   assert.deepEqual(APP_EVENT_REGISTRY.FILE_UPLOAD_READY.requiredRefs, ['userRef', 'fileId']);
   assert.deepEqual(APP_EVENT_REGISTRY.STORAGE_OBJECT_STORED.requiredRefs, ['userRef', 'fileId']);
+  assert.deepEqual(APP_EVENT_REGISTRY.FILE_UPLOAD_READY.allowedAttributes, []);
+  assert.deepEqual(APP_EVENT_REGISTRY.STORAGE_OBJECT_STORED.allowedAttributes, []);
 });
