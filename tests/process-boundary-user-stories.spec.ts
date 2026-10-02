@@ -28,13 +28,16 @@ test('STORY-PROCESS-001 failed real-byte upload blocks estimate and preserves fi
 
   await page.goto('/app/new');
   await page.locator('input[type="file"]').setInputFiles({ name: 'evidence.txt', mimeType: 'text/plain', buffer: Buffer.from('actual bytes') });
-  await expect(page.locator('.native-file-queue')).toContainText('UPLOAD_STORAGE_FAILED');
+  await expect(page.locator('.native-file-queue')).toContainText('evidence.txt');
+  await expect(page.locator('.native-file-queue')).toContainText('再試行してください');
+  await expect(page.locator('.native-file-queue')).not.toContainText('UPLOAD_STORAGE_FAILED');
   const textarea = page.getByLabel('Astera入力');
   await textarea.fill('添付Fileを根拠として検証する');
   await textarea.press('Control+Enter');
 
-  await expect(page.locator('.native-error')).toContainText('FILE_UPLOAD_FAILED');
+  await expect(page.locator('.native-error')).toHaveCount(0);
   await expect(page.locator('.native-file-queue')).toContainText('evidence.txt');
+  await expect(page.locator('.native-file-queue')).toContainText('再試行してください');
   await expect(textarea).toHaveValue('添付Fileを根拠として検証する');
   expect(estimateRequests).toBe(0);
 });
@@ -64,7 +67,8 @@ test('STORY-PROCESS-003 non-JSON estimate success fails closed and preserves the
   await textarea.fill('ProxyのHTMLをResultとして表示しない');
   await textarea.press('Control+Enter');
 
-  await expect(page.locator('.native-error')).toContainText('JOB_ESTIMATE_INVALID');
+  await expect(page.locator('.native-error')).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText('JOB_ESTIMATE_INVALID');
   await expect(page.locator('.native-result-section')).toHaveCount(0);
   await expect(textarea).toHaveValue('ProxyのHTMLをResultとして表示しない');
 });
