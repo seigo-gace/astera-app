@@ -144,3 +144,19 @@ test('outbox rejects event names outside the closed registry', () => {
   invalid.event.event = 'FILE_STORED';
   assert.throws(() => validateOutboxRecord(invalid), /APP_EVENT_NOT_REGISTERED:FILE_STORED/);
 });
+
+test('outbox rejects unknown runtime states instead of trusting TypeScript casts', () => {
+  const invalid = record() as AppEventOutboxRecord & { state: string };
+  invalid.state = 'teleported';
+  assert.throws(() => validateOutboxRecord(invalid as AppEventOutboxRecord), /OUTBOX_STATE_INVALID/);
+});
+
+test('TGserver operation identity rejects control characters and oversized values', () => {
+  const invalidControl = record('delivered');
+  invalidControl.tgsOperationId = 'op\nsecret';
+  assert.throws(() => validateOutboxRecord(invalidControl), /OUTBOX_TGS_OPERATION_ID_INVALID/);
+
+  const invalidLong = record('delivered');
+  invalidLong.tgsOperationId = `op-${'x'.repeat(600)}`;
+  assert.throws(() => validateOutboxRecord(invalidLong), /OUTBOX_TGS_OPERATION_ID_INVALID/);
+});
