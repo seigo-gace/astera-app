@@ -108,10 +108,10 @@ test('native store does not report asynchronous delete acceptance as completed d
   );
 });
 
-test('native store rejects a legacy physical locator at the Native boundary', async () => {
+test('native store rejects a legacy physical locator at the Native boundary', () => {
   const client = new FakeClient();
   const store = new TgserverNativeV1ObjectStore(client);
-  await assert.rejects(
+  assert.throws(
     () => store.read({ ...readInput(), locator: { kind: 'tgs-legacy-v15', topicId: 1, messageId: 2, telegramFileId: 'legacy' } }),
     /PERSISTENT_OBJECT_NATIVE_LOCATOR_REQUIRED/,
   );
