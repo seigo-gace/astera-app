@@ -9,10 +9,14 @@ function required(value: string | null | undefined, code: string): string {
   return normalized;
 }
 
-function positiveInteger(value: string | null | undefined, code: string): number {
-  const parsed = Number(required(value, code));
+function positiveInteger(
+  value: string | null | undefined,
+  requiredCode: string,
+  invalidCode: string,
+): number {
+  const parsed = Number(required(value, requiredCode));
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new StorageApiError(422, code, `${code} is invalid.`);
+    throw new StorageApiError(422, invalidCode, `${invalidCode} is invalid.`);
   }
   return parsed;
 }
@@ -43,8 +47,8 @@ export function storagePersistentLocatorFromHeaders(headers: Headers): Persisten
   if (profile === 'legacy_v15') {
     return {
       kind: 'tgs-legacy-v15',
-      topicId: positiveInteger(headers.get('x-astera-topic-id'), 'STORAGE_TOPIC_ID_INVALID'),
-      messageId: positiveInteger(headers.get('x-astera-message-id'), 'STORAGE_MESSAGE_ID_INVALID'),
+      topicId: positiveInteger(headers.get('x-astera-topic-id'), 'STORAGE_TOPIC_ID_REQUIRED', 'STORAGE_TOPIC_ID_INVALID'),
+      messageId: positiveInteger(headers.get('x-astera-message-id'), 'STORAGE_MESSAGE_ID_REQUIRED', 'STORAGE_MESSAGE_ID_INVALID'),
       telegramFileId: required(headers.get('x-astera-telegram-file-id'), 'STORAGE_TELEGRAM_FILE_ID_REQUIRED'),
     };
   }

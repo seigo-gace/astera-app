@@ -46,6 +46,21 @@ test('missing profile remains backward compatible with legacy internal headers',
   });
 });
 
+test('legacy missing and invalid physical headers preserve the existing error split', () => {
+  assert.throws(
+    () => storagePersistentLocatorFromHeaders(new Headers()),
+    (error: unknown) => error instanceof StorageApiError && error.code === 'STORAGE_TOPIC_ID_REQUIRED',
+  );
+  assert.throws(
+    () => storagePersistentLocatorFromHeaders(new Headers({
+      'x-astera-topic-id': 'nope',
+      'x-astera-message-id': '20',
+      'x-astera-telegram-file-id': 'file-ref',
+    })),
+    (error: unknown) => error instanceof StorageApiError && error.code === 'STORAGE_TOPIC_ID_INVALID',
+  );
+});
+
 test('native profile reads logical locator without requiring Telegram physical headers', () => {
   const headers = new Headers({
     'x-astera-tgs-profile': 'native_v1',
