@@ -12,11 +12,11 @@ function body(): ReadableStream<Uint8Array> {
 }
 
 test('maps legacy upload locator behind PersistentObjectStore', async () => {
-  let uploadInput: Parameters<TgserverLegacyV15ClientLike['upload']>[0] | null = null;
+  let seenUserId = '';
   const client: TgserverLegacyV15ClientLike = {
     configured: true,
     async upload(input) {
-      uploadInput = input;
+      seenUserId = input.userId;
       return {
         file_id: 'legacy-file',
         topic_id: 12,
@@ -35,7 +35,7 @@ test('maps legacy upload locator behind PersistentObjectStore', async () => {
   const result = await store.put({ objectId: 'obj-1', ownerId: 'user-1', fileName: 'a.txt', fileSize: 3, body: body() });
 
   assert.equal(store.configured, true);
-  assert.equal(uploadInput?.userId, 'user-1');
+  assert.equal(seenUserId, 'user-1');
   assert.deepEqual(result, {
     objectId: 'obj-1',
     protocol: 'tgs-legacy-v15',
@@ -62,8 +62,8 @@ test('legacy read and delete require legacy locator and delegate exact physical 
   await store.delete({ objectId: 'obj-2', ownerId: 'user-2', locator });
 
   assert.deepEqual(calls, [
-    ['read', { userId: 'user-2', topicId: 7, messageId: 8, telegramFileId: 'tf-9', fileName: 'b.bin', signal: undefined }],
-    ['delete', { userId: 'user-2', topicId: 7, messageId: 8, telegramFileId: 'tf-9', signal: undefined }],
+    ['read', { userId: 'user-2', topicId: 7, messageId: 8, telegramFileId: 'tf-9', fileName: 'b.bin' }],
+    ['delete', { userId: 'user-2', topicId: 7, messageId: 8, telegramFileId: 'tf-9' }],
   ]);
 });
 
