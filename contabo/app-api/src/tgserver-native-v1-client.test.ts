@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TgserverNativeV1Client, TgserverNativeV1Error } from './tgserver-native-v1-client.js';
 
-type SeenRequest = { url: string; init?: RequestInit };
+type SeenRequest = { url: string; init: RequestInit | undefined };
 
 function json(body: Record<string, unknown>, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
