@@ -31,6 +31,7 @@ export type AppEventRef = {
   turnId?: string;
   jobId?: string;
   resultId?: string;
+  revisionId?: string;
   projectId?: string;
   fileId?: string;
   operationId?: string;
@@ -60,7 +61,7 @@ const VALID_DOMAINS = new Set<string>([
 ]);
 const VALID_SEVERITIES = new Set<string>(['trace', 'debug', 'info', 'warn', 'error']);
 const VALID_REF_KEYS = new Set<string>([
-  'tenantRef', 'userRef', 'conversationId', 'turnId', 'jobId', 'resultId',
+  'tenantRef', 'userRef', 'conversationId', 'turnId', 'jobId', 'resultId', 'revisionId',
   'projectId', 'fileId', 'operationId',
 ]);
 const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/;
@@ -237,7 +238,7 @@ export const APP_EVENT_REGISTRY = {
   },
   RESULT_REVISED: {
     domain: 'result', scope: 'user', delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'resultId'], allowedAttributes: NO_ATTRIBUTES,
+    requiredRefs: ['userRef', 'resultId', 'revisionId'], allowedAttributes: NO_ATTRIBUTES,
   },
   RESULT_DELETION_SCHEDULED: {
     domain: 'result', scope: 'user', delivery: 'durable_outbox',
@@ -330,6 +331,7 @@ const ALLOWED_TRANSITIONS: Readonly<Record<AppEventOutboxState, readonly AppEven
   delivered: [],
   dead_letter: [],
 };
+const VALID_OUTBOX_STATES = new Set<string>(Object.keys(ALLOWED_TRANSITIONS));
 
 function instant(value: string | undefined, code: string): number {
   if (!value?.trim()) throw new Error(code);
@@ -339,12 +341,17 @@ function instant(value: string | undefined, code: string): number {
 }
 
 export function validateOutboxRecord(record: AppEventOutboxRecord): AppEventOutboxRecord {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('APP_EVENT_OUTBOX_RECORD_INVALID');
+  }
   validateRegisteredAppEvent(record.event);
-  if (!record.id.trim()) throw new Error('APP_EVENT_OUTBOX_ID_REQUIRED');
-  if (!record.eventId.trim()) throw new Error('APP_EVENT_OUTBOX_EVENT_ID_REQUIRED');
+  requiredText(record.id, 'OUTBOX_ID');
+  requiredText(record.eventId, 'OUTBOX_EVENT_ID');
   if (record.eventId !== record.event.eventId) throw new Error('APP_EVENT_OUTBOX_EVENT_ID_MISMATCH');
-  if (!record.idempotencyKey.trim()) throw new Error('APP_EVENT_OUTBOX_IDEMPOTENCY_KEY_REQUIRED');
+  requiredText(record.idempotencyKey, 'OUTBOX_IDEMPOTENCY_KEY', 512);
+  if (!VALID_OUTBOX_STATES.has(record.state)) throw new Error('APP_EVENT_OUTBOX_STATE_INVALID');
   if (!Number.isSafeInteger(record.attempt) || record.attempt < 0) throw new Error('APP_EVENT_OUTBOX_ATTEMPT_INVALID');
+  if (record.tgsOperationId !== undefined) requiredText(record.tgsOperationId, 'OUTBOX_TGS_OPERATION_ID', 512);
 
   const createdAt = instant(record.createdAt, 'APP_EVENT_OUTBOX_CREATED_AT_INVALID');
   const updatedAt = instant(record.updatedAt, 'APP_EVENT_OUTBOX_UPDATED_AT_INVALID');
@@ -369,7 +376,8 @@ export function validateOutboxRecord(record: AppEventOutboxRecord): AppEventOutb
 }
 
 export function assertOutboxTransition(from: AppEventOutboxState, to: AppEventOutboxState): void {
-  if (!ALLOWED_TRANSITIONS[from].includes(to)) {
+  const allowed = ALLOWED_TRANSITIONS[from];
+  if (!allowed || !allowed.includes(to)) {
     throw new Error(`APP_EVENT_OUTBOX_TRANSITION_FORBIDDEN:${from}->${to}`);
   }
 }
