@@ -103,10 +103,12 @@ export function appEventRouteIntent(event: AppEventEnvelope): {
       class: `${event.domain}.${event.severity}`,
     };
   }
+  const ownerKey = event.refs?.userRef;
+  if (!ownerKey) throw new Error('APP_EVENT_USER_REF_REQUIRED');
   return {
     namespace: 'astera-app',
     streamKey: 'user',
     class: `${event.domain}.${event.severity}`,
-    ownerKey: event.refs!.userRef,
+    ownerKey,
   };
 }
