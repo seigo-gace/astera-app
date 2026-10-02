@@ -24,6 +24,7 @@ on:
       - 'docs/integrations/tgserver-vnext-app-event-log-design.md'
       - 'docs/integrations/tgserver-vnext-app-event-emission-map.md'
       - 'docs/integrations/tgserver-vnext-app-event-outbox-schema.sql'
+      - 'tests/app-event-outbox-repository-regression.test.mjs'
       - 'tests/manual-purpose-contract.spec.ts'
       - 'tests/manual-purpose-long-regression.spec.ts'
       - 'tests/purpose-control-plane-regression.test.mjs'
@@ -52,6 +53,7 @@ on:
       - 'docs/integrations/tgserver-vnext-app-event-log-design.md'
       - 'docs/integrations/tgserver-vnext-app-event-emission-map.md'
       - 'docs/integrations/tgserver-vnext-app-event-outbox-schema.sql'
+      - 'tests/app-event-outbox-repository-regression.test.mjs'
       - 'tests/manual-purpose-contract.spec.ts'
       - 'tests/manual-purpose-long-regression.spec.ts'
       - 'tests/purpose-control-plane-regression.test.mjs'
@@ -81,8 +83,8 @@ jobs:
           npm run contract:check
       - name: Audit Purpose control/data-plane separation
         run: node scripts/purpose-control-plane-audit.mjs
-      - name: Run Purpose revision/provenance regressions
-        run: node --experimental-strip-types --test tests/purpose-control-plane-regression.test.mjs
+      - name: Run Source contract regressions
+        run: node --experimental-strip-types --test tests/purpose-control-plane-regression.test.mjs tests/app-event-outbox-repository-regression.test.mjs
       - name: Run App Runtime purpose contract tests
         run: npm run contabo:test
       - name: Install browser representatives
