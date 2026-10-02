@@ -157,18 +157,19 @@ test('STORY-COMPOSER-002 successful post clears textarea and preserves user bubb
   await expect(page.locator('.native-response')).toBeVisible();
 });
 
-test('STORY-COMPOSER-003 estimate failure preserves draft and creates no posted turn', async ({ page }) => {
+test('STORY-COMPOSER-003 estimate system failure preserves draft without exposing internal failure', async ({ page }) => {
   await installRuntime(page, { estimateFailure: true });
   await openComposer(page);
   const textarea = page.getByLabel('Astera入力');
   await textarea.fill('通信が切れても入力を残す');
   await textarea.press('Control+Enter');
-  await expect(page.locator('.native-error')).toBeVisible();
+  await expect(page.locator('.native-error')).toHaveCount(0);
   await expect(textarea).toHaveValue('通信が切れても入力を残す');
   await expect(page.locator('.native-user-message')).toHaveCount(0);
+  await expect(page.getByLabel('実行')).toBeEnabled();
 });
 
-test('STORY-COMPOSER-004 incomplete accepted Result fails closed but keeps the posted turn', async ({ page }) => {
+test('STORY-COMPOSER-004 incomplete internal Result fails closed without exposing system error', async ({ page }) => {
   await installRuntime(page, { incompleteResult: true });
   await openComposer(page);
   const textarea = page.getByLabel('Astera入力');
@@ -176,8 +177,9 @@ test('STORY-COMPOSER-004 incomplete accepted Result fails closed but keeps the p
   await textarea.press('Control+Enter');
   await expect(textarea).toHaveValue('');
   await expect(page.locator('.native-user-message')).toContainText('固定8項目が必要');
-  await expect(page.locator('.native-error')).toContainText('ASTERA_RESPONSE_SECTIONS_INCOMPLETE');
+  await expect(page.locator('.native-error')).toHaveCount(0);
   await expect(page.locator('.native-result-section')).toHaveCount(0);
+  await expect(page.getByLabel('投稿を編集')).toBeEnabled();
 });
 
 test('STORY-COMPOSER-005 two normal posts remain two turns and second post is not an automatic revision', async ({ page }) => {
@@ -197,7 +199,7 @@ test('STORY-COMPOSER-005 two normal posts remain two turns and second post is no
   expect(jobBodies[1]).not.toHaveProperty('revision_base_prompt');
 });
 
-test('STORY-COMPOSER-005B normal mode keeps the composer page usable for continuous posts and saves each turn', async ({ page }) => {
+test('STORY-COMPOSER-005B normal mode remains usable for three continuous posts and saves every turn to one conversation', async ({ page }) => {
   const counters = { estimates: 0, jobs: 0, conversations: 0 };
   const conversationBodies: Array<Record<string, unknown>> = [];
   await installRuntime(page, { counters, conversationBodies });
@@ -213,10 +215,17 @@ test('STORY-COMPOSER-005B normal mode keeps the composer page usable for continu
   await page.getByLabel('Astera入力').press('Control+Enter');
   await expect(page.locator('.native-user-message')).toHaveCount(2);
   await expect(page.locator('.native-result-section')).toHaveCount(16);
-  expect(counters.conversations).toBe(2);
-  expect(conversationBodies.map((body) => body.prompt)).toEqual(['通常Modeの1回目', '通常Modeの2回目']);
+
+  await page.getByLabel('Astera入力').fill('通常Modeの3回目');
+  await page.getByLabel('Astera入力').press('Control+Enter');
+  await expect(page.locator('.native-user-message')).toHaveCount(3);
+  await expect(page.locator('.native-result-section')).toHaveCount(24);
+
+  expect(counters.conversations).toBe(3);
+  expect(conversationBodies.map((body) => body.prompt)).toEqual(['通常Modeの1回目', '通常Modeの2回目', '通常Modeの3回目']);
   expect(conversationBodies[0].conversation_id).toBeNull();
   expect(conversationBodies[1].conversation_id).toBe('conversation-story');
+  expect(conversationBodies[2].conversation_id).toBe('conversation-story');
 });
 
 test('STORY-COMPOSER-006 edit action uses revision only for the edited turn', async ({ page }) => {
@@ -238,14 +247,14 @@ test('STORY-COMPOSER-006 edit action uses revision only for the edited turn', as
   await expect(page.locator('.native-user-message > p')).toHaveText('修整後の投稿');
 });
 
-test('STORY-COMPOSER-006B failed terminal turn remains editable for correction and retry', async ({ page }) => {
+test('STORY-COMPOSER-006B failed terminal turn remains editable without exposing internal failure and can be retried', async ({ page }) => {
   const jobBodies: Array<Record<string, unknown>> = [];
   await installRuntime(page, { failedFirstJob: true, jobBodies });
   await openComposer(page);
   const textarea = page.getByLabel('Astera入力');
   await textarea.fill('Main8に失敗した投稿');
   await textarea.press('Control+Enter');
-  await expect(page.locator('.native-error')).toContainText('ASTERA_MAIN8_RESPONSE_INCOMPLETE');
+  await expect(page.locator('.native-error')).toHaveCount(0);
   const editButton = page.getByLabel('投稿を編集');
   await expect(editButton).toBeEnabled();
   await editButton.click();
@@ -387,13 +396,17 @@ test('STORY-COMPOSER-011 user bubble has copy and edit actions and assistant rem
   expect(await response.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe('0px');
 });
 
-test('STORY-COMPOSER-012 plus and at reflect sidebar preference candidates', async ({ page }) => {
+test('STORY-COMPOSER-012 disabled sidebar option remains discoverable in plus and guides user to enable it', async ({ page }) => {
   await installRuntime(page, { preferences: { translation: true, agent_mode: false, document: true, storage_transfer: true } });
   await openComposer(page);
   await page.getByLabel('Fileと実行Optionを追加').click();
   let dialog = page.getByRole('dialog', { name: '追加' });
   await expect(dialog.getByText('高精度翻訳', { exact: true })).toBeVisible();
-  await expect(dialog.getByText('Agent Mode', { exact: true })).toHaveCount(0);
+  const disabledAgent = dialog.getByRole('button', { name: 'Agent Modeは設定でオフです' });
+  await expect(disabledAgent).toBeVisible();
+  await expect(disabledAgent).toContainText('OFF');
+  await disabledAgent.click();
+  await expect(dialog.getByRole('status')).toContainText('Agent Modeをオンにしてください。');
   await expect(dialog.getByText('外部Storage転送', { exact: true })).toBeVisible();
   await dialog.getByLabel('閉じる').click();
   await page.getByLabel('Astera入力').press('@');
@@ -420,7 +433,7 @@ test('STORY-COMPOSER-013 sidebar falls back to legacy Result history when Conver
   await expect(recentHistory.locator('a[href="/app/results/result-legacy"]')).toBeVisible();
 });
 
-test('STORY-COMPOSER-014 persisted failed Job restores the real terminal error instead of queued state', async ({ page }) => {
+test('STORY-COMPOSER-014 persisted failed Job restores terminal state without exposing internal runtime details', async ({ page }) => {
   await installRuntime(page, {
     conversationDetail: {
       conversation: {
@@ -440,7 +453,7 @@ test('STORY-COMPOSER-014 persisted failed Job restores the real terminal error i
   });
   await openComposer(page, '/app/chats/conversation-story');
   await expect(page.locator('.native-user-message > p')).toHaveText('失敗した過去投稿');
-  await expect(page.locator('.native-error')).toContainText('実Runtime失敗');
-  await expect(page.locator('.native-error')).toContainText('RUNTIME_FAILED');
+  await expect(page.locator('.native-error')).toHaveCount(0);
   await expect(page.locator('.native-processing')).toHaveCount(0);
+  await expect(page.getByLabel('投稿を編集')).toBeEnabled();
 });
