@@ -53,6 +53,7 @@ export type AppEventEnvelope = {
 };
 
 const FORBIDDEN_ATTRIBUTE_KEY = /(?:password|passwd|secret|token|authorization|cookie|session|otp|cvv|card|private[_-]?payload|raw[_-]?prompt|raw[_-]?file|dek|api[_-]?key)/i;
+const NO_ATTRIBUTES = [] as const;
 
 function nonEmpty(value: string, name: string): string {
   const trimmed = value.trim();
@@ -113,98 +114,69 @@ export type AppEventRegistryEntry = Readonly<{
   scope: AppEventScope;
   delivery: 'durable_outbox';
   requiredRefs: readonly AppEventRefKey[];
+  allowedAttributes: readonly string[];
 }>;
 
 export const APP_EVENT_REGISTRY = {
   CONVERSATION_CREATED: {
-    domain: 'conversation',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'conversationId'],
+    domain: 'conversation', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'conversationId'], allowedAttributes: NO_ATTRIBUTES,
   },
   CONVERSATION_TURN_STORED: {
-    domain: 'conversation',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'conversationId', 'turnId', 'jobId'],
+    domain: 'conversation', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'conversationId', 'turnId', 'jobId'], allowedAttributes: NO_ATTRIBUTES,
   },
   JOB_ACCEPTED: {
-    domain: 'job',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'jobId'],
+    domain: 'job', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'jobId'], allowedAttributes: NO_ATTRIBUTES,
   },
   JOB_COMPLETED: {
-    domain: 'job',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'jobId'],
+    domain: 'job', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'jobId'], allowedAttributes: NO_ATTRIBUTES,
   },
   JOB_PARTIALLY_COMPLETED: {
-    domain: 'job',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'jobId'],
+    domain: 'job', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'jobId'], allowedAttributes: NO_ATTRIBUTES,
   },
   JOB_FAILED: {
-    domain: 'job',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'jobId'],
+    domain: 'job', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'jobId'], allowedAttributes: NO_ATTRIBUTES,
   },
   JOB_CANCELLED: {
-    domain: 'job',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'jobId'],
+    domain: 'job', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'jobId'], allowedAttributes: NO_ATTRIBUTES,
   },
   RESULT_CREATED: {
-    domain: 'result',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'jobId', 'resultId'],
+    domain: 'result', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'jobId', 'resultId'], allowedAttributes: NO_ATTRIBUTES,
   },
   RESULT_REVISED: {
-    domain: 'result',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'resultId'],
+    domain: 'result', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'resultId'], allowedAttributes: NO_ATTRIBUTES,
   },
   RESULT_DELETION_SCHEDULED: {
-    domain: 'result',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'resultId'],
+    domain: 'result', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'resultId'], allowedAttributes: NO_ATTRIBUTES,
   },
   RESULT_RESTORED: {
-    domain: 'result',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'resultId'],
+    domain: 'result', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'resultId'], allowedAttributes: NO_ATTRIBUTES,
   },
   FILE_UPLOAD_READY: {
-    domain: 'file',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'fileId'],
+    domain: 'file', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'fileId'], allowedAttributes: NO_ATTRIBUTES,
   },
   STORAGE_OBJECT_STORED: {
-    domain: 'storage',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'fileId'],
+    domain: 'storage', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'fileId'], allowedAttributes: NO_ATTRIBUTES,
   },
   STORAGE_OBJECT_DELETION_SCHEDULED: {
-    domain: 'storage',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'fileId'],
+    domain: 'storage', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'fileId'], allowedAttributes: NO_ATTRIBUTES,
   },
   STORAGE_OBJECT_RESTORED: {
-    domain: 'storage',
-    scope: 'user',
-    delivery: 'durable_outbox',
-    requiredRefs: ['userRef', 'fileId'],
+    domain: 'storage', scope: 'user', delivery: 'durable_outbox',
+    requiredRefs: ['userRef', 'fileId'], allowedAttributes: NO_ATTRIBUTES,
   },
 } as const satisfies Readonly<Record<string, AppEventRegistryEntry>>;
 
@@ -228,6 +200,11 @@ export function validateRegisteredAppEvent(input: AppEventEnvelope): AppEventEnv
     const value = event.refs?.[ref];
     if (typeof value !== 'string' || !value.trim()) {
       throw new Error(`APP_EVENT_REQUIRED_REF_MISSING:${event.event}:${ref}`);
+    }
+  }
+  for (const key of Object.keys(event.attributes ?? {})) {
+    if (!definition.allowedAttributes.includes(key)) {
+      throw new Error(`APP_EVENT_ATTRIBUTE_NOT_ALLOWED:${event.event}:${key}`);
     }
   }
   return event;
