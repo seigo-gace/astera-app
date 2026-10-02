@@ -15,6 +15,7 @@ const REF_VALUE: Record<AppEventRefKey, string> = {
   turnId: 'turn-1',
   jobId: 'job-1',
   resultId: 'result:job-1',
+  revisionId: 'revision-2',
   projectId: 'project-1',
   fileId: 'file-1',
   operationId: 'operation-1',
@@ -67,6 +68,12 @@ test('required correlation references fail closed when absent', () => {
   const input = event('RESULT_CREATED');
   if (input.refs) delete input.refs.resultId;
   assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_REQUIRED_REF_MISSING:RESULT_CREATED:resultId/);
+});
+
+test('result revision events require the exact revision identity', () => {
+  const input = event('RESULT_REVISED');
+  if (input.refs) delete input.refs.revisionId;
+  assert.throws(() => validateRegisteredAppEvent(input), /APP_EVENT_REQUIRED_REF_MISSING:RESULT_REVISED:revisionId/);
 });
 
 test('safe-looking arbitrary attributes are rejected unless the registry explicitly allows them', () => {
