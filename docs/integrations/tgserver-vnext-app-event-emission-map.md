@@ -1,6 +1,6 @@
 # Astera App × TGserver vNext Event Emission Map
 
-Status: APP EVENT REGISTRY SOURCE SCAFFOLD / RUNTIME UNWIRED  
+Status: SHARED CONTRACT AUTHORITY + D1 REPOSITORY SCAFFOLD / RUNTIME UNWIRED  
 Date: 2026-10-02 JST  
 Parent design: `docs/integrations/tgserver-vnext-app-event-log-design.md`
 
@@ -8,12 +8,18 @@ Parent design: `docs/integrations/tgserver-vnext-app-event-log-design.md`
 
 Current App Sourceで実際に存在するMutationだけを起点に、Conversation / Job / Result / File / StorageのUser Event vocabularyと、将来のdurable Outbox挿入地点を固定する。
 
-この文書はRuntime wiring完了を意味しない。D1 Outbox schema/repository、Worker sender/reaper、TGserver Native Event Adapterは未実装。
+この文書はRuntime wiring完了を意味しない。D1 migration適用、Worker sender/reaper、TGserver Native Event Adapterは未実装。
 
-## 2. Registry rule
+## 2. Registry / Contract authority
 
-Source scaffold: `contabo/app-api/src/app-event-registry.ts`。
+Canonical authority: `packages/contracts/src/app-events.ts`。
 
+- Event Contract / closed Registry / Outbox Contractはこの1ファイルを正本とする。
+- Pages Functions / future WorkerはCanonical authorityを直接利用する。
+- Contabo App APIは独立`rootDir=src`を維持し、`scripts/sync-app-event-contracts.mjs`がBuild/Check/Dev前に`contabo/app-api/src/generated/app-events.ts`を自動生成する。
+- Generated mirrorは`.gitignore`対象で、手書きの第2正本にしない。
+- 既存`contabo/app-api/src/app-event-contract.ts` / `app-event-registry.ts` / `app-event-outbox-contract.ts`はGenerated authorityへの薄いre-exportのみ。
+- Outbox validatorは`validateRegisteredAppEvent()`を必須化し、未登録Event名をdurable Outboxへ入れない。
 - Event名はclosed vocabularyとし、任意文字列を許可しない。
 - Registryは`scope`、`domain`、必要なopaque refsを固定する。
 - Current audited User Mutationは`delivery=durable_outbox`を要求する。
@@ -27,16 +33,16 @@ Source scaffold: `contabo/app-api/src/app-event-registry.ts`。
 |---|---|---|---|---|
 | `CONVERSATION_CREATED` | conversation | userRef, conversationId | `functions/_conversation-store.ts` new `chat_conversations` insert | BLOCKED: Conversation/Turn/Conversation-updateが単一D1 batchではない |
 | `CONVERSATION_TURN_STORED` | conversation | userRef, conversationId, turnId, jobId | `functions/_conversation-store.ts` turn insert/update + conversation update | BLOCKED: PR #67 atomicity repairと同一確定境界へ寄せる必要あり |
-| `JOB_ACCEPTED` | job | userRef, jobId | `functions/api/jobs/index.ts` reservation + ledger + `app_jobs(reserving_credit)` + `job_events` D1 batch | READY AFTER OUTBOX SCHEMA: 同じD1 batchへOutbox insert可能 |
-| `JOB_COMPLETED` | job | userRef, jobId | `functions/_job-settlement.ts::settleCompletedJob()` | READY AFTER OUTBOX SCHEMA |
-| `JOB_PARTIALLY_COMPLETED` | job | userRef, jobId | `functions/_job-settlement.ts::settleCompletedJob()` | READY AFTER OUTBOX SCHEMA |
-| `JOB_FAILED` | job | userRef, jobId | `functions/_job-settlement.ts::releaseFailedJob()` | READY AFTER OUTBOX SCHEMA |
-| `JOB_CANCELLED` | job | userRef, jobId | `functions/_job-settlement.ts::releaseFailedJob()` | READY AFTER OUTBOX SCHEMA |
-| `RESULT_CREATED` | result | userRef, jobId, resultId | D1 trigger `0009_result_settlement_trigger.sql` | READY AFTER OUTBOX SCHEMA: Result ID=`result:<jobId>` is deterministic and trigger runs in Job settlement transaction |
-| `RESULT_REVISED` | result | userRef, resultId | `functions/_result-store.ts::editResult()` revision/sections/current-revision D1 batch | READY AFTER OUTBOX SCHEMA |
-| `RESULT_DELETION_SCHEDULED` | result | userRef, resultId | `functions/_result-store.ts::deleteResult()` Result soft-delete + Share revoke D1 batch | READY AFTER OUTBOX SCHEMA |
+| `JOB_ACCEPTED` | job | userRef, jobId | `functions/api/jobs/index.ts` reservation + ledger + `app_jobs(reserving_credit)` + `job_events` D1 batch | READY AFTER D1 MIGRATION: 同じD1 batchへOutbox insert可能 |
+| `JOB_COMPLETED` | job | userRef, jobId | `functions/_job-settlement.ts::settleCompletedJob()` | READY AFTER D1 MIGRATION |
+| `JOB_PARTIALLY_COMPLETED` | job | userRef, jobId | `functions/_job-settlement.ts::settleCompletedJob()` | READY AFTER D1 MIGRATION |
+| `JOB_FAILED` | job | userRef, jobId | `functions/_job-settlement.ts::releaseFailedJob()` | READY AFTER D1 MIGRATION |
+| `JOB_CANCELLED` | job | userRef, jobId | `functions/_job-settlement.ts::releaseFailedJob()` | READY AFTER D1 MIGRATION |
+| `RESULT_CREATED` | result | userRef, jobId, resultId | D1 trigger `0009_result_settlement_trigger.sql` | READY AFTER D1 MIGRATION: Result ID=`result:<jobId>` is deterministic and trigger runs in Job settlement transaction |
+| `RESULT_REVISED` | result | userRef, resultId | `functions/_result-store.ts::editResult()` revision/sections/current-revision D1 batch | READY AFTER D1 MIGRATION |
+| `RESULT_DELETION_SCHEDULED` | result | userRef, resultId | `functions/_result-store.ts::deleteResult()` Result soft-delete + Share revoke D1 batch | READY AFTER D1 MIGRATION |
 | `RESULT_RESTORED` | result | userRef, resultId | `functions/_result-store.ts::undoDeleteResult()` | NEEDS BATCH: current single UPDATE must share one D1 batch with Outbox insert |
-| `FILE_UPLOAD_READY` | file | userRef, fileId | `functions/api/uploads.ts` R2 put succeeds, then `upload_objects(status=ready)` D1 insert | READY AFTER OUTBOX SCHEMA: D1 metadata insert + Outbox must be one batch; R2 cleanup remains failure compensation |
+| `FILE_UPLOAD_READY` | file | userRef, fileId | `functions/api/uploads.ts` R2 put succeeds, then `upload_objects(status=ready)` D1 insert | READY AFTER D1 MIGRATION: D1 metadata insert + Outbox must be one batch; R2 cleanup remains failure compensation |
 | `STORAGE_OBJECT_STORED` | storage | userRef, fileId | binary provider upload succeeds, then `_storage-store.ts::commitObject()` pending→stored | NEEDS BATCH: metadata transition + Outbox insert must be atomic in D1 |
 | `STORAGE_OBJECT_DELETION_SCHEDULED` | storage | userRef, fileId | `_storage-store.ts::softDelete()` stored/corrupt→soft_deleted | NEEDS BATCH |
 | `STORAGE_OBJECT_RESTORED` | storage | userRef, fileId | `_storage-store.ts::undoDelete()` soft_deleted→stored/corrupt | NEEDS BATCH |
@@ -94,20 +100,43 @@ Therefore a durable audit Outbox row cannot yet truthfully claim the complete Co
 
 Do not add a best-effort Event after the function returns. PR #67 Conversation atomicity repair must first establish the server-side authoritative commit boundary; Event Outbox insertion then joins that boundary.
 
-## 7. Cross-runtime contract blocker
+## 7. Cross-runtime contract authority
 
-Current Event/Outbox validator source lives under `contabo/app-api/src`, while Pages Functions and future Cloudflare Worker code are typechecked through `packages/**`, `cloudflare/**`, and `functions/**`. Contabo uses independent `rootDir=src`.
+The previous cross-runtime blocker is closed at the Source-authority layer.
 
-Runtime wiring must therefore first establish one shared contract authority. Forbidden shortcuts:
+```text
+packages/contracts/src/app-events.ts        <- single canonical authority
+        |                         |
+        | direct import           | build/check/dev sync
+        v                         v
+Pages Functions / Worker     Contabo generated mirror
+                             contabo/app-api/src/generated/app-events.ts
+```
+
+The generated Contabo mirror is not tracked and cannot become an independently edited Contract. Manual Purpose Contract Gate watches the canonical file, sync script, Contabo package scripts and Contabo Source.
+
+Still forbidden:
 
 - copy/paste a second Event Registry into Pages/Worker;
-- import source across TypeScript root boundaries and silently change build output;
+- manually edit or track the Generated Contabo mirror;
 - weaken validation at the D1 enqueue boundary;
 - make network access to Contabo a prerequisite for committing App business state.
 
-The present Registry is a tested transport-side vocabulary scaffold, not permission to duplicate it across runtimes.
+## 8. D1 Outbox repository boundary
 
-## 8. Deferred events
+`functions/_app-event-outbox.ts` is now the Pages/D1 repository scaffold.
+
+- `prepareAppEventOutboxEnqueue()` returns a prepared INSERT and deliberately does not call `run()` itself. Business mutation owners must place it in their existing authoritative D1 `batch()`.
+- Claim is a single `UPDATE ... RETURNING` CAS that moves only `pending` or due `retry_wait` rows to `sending`, increments `attempt`, and installs a bounded lease.
+- Delivery and retry completion require exact `id + event_id + attempt + lease_expires_at` match and reject expired leases.
+- Restart recovery only reclaims expired `sending` rows.
+- Contabo transient Runtime DB is not used as Outbox authority.
+
+Unnumbered design schema: `docs/integrations/tgserver-vnext-app-event-outbox-schema.sql`.
+
+This SQL is a design authority only, not a D1 migration. The real migration number remains intentionally unassigned until the integration target migration sequence is reconciled.
+
+## 9. Deferred events
 
 Not added to the initial closed Registry because the exact policy/transaction owner is not yet fixed:
 
@@ -120,16 +149,16 @@ Not added to the initial closed Registry because the exact policy/transaction ow
 
 These are deferred, not silently omitted from the full App event inventory.
 
-## 9. Next implementation order
+## 10. Next implementation order
 
-1. Keep this Registry + tests green.
+1. Keep canonical Contract / generated Contabo mirror / Repository Typecheck / Runtime tests green.
 2. Reconcile actual integration target and D1 migration sequence; do not pre-allocate a migration number on this branch.
-3. Fix one shared Event Contract authority usable by Pages/D1 enqueue code and Worker sender code without duplication.
-4. Add durable Outbox D1 schema/repository with lease/fencing CAS rules.
-5. Wire Job/Result first because their D1 atomic boundaries are already strongest.
-6. Wire normal File Upload and persistent Storage after converting metadata transition + Outbox to D1 batches.
-7. Wire Conversation only after PR #67 authoritative server-side Conversation commit boundary is repaired.
-8. Add Worker sender/reaper.
-9. Add TGserver Native Adapter only after the TGserver Native Event API schema is frozen.
+3. Convert the unnumbered Outbox schema into the real numbered migration only after sequence reconciliation.
+4. Wire Job/Result first because their D1 atomic boundaries are already strongest.
+5. Wire normal File Upload and persistent Storage after converting metadata transition + Outbox to D1 batches.
+6. Wire Conversation only after PR #67 authoritative server-side Conversation commit boundary is repaired.
+7. Add Worker sender/reaper.
+8. Add TGserver Native Adapter only after the TGserver Native Event API schema is frozen.
+9. Add reconciliation and failure-injection E2E before any runtime cutover.
 
-No Runtime path, D1 schema, deployment, Telegram Group/Topic, or TGserver Source is changed by this Registry scaffold.
+No Runtime path, D1 schema mutation, deployment, Telegram Group/Topic, or TGserver Source is changed by the current scaffold.
