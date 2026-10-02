@@ -75,9 +75,9 @@ export function prepareAppEventOutboxEnqueue(
   const idempotencyKey = `app-event:${event.eventId}`;
   return db.prepare(
     `INSERT INTO app_event_outbox
-      (id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at)
-     VALUES (?1,?2,?3,?4,'pending',0,NULL,NULL,NULL,?5,?5)`,
-  ).bind(id, event.eventId, idempotencyKey, JSON.stringify(event), createdAt);
+      (id,event_id,idempotency_key,scope,domain,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at)
+     VALUES (?1,?2,?3,?4,?5,?6,'pending',0,NULL,NULL,NULL,?7,?7)`,
+  ).bind(id, event.eventId, idempotencyKey, event.scope, event.domain, JSON.stringify(event), createdAt);
 }
 
 export async function listReadyAppEventOutboxIds(
