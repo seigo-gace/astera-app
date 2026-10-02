@@ -29,6 +29,20 @@ function iso(value: string, code: string): string {
   return new Date(parsed).toISOString();
 }
 
+function boundedText(value: string, code: string, max: number): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > max || /[\u0000-\u001f\u007f]/.test(trimmed)) throw new Error(code);
+  return trimmed;
+}
+
+function outboxId(value: string): string {
+  return boundedText(value, 'APP_EVENT_OUTBOX_ID_INVALID', 256);
+}
+
+function operationId(value: string | undefined): string | null {
+  return value === undefined ? null : boundedText(value, 'APP_EVENT_OUTBOX_TGS_OPERATION_ID_INVALID', 512);
+}
+
 function rowRecord(row: OutboxRow): AppEventOutboxRecord {
   let event: AppEventEnvelope;
   try {
@@ -110,6 +124,7 @@ export async function claimAppEventOutbox(
   now: string,
   leaseExpiresAt: string,
 ): Promise<AppEventOutboxRecord | null> {
+  const targetId = outboxId(id);
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
   const lease = iso(leaseExpiresAt, 'APP_EVENT_OUTBOX_LEASE_INVALID');
   if (Date.parse(lease) <= Date.parse(at)) throw new Error('APP_EVENT_OUTBOX_LEASE_INVALID');
@@ -120,7 +135,7 @@ export async function claimAppEventOutbox(
        AND updated_at<=?2
        AND (state='pending' OR (state='retry_wait' AND next_retry_at<=?2))
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
-  ).bind(lease, at, id).all<OutboxRow>();
+  ).bind(lease, at, targetId).all<OutboxRow>();
   const row = firstResult(result);
   return row ? rowRecord(row) : null;
 }
@@ -132,13 +147,14 @@ export async function markAppEventOutboxDelivered(
   tgsOperationId?: string,
 ): Promise<AppEventOutboxRecord> {
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
+  const remoteOperationId = operationId(tgsOperationId);
   const result = await db.prepare(
     `UPDATE app_event_outbox
      SET state='delivered',lease_expires_at=NULL,next_retry_at=NULL,tgs_operation_id=COALESCE(?1,tgs_operation_id),updated_at=?2
      WHERE id=?3 AND event_id=?4 AND state='sending' AND attempt=?5
        AND updated_at<=?2 AND lease_expires_at=?6 AND lease_expires_at>?2
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
-  ).bind(tgsOperationId ?? null, at, claim.id, claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
+  ).bind(remoteOperationId, at, outboxId(claim.id), claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
   const row = firstResult(result);
   if (!row) throw new Error('APP_EVENT_OUTBOX_CLAIM_STALE_OR_EXPIRED');
   return rowRecord(row);
@@ -154,13 +170,14 @@ export async function scheduleAppEventOutboxRetry(
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
   const retryAt = iso(nextRetryAt, 'APP_EVENT_OUTBOX_RETRY_AT_INVALID');
   if (Date.parse(retryAt) <= Date.parse(at)) throw new Error('APP_EVENT_OUTBOX_RETRY_AT_INVALID');
+  const remoteOperationId = operationId(tgsOperationId);
   const result = await db.prepare(
     `UPDATE app_event_outbox
      SET state='retry_wait',next_retry_at=?1,lease_expires_at=NULL,tgs_operation_id=COALESCE(?2,tgs_operation_id),updated_at=?3
      WHERE id=?4 AND event_id=?5 AND state='sending' AND attempt=?6
        AND updated_at<=?3 AND lease_expires_at=?7 AND lease_expires_at>?3
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
-  ).bind(retryAt, tgsOperationId ?? null, at, claim.id, claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
+  ).bind(retryAt, remoteOperationId, at, outboxId(claim.id), claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
   const row = firstResult(result);
   if (!row) throw new Error('APP_EVENT_OUTBOX_CLAIM_STALE_OR_EXPIRED');
   return rowRecord(row);
@@ -173,13 +190,14 @@ export async function markAppEventOutboxDeadLetter(
   tgsOperationId?: string,
 ): Promise<AppEventOutboxRecord> {
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
+  const remoteOperationId = operationId(tgsOperationId);
   const result = await db.prepare(
     `UPDATE app_event_outbox
      SET state='dead_letter',lease_expires_at=NULL,next_retry_at=NULL,tgs_operation_id=COALESCE(?1,tgs_operation_id),updated_at=?2
      WHERE id=?3 AND event_id=?4 AND state='sending' AND attempt=?5
        AND updated_at<=?2 AND lease_expires_at=?6 AND lease_expires_at>?2
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
-  ).bind(tgsOperationId ?? null, at, claim.id, claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
+  ).bind(remoteOperationId, at, outboxId(claim.id), claim.eventId, claim.attempt, claim.leaseExpiresAt).all<OutboxRow>();
   const row = firstResult(result);
   if (!row) throw new Error('APP_EVENT_OUTBOX_CLAIM_STALE_OR_EXPIRED');
   return rowRecord(row);
@@ -191,6 +209,7 @@ export async function recoverExpiredAppEventOutbox(
   now: string,
   nextRetryAt: string,
 ): Promise<AppEventOutboxRecord | null> {
+  const targetId = outboxId(id);
   const at = iso(now, 'APP_EVENT_OUTBOX_CLAIM_TIME_INVALID');
   const retryAt = iso(nextRetryAt, 'APP_EVENT_OUTBOX_RETRY_AT_INVALID');
   if (Date.parse(retryAt) <= Date.parse(at)) throw new Error('APP_EVENT_OUTBOX_RETRY_AT_INVALID');
@@ -200,7 +219,7 @@ export async function recoverExpiredAppEventOutbox(
      WHERE id=?3 AND state='sending' AND updated_at<=?2
        AND lease_expires_at IS NOT NULL AND lease_expires_at<=?2
      RETURNING id,event_id,idempotency_key,event_json,state,attempt,next_retry_at,lease_expires_at,tgs_operation_id,created_at,updated_at`,
-  ).bind(retryAt, at, id).all<OutboxRow>();
+  ).bind(retryAt, at, targetId).all<OutboxRow>();
   const row = firstResult(result);
   return row ? rowRecord(row) : null;
 }
