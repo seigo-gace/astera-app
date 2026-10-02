@@ -57,15 +57,17 @@ export class TgserverLegacyV15ObjectStore implements PersistentObjectStore {
   }
 
   async put(input: PersistentObjectPutInput): Promise<PersistentObjectPutResult> {
-    const stored = await this.client.upload({
+    const request: Parameters<TgserverLegacyV15ClientLike['upload']>[0] = {
       objectId: input.objectId,
       userId: input.ownerId,
       fileName: input.fileName,
       fileSize: input.fileSize,
       body: input.body,
-      signal: input.signal,
-    });
-    return {
+    };
+    if (input.signal) request.signal = input.signal;
+
+    const stored = await this.client.upload(request);
+    const result: PersistentObjectPutResult = {
       objectId: input.objectId,
       protocol: 'tgs-legacy-v15',
       locator: {
@@ -76,30 +78,33 @@ export class TgserverLegacyV15ObjectStore implements PersistentObjectStore {
       },
       fileSize: stored.file_size,
       status: stored.status,
-      waitedInQueue: stored.waited_in_queue,
     };
+    if (stored.waited_in_queue !== undefined) result.waitedInQueue = stored.waited_in_queue;
+    return result;
   }
 
   read(input: PersistentObjectReadInput): Promise<Response> {
     const locator = requireLegacyLocator(input.locator);
-    return this.client.download({
+    const request: Parameters<TgserverLegacyV15ClientLike['download']>[0] = {
       userId: input.ownerId,
       topicId: locator.topicId,
       messageId: locator.messageId,
       telegramFileId: locator.telegramFileId,
       fileName: input.fileName,
-      signal: input.signal,
-    });
+    };
+    if (input.signal) request.signal = input.signal;
+    return this.client.download(request);
   }
 
   async delete(input: PersistentObjectDeleteInput): Promise<void> {
     const locator = requireLegacyLocator(input.locator);
-    await this.client.delete({
+    const request: Parameters<TgserverLegacyV15ClientLike['delete']>[0] = {
       userId: input.ownerId,
       topicId: locator.topicId,
       messageId: locator.messageId,
       telegramFileId: locator.telegramFileId,
-      signal: input.signal,
-    });
+    };
+    if (input.signal) request.signal = input.signal;
+    await this.client.delete(request);
   }
 }
