@@ -21,7 +21,7 @@ function record(state: AppEventOutboxRecord['state'] = 'pending'): AppEventOutbo
       occurredAt: '2026-10-02T09:20:00Z',
       scope: 'user',
       domain: 'file',
-      event: 'FILE_STORED',
+      event: 'FILE_UPLOAD_READY',
       severity: 'info',
       correlationId: 'corr-1',
       source: 'app-api',
@@ -137,4 +137,10 @@ test('outbox event identity must match embedded event identity', () => {
   const invalid = record();
   invalid.eventId = 'different';
   assert.throws(() => validateOutboxRecord(invalid), /EVENT_ID_MISMATCH/);
+});
+
+test('outbox rejects event names outside the closed registry', () => {
+  const invalid = record();
+  invalid.event.event = 'FILE_STORED';
+  assert.throws(() => validateOutboxRecord(invalid), /APP_EVENT_NOT_REGISTERED:FILE_STORED/);
 });
