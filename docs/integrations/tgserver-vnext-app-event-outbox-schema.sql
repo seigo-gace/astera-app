@@ -29,6 +29,7 @@ CREATE TABLE app_event_outbox (
   CHECK (updated_at >= created_at),
   CHECK (next_retry_at IS NULL OR (length(next_retry_at) = 24 AND substr(next_retry_at, 24, 1) = 'Z')),
   CHECK (lease_expires_at IS NULL OR (length(lease_expires_at) = 24 AND substr(lease_expires_at, 24, 1) = 'Z')),
+  CHECK (state <> 'delivered' OR tgs_operation_id IS NOT NULL),
   CHECK (
     (state = 'sending' AND lease_expires_at IS NOT NULL AND lease_expires_at > updated_at AND next_retry_at IS NULL AND attempt >= 1)
     OR (state = 'retry_wait' AND next_retry_at IS NOT NULL AND next_retry_at > updated_at AND lease_expires_at IS NULL)
