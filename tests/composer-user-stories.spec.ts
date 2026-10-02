@@ -166,7 +166,7 @@ test('STORY-COMPOSER-003 estimate system failure preserves draft without exposin
   await expect(page.locator('.native-error')).toHaveCount(0);
   await expect(textarea).toHaveValue('通信が切れても入力を残す');
   await expect(page.locator('.native-user-message')).toHaveCount(0);
-  await expect(page.getByLabel('実行')).toBeEnabled();
+  await expect(page.getByRole('button', { name: '実行', exact: true })).toBeEnabled();
 });
 
 test('STORY-COMPOSER-004 incomplete internal Result fails closed without exposing system error', async ({ page }) => {
