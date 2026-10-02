@@ -5,6 +5,8 @@ CREATE TABLE app_event_outbox (
   id TEXT PRIMARY KEY,
   event_id TEXT NOT NULL UNIQUE,
   idempotency_key TEXT NOT NULL UNIQUE,
+  scope TEXT NOT NULL CHECK (scope IN ('system','user')),
+  domain TEXT NOT NULL,
   event_json TEXT NOT NULL CHECK (json_valid(event_json)),
   state TEXT NOT NULL CHECK (state IN ('pending','sending','delivered','retry_wait','dead_letter')),
   attempt INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0),
@@ -13,6 +15,9 @@ CREATE TABLE app_event_outbox (
   tgs_operation_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  CHECK (event_id = json_extract(event_json, '$.eventId')),
+  CHECK (scope = json_extract(event_json, '$.scope')),
+  CHECK (domain = json_extract(event_json, '$.domain')),
   CHECK (
     (state = 'sending' AND lease_expires_at IS NOT NULL AND next_retry_at IS NULL AND attempt >= 1)
     OR (state = 'retry_wait' AND next_retry_at IS NOT NULL AND lease_expires_at IS NULL)
@@ -25,3 +30,6 @@ CREATE INDEX app_event_outbox_ready_idx
 
 CREATE INDEX app_event_outbox_lease_idx
   ON app_event_outbox(state, lease_expires_at);
+
+CREATE INDEX app_event_outbox_route_idx
+  ON app_event_outbox(scope, domain, state, created_at);
