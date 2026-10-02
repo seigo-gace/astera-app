@@ -22,10 +22,12 @@
 
 TGserver Native Object / Operation / Capability / Event APIの最終Schemaを推測でhardcodeしない。TGserver側Contract確定後にNative adapterとoutbox senderを接続する。
 
+Current source tests were added, but CI proof is still pending until the branch workflows complete. Source existence is not treated as verified Runtime behavior.
+
 ## Rule
 
 Integration documentは相手側Repositoryの実装をApp側へ複製しない。
 
 App固有User / Project / Folder / Billing / UI / HistoryのAuthorityはApp側に保持し、Infrastructure側のProvider / Routing / Physical placement / Retry / Reconciliationなどは各InfrastructureのAuthorityを尊重する。
 
-設計済み、Source scaffold済み、Runtime接続済み、Runtime検証済み、Production切替済みは同一扱いしない。
+設計済み、Source scaffold済み、CI検証済み、Runtime接続済み、Runtime検証済み、Production切替済みは同一扱いしない。
