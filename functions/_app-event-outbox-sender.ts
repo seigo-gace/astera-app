@@ -18,15 +18,15 @@ export type AppEventDeliveryReceipt = Readonly<{
   operationId: string;
 }>;
 
-/**
- * Transport-neutral boundary. Implementations must resolve only after the remote
- * durable operation is committed; HTTP acceptance alone is not completion.
- */
 export type AppEventDeliveryPort = Readonly<{
   deliverCommitted: (
     event: AppEventEnvelope,
     idempotencyKey: string,
   ) => Promise<AppEventDeliveryReceipt>;
+}>;
+
+export type AppEventOutboxClock = Readonly<{
+  now: () => string;
 }>;
 
 export type AppEventOutboxPolicy = Readonly<{
@@ -44,11 +44,16 @@ export type AppEventOutboxCycleResult = Readonly<{
   claimMisses: number;
 }>;
 
+/**
+ * One bounded transport-neutral delivery cycle.
+ * The clock is sampled again after remote I/O so an expired lease cannot be
+ * completed using a stale cycle-start timestamp.
+ */
 export async function runAppEventOutboxCycle(
   db: D1Database,
   delivery: AppEventDeliveryPort,
   policy: AppEventOutboxPolicy,
-  now: string,
+  clock: AppEventOutboxClock,
   limit = 50,
 ): Promise<AppEventOutboxCycleResult> {
   let recovered = 0;
@@ -58,20 +63,29 @@ export async function runAppEventOutboxCycle(
   let deadLettered = 0;
   let claimMisses = 0;
 
-  const expiredIds = await listExpiredSendingAppEventOutboxIds(db, now, limit);
+  const reaperNow = clock.now();
+  const expiredIds = await listExpiredSendingAppEventOutboxIds(db, reaperNow, limit);
   for (const id of expiredIds) {
+    const recoveryNow = clock.now();
     const recoveredRecord = await recoverExpiredAppEventOutbox(
       db,
       id,
-      now,
-      policy.recoveryRetryAt(now, id),
+      recoveryNow,
+      policy.recoveryRetryAt(recoveryNow, id),
     );
     if (recoveredRecord) recovered += 1;
   }
 
-  const readyIds = await listReadyAppEventOutboxIds(db, now, limit);
+  const readyNow = clock.now();
+  const readyIds = await listReadyAppEventOutboxIds(db, readyNow, limit);
   for (const id of readyIds) {
-    const sending = await claimAppEventOutbox(db, id, now, policy.leaseExpiresAt(now, id));
+    const claimNow = clock.now();
+    const sending = await claimAppEventOutbox(
+      db,
+      id,
+      claimNow,
+      policy.leaseExpiresAt(claimNow, id),
+    );
     if (!sending) {
       claimMisses += 1;
       continue;
@@ -81,15 +95,17 @@ export async function runAppEventOutboxCycle(
 
     try {
       const receipt = await delivery.deliverCommitted(sending.event, sending.idempotencyKey);
-      await markAppEventOutboxDelivered(db, claim, now, receipt.operationId);
+      const completionNow = clock.now();
+      await markAppEventOutboxDelivered(db, claim, completionNow, receipt.operationId);
       delivered += 1;
     } catch (error) {
-      const retryAt = policy.retryAt(now, sending, error);
+      const failureNow = clock.now();
+      const retryAt = policy.retryAt(failureNow, sending, error);
       if (retryAt === null) {
-        await markAppEventOutboxDeadLetter(db, claim, now, sending.tgsOperationId);
+        await markAppEventOutboxDeadLetter(db, claim, failureNow, sending.tgsOperationId);
         deadLettered += 1;
       } else {
-        await scheduleAppEventOutboxRetry(db, claim, now, retryAt, sending.tgsOperationId);
+        await scheduleAppEventOutboxRetry(db, claim, failureNow, retryAt, sending.tgsOperationId);
         retryScheduled += 1;
       }
     }
