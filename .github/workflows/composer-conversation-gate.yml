@@ -1,0 +1,116 @@
+name: Composer Conversation Gate
+
+on:
+  push:
+    branches:
+      - 'fix/gpt-chat-layout-history-evidence-*'
+    paths:
+      - 'src/features/composer/**'
+      - 'src/features/history/**'
+      - 'src/platform/ResponsivePageShell.tsx'
+      - 'src/platform/app-router.tsx'
+      - 'src/platform/route-registry.ts'
+      - 'src/platform/platform-canonical-overrides.css'
+      - 'src/platform/navigation-overrides.css'
+      - 'functions/_conversation-store.ts'
+      - 'functions/_purpose-text.ts'
+      - 'functions/_runtime.ts'
+      - 'functions/api/conversations/**'
+      - 'functions/api/jobs/estimate.ts'
+      - 'functions/api/jobs/index.ts'
+      - 'contabo/app-api/src/**'
+      - 'migrations/d1/0022_chat_conversations.sql'
+      - 'migrations/d1/0023_custom_purpose_text.sql'
+      - 'tests/composer-user-stories.spec.ts'
+      - 'tests/composer-custom-purpose.spec.ts'
+      - 'tests/composer-mobile-viewport.spec.ts'
+      - 'playwright.config.ts'
+      - '.github/workflows/composer-conversation-gate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/features/composer/**'
+      - 'src/features/history/**'
+      - 'src/platform/ResponsivePageShell.tsx'
+      - 'src/platform/app-router.tsx'
+      - 'src/platform/route-registry.ts'
+      - 'src/platform/platform-canonical-overrides.css'
+      - 'src/platform/navigation-overrides.css'
+      - 'functions/_conversation-store.ts'
+      - 'functions/_purpose-text.ts'
+      - 'functions/_runtime.ts'
+      - 'functions/api/conversations/**'
+      - 'functions/api/jobs/estimate.ts'
+      - 'functions/api/jobs/index.ts'
+      - 'contabo/app-api/src/**'
+      - 'migrations/d1/0022_chat_conversations.sql'
+      - 'migrations/d1/0023_custom_purpose_text.sql'
+      - 'tests/composer-user-stories.spec.ts'
+      - 'tests/composer-custom-purpose.spec.ts'
+      - 'tests/composer-mobile-viewport.spec.ts'
+      - 'playwright.config.ts'
+      - '.github/workflows/composer-conversation-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  composer-conversation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+      - name: Typecheck frontend
+        run: npm run check
+      - name: Typecheck Worker contracts and Contabo runtime
+        run: npm run contract:check
+      - name: Audit canonical routes
+        run: npm run route:audit
+      - name: Bundle Cloudflare Functions
+        run: npm run cloudflare:functions:build
+      - name: Run Contabo runtime unit tests
+        run: npm run contabo:test
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run Composer conversation user stories
+        id: composer_playwright
+        continue-on-error: true
+        shell: bash
+        env:
+          COMPOSER_VISUAL_REVIEW: '1'
+        run: |
+          set +e
+          npx playwright test tests/composer-user-stories.spec.ts tests/composer-custom-purpose.spec.ts tests/composer-mobile-viewport.spec.ts --workers=2 --reporter=line,github 2>&1 | tee /tmp/composer-playwright.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo '## Composer Playwright output'
+            echo '```text'
+            tail -n 450 /tmp/composer-playwright.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      - name: Upload Composer Playwright log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: composer-playwright-log
+          path: /tmp/composer-playwright.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Composer visual review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: composer-visual-review
+          path: test-results/**/*.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enforce Composer Playwright gate
+        if: steps.composer_playwright.outcome != 'success'
+        run: exit 1

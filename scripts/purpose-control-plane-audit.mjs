@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const productionFiles = [
   'src/features/composer/NativeComposerPage.tsx',
+  'src/features/composer/NativeComposerConversation.tsx',
   'functions/_job-policy.ts',
   'functions/_runtime.ts',
   'functions/api/jobs/index.ts',
@@ -26,7 +27,7 @@ for (const file of productionFiles) {
   }
 }
 
-const composer = readFileSync('src/features/composer/NativeComposerPage.tsx', 'utf8');
+const composer = readFileSync('src/features/composer/NativeComposerConversation.tsx', 'utf8');
 assert.match(composer, /prompt:\s*submittedText,[\s\S]*?purpose,/m, 'Composer must send prompt and purpose as separate fields');
 assert.doesNotMatch(composer, /submittedText\s*[+`]\s*[^\n]*purpose|purpose\s*[+`]\s*[^\n]*submittedText/i, 'Composer must not concatenate purpose into prompt');
 

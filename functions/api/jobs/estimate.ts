@@ -18,6 +18,7 @@ import {
   type RevisionCreditMetric,
 } from '../../_job-policy';
 import { purposeSelectionOrigin, revisionPurposeAuthority } from '../../_purpose-control';
+import { fingerprintWithPurposeText, normalizePurposeText, samePurposeText } from '../../_purpose-text';
 
 type UploadRow = {
   id: string;
@@ -33,13 +34,14 @@ type RevisionParentRow = {
   state: string;
   private_mode: number;
   purpose: string;
+  purpose_text: string | null;
   prompt_sha256: string | null;
 };
 
 type RevisionBillingDecision = {
   metric: RevisionCreditMetric | null;
   effectiveParentJobId: string | null;
-  resetReason: 'REVISION_PURPOSE_MISMATCH' | null;
+  resetReason: 'REVISION_PURPOSE_MISMATCH' | 'REVISION_PURPOSE_TEXT_MISMATCH' | null;
 };
 
 type Env = AsteraFunctionEnv & { PRIVATE_UPLOAD_TTL_SECONDS?: string };
@@ -95,11 +97,12 @@ async function revisionBillingDecision(
   tenantId: string,
   userId: string,
   input: EstimateInput,
+  purposeText: string | null,
   policy: CreditPolicy,
 ): Promise<RevisionBillingDecision> {
   if (!input.revision) return { metric: null, effectiveParentJobId: null, resetReason: null };
   const parent = await context.env.ASTERA_DB.prepare(
-    `SELECT j.id, j.state, j.private_mode, j.purpose, e.prompt_sha256
+    `SELECT j.id, j.state, j.private_mode, j.purpose, j.purpose_text, e.prompt_sha256
      FROM app_jobs j
      JOIN job_estimates e ON e.id = j.estimate_id
      WHERE j.id = ?1 AND j.tenant_id = ?2 AND j.user_id = ?3
@@ -114,11 +117,10 @@ async function revisionBillingDecision(
   }
   const purposeAuthority = revisionPurposeAuthority(parent.purpose, input.purpose);
   if (purposeAuthority.mode === 'full') {
-    return {
-      metric: null,
-      effectiveParentJobId: null,
-      resetReason: purposeAuthority.reason,
-    };
+    return { metric: null, effectiveParentJobId: null, resetReason: purposeAuthority.reason };
+  }
+  if (!samePurposeText(parent.purpose_text, purposeText)) {
+    return { metric: null, effectiveParentJobId: null, resetReason: 'REVISION_PURPOSE_TEXT_MISMATCH' };
   }
   if (!parent.prompt_sha256) {
     throw new FunctionHttpError(409, 'REVISION_PROVENANCE_UNAVAILABLE', '修整元本文をServer検証できないため差分Creditを適用できません。');
@@ -138,7 +140,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   const requestId = requestCorrelationId(context.request);
   try {
     const actor = await requireAsteraActor(context.request, context.env);
-    const input = normalizeEstimateInput(await context.request.json().catch(() => null));
+    const rawRequest = await context.request.json().catch(() => null);
+    const input = normalizeEstimateInput(rawRequest);
+    const purposeText = normalizePurposeText(rawRequest);
     const [policy, uploads] = await Promise.all([
       loadActiveCreditPolicy(context.env.ASTERA_DB),
       loadUploads(context, actor.profile.tenant_id, actor.user.id, input.fileIds, input.privateMode),
@@ -151,11 +155,12 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
 
     const [promptSha256, revisionDecision] = await Promise.all([
       promptFingerprint(input.prompt),
-      revisionBillingDecision(context, actor.profile.tenant_id, actor.user.id, input, policy),
+      revisionBillingDecision(context, actor.profile.tenant_id, actor.user.id, input, purposeText, policy),
     ]);
     const revisionMetric = revisionDecision.metric;
     const billableCharacters = revisionMetric?.characters ?? [...input.prompt].length;
-    const fingerprint = await requestFingerprint(input, uploads.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
+    const baseFingerprint = await requestFingerprint(input, uploads.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
+    const fingerprint = await fingerprintWithPurposeText(baseFingerprint, purposeText);
     const requiredCredits = calculateRequiredCredits(policy, input, revisionMetric?.milliCredits);
     const availableCredits = Number(actor.credit.available_balance);
     const reservedCredits = Number(actor.credit.reserved_balance);
@@ -210,6 +215,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         expiresAt,
         request_fingerprint: fingerprint,
         purpose: input.purpose,
+        purpose_text: purposeText,
         purpose_origin: purposeSelectionOrigin(input.purpose),
         billing_mode: revisionDecision.effectiveParentJobId ? 'revision' : 'full',
         billable_characters: billableCharacters,

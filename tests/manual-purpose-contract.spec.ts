@@ -97,13 +97,12 @@ test('STORY-COMPOSER-011 all seven manual purposes survive UI selection -> estim
       await page.getByRole('button', { name: '新規' }).click();
     }
 
-    await page.getByLabel('Fileと実行Optionを追加').click();
-    const dialog = page.getByRole('dialog', { name: '追加' });
+    const purposeControl = page.getByLabel('Purposeを選択');
+    await purposeControl.click();
+    const dialog = page.getByRole('dialog', { name: '用途・目的' });
     await expect(dialog).toBeVisible();
-    await dialog.getByText('用途・目的', { exact: true }).click();
     await dialog.getByRole('button', { name: label, exact: true }).click();
-    await dialog.getByLabel('閉じる').click();
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
+    await expect(purposeControl).toContainText(label);
 
     const prompt = CONFLICTING_PROMPTS[purpose];
     await page.getByLabel('Astera入力').fill(prompt);

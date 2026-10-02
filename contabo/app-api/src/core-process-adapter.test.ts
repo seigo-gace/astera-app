@@ -80,6 +80,39 @@ test('auto remains an App pass-through because automatic purpose classification 
   assert.deepEqual(buildCoreProcessRequest({ prompt: '確認して', purpose: 'auto', files: [] }), { question: '確認して' });
 });
 
+test('custom purpose is structured user_objective and never rewrites original prompt', () => {
+  const request = buildCoreProcessRequest({
+    prompt: '元の依頼本文をそのまま保持する',
+    purpose: 'auto',
+    purpose_text: '公開前の法的リスクと個人情報保護を重点的に確認する',
+    files: [],
+  });
+  assert.equal(request.question, '元の依頼本文をそのまま保持する');
+  assert.ok(request.context);
+  const parsed = JSON.parse(request.context!);
+  assert.deepEqual(parsed, {
+    user_objective: {
+      version: 'app-user-objective-v1',
+      selected_by: 'user',
+      text: '公開前の法的リスクと個人情報保護を重点的に確認する',
+    },
+  });
+});
+
+test('manual purpose and custom purpose coexist as separate structured controls', () => {
+  const request = buildCoreProcessRequest({
+    prompt: '対象本文',
+    purpose: 'research',
+    purpose_text: '一次情報を優先して日本国内規制を重点確認する',
+    files: [],
+  });
+  assert.equal(request.question, '対象本文');
+  const parsed = JSON.parse(request.context!);
+  assert.deepEqual(parsed.app_purpose_contract, MANUAL_PURPOSE_CONTRACTS.research);
+  assert.equal(parsed.user_objective.text, '一次情報を優先して日本国内規制を重点確認する');
+  assert.equal(parsed.user_objective.selected_by, 'user');
+});
+
 test('unsupported manual purpose fails closed instead of silently reaching Core', () => {
   assert.throws(
     () => buildCoreProcessRequest({ prompt: '確認して', purpose: 'unknown-purpose', files: [] }),
@@ -107,6 +140,35 @@ test('parseCoreMain8Response maps current Main8 to App result without restoring 
   assert.equal(evidenceStatus.body, '- 根拠');
   assert.equal(evidenceStatus.canonical_key, '07_evidence_status');
   assert.equal(parsed.result.completion_state, 'complete');
+});
+
+test('Core task-graph blocked control response is classified before Main8 parsing', () => {
+  assert.throws(
+    () => parseCoreMain8Response([
+      'Task Graphを安全に実行できないため、後続処理を停止しました。',
+      'Hard Blocker: TASK_GRAPH_CYCLE',
+      'Unresolved: -',
+      '推測で補完せず、Task/Claim/Evidence処理へ進めていません.',
+    ].join('\n')),
+    (error: unknown) => {
+      const value = error as { code?: string; message?: string };
+      return value.code === 'ASTERA_CORE_TASK_GRAPH_BLOCKED'
+        && value.message?.includes('Hard Blocker: TASK_GRAPH_CYCLE') === true;
+    },
+  );
+});
+
+test('Core clarification control response is classified before Main8 parsing', () => {
+  assert.throws(
+    () => parseCoreMain8Response([
+      'Analysis Taskを抽出できませんでした。対象・行為・完了条件を確認してください。',
+    ].join('\n')),
+    (error: unknown) => {
+      const value = error as { code?: string; message?: string };
+      return value.code === 'ASTERA_CORE_CLARIFICATION_REQUIRED'
+        && value.message?.includes('対象・行為・完了条件') === true;
+    },
+  );
 });
 
 test('invalid Main8 is rejected instead of being silently accepted', () => {

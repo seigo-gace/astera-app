@@ -1,0 +1,48 @@
+.native-user-turn{display:grid;justify-items:end;gap:4px;min-width:0}
+.native-user-actions{display:flex;align-items:center;gap:2px;padding-right:2px}
+.native-user-actions button,.native-response>header button{width:30px;height:30px;min-width:30px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--native-muted);padding:0;cursor:pointer;line-height:1}
+.native-user-actions button svg,.native-response>header button svg{width:16px;height:16px;display:block}
+.native-user-actions button:hover,.native-response>header button:hover{background:color-mix(in srgb,var(--native-text) 7%,transparent);color:var(--native-text)}
+.native-user-actions button:disabled{opacity:.35;cursor:not-allowed}
+.native-purpose-button{flex:0 1 auto;max-width:min(320px,44vw);min-height:34px;display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;background:transparent;color:var(--native-muted);padding:0 9px;cursor:pointer;font-size:12px;white-space:nowrap;min-width:0}
+.native-purpose-button>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.native-purpose-button.has-custom-purpose{background:color-mix(in srgb,var(--native-text) 5%,transparent);color:var(--native-text)}
+.native-purpose-button:hover{background:color-mix(in srgb,var(--native-text) 7%,transparent);color:var(--native-text)}
+.native-purpose-list{display:grid;gap:2px}
+.native-purpose-list>button{width:100%;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:0;border-radius:10px;background:transparent;color:inherit;padding:0 11px;text-align:left;cursor:pointer}
+.native-purpose-list>button:hover,.native-purpose-list>button.is-selected{background:color-mix(in srgb,var(--native-text) 7%,transparent)}
+.native-purpose-list>button b{font-size:12px;color:var(--native-muted)}
+.native-purpose-separator{height:1px;background:var(--native-line);margin:7px 4px}
+.native-purpose-text-editor{display:grid;gap:10px}
+.native-purpose-text-editor label{display:grid;gap:7px;color:var(--native-muted);font-size:12px}
+.native-purpose-text-editor textarea{width:100%;min-height:116px;max-height:240px;resize:vertical;border:1px solid var(--native-line);border-radius:12px;background:var(--native-bg);color:var(--native-text);padding:11px 12px;font:inherit;line-height:1.5;outline:none}
+.native-purpose-text-editor textarea:focus{border-color:color-mix(in srgb,var(--native-text) 40%,var(--native-line));box-shadow:0 0 0 2px color-mix(in srgb,var(--native-text) 7%,transparent)}
+.native-purpose-text-count{text-align:right;color:var(--native-muted);font-size:11px}
+.native-purpose-text-actions{display:flex;justify-content:flex-end;gap:8px}
+.native-purpose-text-actions>button{min-height:36px;border:0;border-radius:9px;background:transparent;color:inherit;padding:0 12px;cursor:pointer}
+.native-purpose-text-actions>button:hover{background:color-mix(in srgb,var(--native-text) 7%,transparent)}
+.native-purpose-text-actions>.native-picker-apply{background:var(--native-text);color:var(--native-bg)}
+.native-editing-banner{margin:0 4px 7px;min-height:32px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--native-muted);font-size:11px}
+.native-editing-banner button{border:0;border-radius:8px;background:transparent;color:inherit;padding:5px 8px;cursor:pointer}
+.native-editing-banner button:hover{background:color-mix(in srgb,var(--native-text) 7%,transparent);color:var(--native-text)}
+.native-user-message.is-collapsed{position:relative;max-height:260px;overflow:hidden;padding-bottom:38px}
+.native-user-message.is-collapsed::after{content:"";position:absolute;left:0;right:0;bottom:0;height:72px;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--native-user-surface,var(--native-surface)) 58%)}
+.native-user-expand{position:relative;z-index:1;display:block;margin:8px 0 0 auto;border:0;border-radius:8px;background:transparent;color:var(--native-muted);padding:5px 7px;cursor:pointer;font-size:11px}
+.native-user-message.is-collapsed .native-user-expand{position:absolute;right:10px;bottom:7px}
+.native-user-expand:hover{background:color-mix(in srgb,var(--native-text) 7%,transparent);color:var(--native-text)}
+.native-evidence-view{width:min(100%,800px);margin:0 auto;padding:8px 0 40px}
+.native-evidence-view>header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:22px}
+.native-evidence-view h1{margin:0;font-size:22px;line-height:1.35;font-weight:650;letter-spacing:-.02em}
+.native-evidence-view>header span,.native-evidence-empty{color:var(--native-muted);font-size:12px}
+.native-evidence-view ol{list-style:none;display:grid;gap:0;margin:0;padding:0}
+.native-evidence-view li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:13px 0;border-bottom:1px solid var(--native-line)}
+.native-evidence-number{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:var(--native-surface-2);font-size:11px;color:var(--native-muted)}
+.native-evidence-view li>div{display:grid;gap:4px;min-width:0}
+.native-evidence-view a,.native-evidence-view strong{color:var(--native-text);font-size:14px;line-height:1.45;overflow-wrap:anywhere;text-decoration:none}
+.native-evidence-view a:hover{text-decoration:underline}
+.native-evidence-view small{color:var(--native-muted);font-size:11px;overflow-wrap:anywhere}
+.native-composer textarea{height:auto;overflow-y:hidden}
+.native-run-button svg{display:block}
+.native-turn+.native-turn{padding-top:4px;border-top:1px solid color-mix(in srgb,var(--native-line) 45%,transparent)}
+@media(max-width:600px){.native-user-actions{padding-right:0}.native-purpose-button{padding-inline:7px;max-width:42vw}.native-evidence-view{padding-inline:2px}.native-evidence-view h1{font-size:20px}.native-evidence-view li{grid-template-columns:25px minmax(0,1fr);gap:8px}.native-turn+.native-turn{padding-top:2px}.native-user-message.is-collapsed{max-height:220px}.native-purpose-text-editor textarea{min-height:104px}}
+@media(pointer:coarse){.native-user-actions button,.native-purpose-button,.native-editing-banner button{min-height:44px}.native-user-actions button{width:44px;min-width:44px}}

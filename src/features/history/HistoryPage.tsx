@@ -40,6 +40,7 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const endpoint = useMemo(() => buildEndpoint(applied, cursor), [applied, cursor]);
   const [resource, reload] = useResource(endpoint);
+  const [conversations, reloadConversations] = useResource('/api/conversations?limit=25');
   const [projectsResource] = useResource('/api/projects?status=all');
 
   const projects = projectsResource.status === 'ready' ? asArray(projectsResource.data, ['projects', 'items']).map(asRecord) : [];
@@ -54,6 +55,8 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
 
   const root = resource.status === 'ready' ? asRecord(resource.data) : {};
   const items = resource.status === 'ready' ? asArray(root.history ?? root.items ?? root.results) : [];
+  const conversationRoot = conversations.status === 'ready' ? asRecord(conversations.data) : {};
+  const conversationItems = conversations.status === 'ready' ? asArray(conversationRoot.conversations ?? conversationRoot.items) : [];
   const nextCursor = recordText(root, ['next_cursor']);
   const hasFilters = Object.values(applied).some((value) => value.trim());
 
@@ -82,8 +85,31 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
   };
 
   return (
-    <ResponsivePageShell route={route} description="Normal Modeで保存されたHistoryを検索・絞込みし、Revision付きResultへ移動します。Private Modeの実行はHistoryへ保存しません。">
-      <Panel title="History Filter">
+    <ResponsivePageShell route={route} description="Normal Modeで保存されたChatとResultを確認します。Private Modeの実行はHistoryへ保存しません。">
+      <Panel title="Chat履歴">
+        {conversations.status === 'loading' && <BusyState />}
+        {conversations.status === 'error' && <ErrorState error={conversations.error} onRetry={reloadConversations} />}
+        {conversations.status === 'ready' && conversationItems.length === 0 && <EmptyState>保存済みChatはありません。</EmptyState>}
+        {conversations.status === 'ready' && conversationItems.length > 0 && (
+          <div className="history-record-list" aria-label="Chat履歴">
+            {conversationItems.map((item) => {
+              const conversation = asRecord(item);
+              const id = recordText(conversation, ['conversation_id', 'id']);
+              return (
+                <a className="history-record" href={`/app/chats/${encodeURIComponent(id)}`} key={id}>
+                  <span>
+                    <strong>{recordText(conversation, ['title'], 'Astera Chat')}</strong>
+                    <small>{conversation.project_id ? 'Project' : 'Unassigned'} · Chat</small>
+                  </span>
+                  <span className="history-record-meta"><time>{recordText(conversation, ['updated_at', 'created_at'])}</time></span>
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Result履歴・検索">
         <form className="history-filter-grid" onSubmit={apply}>
           <Field label="検索" name="history-q" value={draft.q} onChange={(q) => setDraft((current) => ({ ...current, q }))} placeholder="Title・本文・Purpose" />
           <SelectField label="Purpose" name="history-purpose" value={draft.purpose} onChange={(purpose) => setDraft((current) => ({ ...current, purpose }))} options={PURPOSE_OPTIONS} />
@@ -100,14 +126,12 @@ export default function HistoryPage({ route }: { route: RouteMatch }) {
             <button className="platform-button" type="button" onClick={clear}>Clear</button>
           </div>
         </form>
-      </Panel>
 
-      <Panel title="History">
         {resource.status === 'loading' && <BusyState />}
         {resource.status === 'error' && <ErrorState error={resource.error} onRetry={reload} />}
-        {resource.status === 'ready' && items.length === 0 && <EmptyState>{hasFilters ? '条件に一致するHistoryはありません。' : '保存済みHistoryはありません。'}</EmptyState>}
+        {resource.status === 'ready' && items.length === 0 && <EmptyState>{hasFilters ? '条件に一致するResultはありません。' : '保存済みResultはありません。'}</EmptyState>}
         {resource.status === 'ready' && items.length > 0 && (
-          <div className="history-record-list">
+          <div className="history-record-list" aria-label="Result履歴">
             {items.map((item) => {
               const record = asRecord(item);
               const id = recordText(record, ['result_id', 'id']);

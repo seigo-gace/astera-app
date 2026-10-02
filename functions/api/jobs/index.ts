@@ -10,6 +10,7 @@ import {
   normalizeEstimateInput,
   requestFingerprint,
 } from '../../_job-policy';
+import { fingerprintWithPurposeText, normalizePurposeText } from '../../_purpose-text';
 import {
   publicJob,
   releaseFailedJob,
@@ -118,6 +119,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     }
 
     const input = normalizeEstimateInput(raw);
+    const purposeText = normalizePurposeText(raw);
     const [estimate, policy, files] = await Promise.all([
       context.env.ASTERA_DB.prepare(
         `SELECT id, tenant_id, user_id, request_fingerprint, policy_version, required_credits,
@@ -139,7 +141,8 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     if (policy.version !== estimate.policy_version) throw new FunctionHttpError(409, 'CREDIT_POLICY_CHANGED', 'Credit Policyが変更されたため再見積りが必要です。');
     if (Number(actor.credit.version) !== Number(estimate.credit_account_version)) throw new FunctionHttpError(409, 'CREDIT_BALANCE_CHANGED', 'Credit残高が変わったため再見積りが必要です。');
 
-    const fingerprint = await requestFingerprint(input, files.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
+    const baseFingerprint = await requestFingerprint(input, files.map((row) => `${row.id}:${row.sha256}:${row.size_bytes}`));
+    const fingerprint = await fingerprintWithPurposeText(baseFingerprint, purposeText);
     if (fingerprint !== estimate.request_fingerprint) throw new FunctionHttpError(409, 'JOB_ESTIMATE_FINGERPRINT_MISMATCH', '入力条件が見積り時から変更されています。');
 
     const now = new Date();
@@ -199,20 +202,20 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         ).bind(`job-reserve:${jobId}`, actor.credit.id, Number(estimate.required_credits), `job:${jobId}:reserve`, jobId, fingerprint, now.toISOString()),
         context.env.ASTERA_DB.prepare(
           `INSERT INTO app_jobs
-            (id, tenant_id, user_id, request_id, estimate_id, request_fingerprint, state, purpose,
+            (id, tenant_id, user_id, request_id, estimate_id, request_fingerprint, state, purpose, purpose_text,
              option_summary, file_count, private_mode, project_id, runtime_job_id, reserved_credits,
              committed_credits, result_schema_version, result_payload, error_code, error_message,
              created_at, updated_at, completed_at, cancelled_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserving_credit', ?7, ?8, ?9, ?10, ?11,
-                   NULL, ?12, NULL, NULL, NULL, NULL, NULL, ?13, ?13, NULL, NULL)`,
-        ).bind(jobId, actor.profile.tenant_id, actor.user.id, requestId, estimate.id, fingerprint, input.purpose, optionSummary, files.length, input.privateMode ? 1 : 0, input.projectId, Number(estimate.required_credits), now.toISOString()),
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'reserving_credit', ?7, ?8, ?9, ?10, ?11, ?12,
+                   NULL, ?13, NULL, NULL, NULL, NULL, NULL, ?14, ?14, NULL, NULL)`,
+        ).bind(jobId, actor.profile.tenant_id, actor.user.id, requestId, estimate.id, fingerprint, input.purpose, purposeText, optionSummary, files.length, input.privateMode ? 1 : 0, input.projectId, Number(estimate.required_credits), now.toISOString()),
         context.env.ASTERA_DB.prepare(
           `UPDATE job_estimates SET status = 'consumed', consumed_at = ?1 WHERE id = ?2 AND status = 'active'`,
         ).bind(now.toISOString(), estimate.id),
         context.env.ASTERA_DB.prepare(
           `INSERT INTO job_events (id, job_id, from_state, to_state, correlation_id, metadata, created_at)
            VALUES (?1, ?2, NULL, 'reserving_credit', ?3, ?4, ?5)`,
-        ).bind(crypto.randomUUID(), jobId, correlationId, JSON.stringify({ estimate_id: estimate.id, policy_version: policy.version }), now.toISOString()),
+        ).bind(crypto.randomUUID(), jobId, correlationId, JSON.stringify({ estimate_id: estimate.id, policy_version: policy.version, purpose_text: purposeText }), now.toISOString()),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -233,6 +236,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
       request_id: requestId,
       prompt: input.prompt,
       purpose: input.purpose,
+      purpose_text: purposeText,
       options: input.options,
       files: files.map((file) => ({
         upload_id: file.id,

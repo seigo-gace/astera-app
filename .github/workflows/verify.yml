@@ -120,8 +120,8 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const report = JSON.parse(fs.readFileSync('audit-results/notion-repository-audit.json', 'utf8'));
-          if (report.sourceVerdict !== 'PASS') {
-            console.error(JSON.stringify(report.sourceGaps || [], null, 2));
+          if (report.sourceAudit?.sourceVerdict !== 'PASS') {
+            console.error(JSON.stringify(report.sourceAudit?.sourceGaps || [], null, 2));
             process.exit(1);
           }
           console.log('Source readiness: PASS');
