@@ -5,6 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { RuntimeConfig } from './config.js';
+import type { PersistentObjectLocator, PersistentObjectStore } from './persistent-object-store.js';
+import {
+  storageBinaryReferenceFields,
+  storagePersistentLocatorFromHeaders,
+} from './storage-persistent-object-bridge.js';
+import { TgserverLegacyV15ObjectStore } from './tgserver-legacy-v15-object-store.js';
 import { TgserverStorageClient } from './tgserver-storage-client.js';
 import { createStorageEncryptedUpload, decryptStorageObjectToFile, type StorageVaultLike } from './storage-object-crypto.js';
 import { StorageApiError, MAX_FILE_BYTES } from './storage-api-types.js';
@@ -24,11 +30,6 @@ function requiredHeader(headers: Headers, name: string, code: string): string {
   if (!value) throw new StorageApiError(422, code, `${name} is required.`);
   return value;
 }
-function positiveInt(value: string, code: string): number {
-  const n = Number(value);
-  if (!Number.isSafeInteger(n) || n <= 0) throw new StorageApiError(422, code, `${code} is invalid.`);
-  return n;
-}
 function nonNegativeInt(value: string, code: string): number {
   const n = Number(value);
   if (!Number.isSafeInteger(n) || n < 0) throw new StorageApiError(422, code, `${code} is invalid.`);
@@ -45,8 +46,20 @@ function sha(value: string): string {
   return v;
 }
 
-type StoredRef = { userId: string; topicId: number; messageId: number; telegramFileId: string };
+type StoredRef = {
+  objectId: string;
+  userId: string;
+  locator: PersistentObjectLocator;
+};
 type StoredResponse = { binary: Record<string, unknown>; queue: string };
+
+async function removeStoredReference(store: PersistentObjectStore, ref: StoredRef): Promise<void> {
+  await store.delete({
+    objectId: ref.objectId,
+    ownerId: ref.userId,
+    locator: ref.locator,
+  });
+}
 
 async function encryptAndStore(input: {
   objectId: string;
@@ -56,7 +69,7 @@ async function encryptAndStore(input: {
   expectedSha256: string;
   plaintext: ReadableStream<Uint8Array>;
   signal: AbortSignal;
-  tgs: TgserverStorageClient;
+  store: PersistentObjectStore;
   vault: StorageVaultLike;
 }): Promise<{ response: StoredResponse; ref: StoredRef }> {
   let ref: StoredRef | null = null;
@@ -66,22 +79,20 @@ async function encryptAndStore(input: {
     const encrypted = await createStorageEncryptedUpload(input.objectId, input.plaintext, input.vault);
     completion = encrypted.completion;
     stream = encrypted.stream;
-    const stored = await input.tgs.upload({
+    const stored = await input.store.put({
       objectId: input.objectId,
-      userId: input.userId,
+      ownerId: input.userId,
       fileName: input.fileName,
       fileSize: input.fileSize,
       body: encrypted.stream,
       signal: input.signal,
     });
     stream = null;
-    const telegramFileId = stored.telegram_file_id?.trim() || '';
-    if (!telegramFileId) throw new StorageApiError(502, 'TGS_STORAGE_MANIFEST_REF_MISSING', 'TGserver did not return the Telegram manifest reference.');
-    ref = { userId: input.userId, topicId: stored.topic_id, messageId: stored.message_id, telegramFileId };
+    ref = { objectId: input.objectId, userId: input.userId, locator: stored.locator };
     const completed = await encrypted.completion;
     completion = null;
     if (input.expectedSha256 && input.expectedSha256 !== completed.plaintextSha256) {
-      await input.tgs.delete({ userId: input.userId, topicId: stored.topic_id, messageId: stored.message_id, telegramFileId }).catch(() => undefined);
+      await removeStoredReference(input.store, ref).catch(() => undefined);
       ref = null;
       throw new StorageApiError(422, 'STORAGE_SHA256_MISMATCH', 'Uploaded SHA-256 does not match the declared checksum.');
     }
@@ -90,9 +101,7 @@ async function encryptAndStore(input: {
       ref,
       response: {
         binary: {
-          topic_id: String(stored.topic_id),
-          message_id: String(stored.message_id),
-          telegram_file_id: telegramFileId,
+          ...storageBinaryReferenceFields(stored.locator),
           checksum_sha256: completed.plaintextSha256,
           encryption_profile: encrypted.metadata.encryptionProfile,
           dek_wrap_ciphertext: encrypted.metadata.wrappedDek.ciphertext,
@@ -101,13 +110,13 @@ async function encryptAndStore(input: {
           auth_tag_base64: completed.authTagBase64,
           encrypted_at: now,
         },
-        queue: stored.waited_in_queue ? 'waited' : 'direct',
+        queue: stored.waitedInQueue ? 'waited' : 'direct',
       },
     };
   } catch (error) {
     if (stream) await stream.cancel().catch(() => undefined);
     if (completion) void completion.catch(() => undefined);
-    if (ref) await input.tgs.delete({ userId: ref.userId, topicId: ref.topicId, messageId: ref.messageId, telegramFileId: ref.telegramFileId }).catch(() => undefined);
+    if (ref) await removeStoredReference(input.store, ref).catch(() => undefined);
     throw error;
   }
 }
@@ -115,14 +124,14 @@ async function encryptAndStore(input: {
 export function registerStorageBinaryApi(
   app: Hono,
   config: RuntimeConfig,
-  tgs = new TgserverStorageClient(config),
+  store: PersistentObjectStore = new TgserverLegacyV15ObjectStore(new TgserverStorageClient(config)),
   vault: StorageVaultLike = new VaultClient(config),
 ): void {
   app.post('/internal/v1/storage-binary/objects/:object/upload', async (c) => {
     const requestId = correlationId(c.req.raw.headers);
     try {
       if (!internalAuthorized(c.req.raw.headers, config)) throw new StorageApiError(401, 'INTERNAL_AUTHENTICATION_FAILED', 'Internal auth failed.');
-      if (!tgs.configured) throw new StorageApiError(503, 'TGS_STORAGE_NOT_CONFIGURED', 'TGserver Storage is not configured.');
+      if (!store.configured) throw new StorageApiError(503, 'TGS_STORAGE_NOT_CONFIGURED', 'TGserver Storage is not configured.');
       const objectId = c.req.param('object');
       const userId = requiredHeader(c.req.raw.headers, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
       const fileName = requiredHeader(c.req.raw.headers, 'x-astera-file-name', 'STORAGE_FILE_NAME_REQUIRED').slice(0, 240);
@@ -130,7 +139,7 @@ export function registerStorageBinaryApi(
       const expected = c.req.header('x-astera-sha256')?.trim() ? sha(c.req.header('x-astera-sha256')!) : '';
       const body = c.req.raw.body;
       if (!body) throw new StorageApiError(422, 'STORAGE_FILE_BODY_REQUIRED', 'File body is required.');
-      const stored = await encryptAndStore({ objectId, userId, fileName, fileSize, expectedSha256: expected, plaintext: body, signal: c.req.raw.signal, tgs, vault });
+      const stored = await encryptAndStore({ objectId, userId, fileName, fileSize, expectedSha256: expected, plaintext: body, signal: c.req.raw.signal, store, vault });
       return c.json(stored.response, 201, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
     } catch (error) {
       return responseError(error, requestId);
@@ -158,7 +167,7 @@ export function registerStorageBinaryApi(
     const requestId = correlationId(c.req.raw.headers);
     try {
       if (!internalAuthorized(c.req.raw.headers, config)) throw new StorageApiError(401, 'INTERNAL_AUTHENTICATION_FAILED', 'Internal auth failed.');
-      if (!tgs.configured) throw new StorageApiError(503, 'TGS_STORAGE_NOT_CONFIGURED', 'TGserver Storage is not configured.');
+      if (!store.configured) throw new StorageApiError(503, 'TGS_STORAGE_NOT_CONFIGURED', 'TGserver Storage is not configured.');
       const objectId = c.req.param('object');
       const userId = requiredHeader(c.req.raw.headers, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
       const fileName = requiredHeader(c.req.raw.headers, 'x-astera-file-name', 'STORAGE_FILE_NAME_REQUIRED').slice(0, 240);
@@ -175,12 +184,12 @@ export function registerStorageBinaryApi(
           return c.json({ ...raced.response, idempotent: true }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
         }
         const source = await openStorageUploadPlaintext(config, { objectId, userId, fileSize });
-        const stored = await encryptAndStore({ objectId, userId, fileName, fileSize, expectedSha256: expected, plaintext: source.body, signal: c.req.raw.signal, tgs, vault });
+        const stored = await encryptAndStore({ objectId, userId, fileName, fileSize, expectedSha256: expected, plaintext: source.body, signal: c.req.raw.signal, store, vault });
         try {
           const receipt = await writeStorageUploadCompletion(config, { objectId, userId, fileSize, response: stored.response });
           return c.json({ ...receipt.response, idempotent: false }, 201, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
         } catch (error) {
-          await tgs.delete({ userId: stored.ref.userId, topicId: stored.ref.topicId, messageId: stored.ref.messageId, telegramFileId: stored.ref.telegramFileId }).catch(() => undefined);
+          await removeStoredReference(store, stored.ref).catch(() => undefined);
           throw error;
         }
       } finally {
@@ -217,9 +226,7 @@ export function registerStorageBinaryApi(
       const h = c.req.raw.headers;
       const objectId = c.req.param('object');
       const userId = requiredHeader(h, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
-      const topicId = positiveInt(requiredHeader(h, 'x-astera-topic-id', 'STORAGE_TOPIC_ID_REQUIRED'), 'STORAGE_TOPIC_ID_INVALID');
-      const messageId = positiveInt(requiredHeader(h, 'x-astera-message-id', 'STORAGE_MESSAGE_ID_REQUIRED'), 'STORAGE_MESSAGE_ID_INVALID');
-      const telegramFileId = requiredHeader(h, 'x-astera-telegram-file-id', 'STORAGE_TELEGRAM_FILE_ID_REQUIRED');
+      const locator = storagePersistentLocatorFromHeaders(h);
       const fileName = requiredHeader(h, 'x-astera-file-name', 'STORAGE_FILE_NAME_REQUIRED').slice(0, 240);
       const mimeHeader = h.get('x-astera-mime-type') || 'application/octet-stream';
       const mimeType = (mimeHeader.split(';')[0] ?? 'application/octet-stream').trim().slice(0, 160);
@@ -229,7 +236,7 @@ export function registerStorageBinaryApi(
       const wrappedDek = { ciphertext: requiredHeader(h, 'x-astera-dek-wrap-ciphertext', 'STORAGE_DEK_WRAP_REQUIRED'), iv: requiredHeader(h, 'x-astera-dek-wrap-iv', 'STORAGE_DEK_WRAP_IV_REQUIRED') };
       const contentIvBase64 = requiredHeader(h, 'x-astera-content-iv-base64', 'STORAGE_CONTENT_IV_REQUIRED');
       const authTagBase64 = requiredHeader(h, 'x-astera-auth-tag-base64', 'STORAGE_AUTH_TAG_REQUIRED');
-      const upstream = await tgs.download({ userId, topicId, messageId, telegramFileId, fileName, signal: c.req.raw.signal });
+      const upstream = await store.read({ objectId, ownerId: userId, locator, fileName, signal: c.req.raw.signal });
       if (!upstream.body) throw new StorageApiError(502, 'TGS_STORAGE_EMPTY_BODY', 'TGserver returned an empty body.');
       const dir = join(tmpdir(), 'astera-storage-download');
       await mkdir(dir, { recursive: true });
@@ -253,12 +260,11 @@ export function registerStorageBinaryApi(
     try {
       if (!internalAuthorized(c.req.raw.headers, config)) throw new StorageApiError(401, 'INTERNAL_AUTHENTICATION_FAILED', 'Internal auth failed.');
       const h = c.req.raw.headers;
+      const objectId = c.req.param('object');
       const userId = requiredHeader(h, 'x-astera-user-id', 'STORAGE_USER_ID_REQUIRED');
-      const topicId = positiveInt(requiredHeader(h, 'x-astera-topic-id', 'STORAGE_TOPIC_ID_REQUIRED'), 'STORAGE_TOPIC_ID_INVALID');
-      const messageId = positiveInt(requiredHeader(h, 'x-astera-message-id', 'STORAGE_MESSAGE_ID_REQUIRED'), 'STORAGE_MESSAGE_ID_INVALID');
-      const telegramFileId = requiredHeader(h, 'x-astera-telegram-file-id', 'STORAGE_TELEGRAM_FILE_ID_REQUIRED');
-      await tgs.delete({ userId, topicId, messageId, telegramFileId, signal: c.req.raw.signal });
-      return c.json({ deleted: true, object_id: c.req.param('object') }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
+      const locator = storagePersistentLocatorFromHeaders(h);
+      await store.delete({ objectId, ownerId: userId, locator, signal: c.req.raw.signal });
+      return c.json({ deleted: true, object_id: objectId }, 200, { 'cache-control': 'no-store', 'x-correlation-id': requestId });
     } catch (error) {
       return responseError(error, requestId);
     }
