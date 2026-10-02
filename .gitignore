@@ -11,6 +11,9 @@ playwright-report/
 test-results/
 .verify/
 
+# Generated shared contract mirrors
+contabo/app-api/src/generated/app-events.ts
+
 # Android generated build state
 android/.gradle/
 android/local.properties
