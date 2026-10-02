@@ -60,11 +60,16 @@ const VALID_DOMAINS = new Set<string>([
   'privacy', 'developer_api', 'integration', 'reconciliation',
 ]);
 const VALID_SEVERITIES = new Set<string>(['trace', 'debug', 'info', 'warn', 'error']);
+const VALID_ENVELOPE_KEYS = new Set<string>([
+  'schema', 'eventId', 'occurredAt', 'scope', 'domain', 'event', 'severity',
+  'correlationId', 'source', 'state', 'errorClass', 'refs', 'attributes',
+]);
 const VALID_REF_KEYS = new Set<string>([
   'tenantRef', 'userRef', 'conversationId', 'turnId', 'jobId', 'resultId', 'revisionId',
   'projectId', 'fileId', 'operationId',
 ]);
 const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/;
+const SAFE_OPAQUE = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/;
 const FORBIDDEN_ATTRIBUTE_KEY = /(?:password|passwd|secret|token|authorization|cookie|session|otp|cvv|card|private[_-]?payload|raw[_-]?prompt|raw[_-]?file|dek|api[_-]?key)/i;
 const NO_ATTRIBUTES = [] as const;
 const MAX_IDENTIFIER_LENGTH = 256;
@@ -83,6 +88,12 @@ function requiredText(value: unknown, name: string, max = MAX_IDENTIFIER_LENGTH)
   return trimmed;
 }
 
+function requiredOpaque(value: unknown, name: string, max = MAX_IDENTIFIER_LENGTH): string {
+  const token = requiredText(value, name, max);
+  if (!SAFE_OPAQUE.test(token)) throw new Error(`APP_EVENT_${name}_INVALID`);
+  return token;
+}
+
 function optionalToken(value: unknown, name: string): void {
   if (value === undefined) return;
   const token = requiredText(value, name, 128);
@@ -98,7 +109,7 @@ function validateRefs(value: unknown): AppEventRef | undefined {
   for (const [key, refValue] of Object.entries(refs)) {
     if (!VALID_REF_KEYS.has(key)) throw new Error(`APP_EVENT_REF_NOT_ALLOWED:${key}`);
     if (refValue === undefined) continue;
-    requiredText(refValue, `REF_${key.toUpperCase()}`, MAX_REF_LENGTH);
+    requiredOpaque(refValue, `REF_${key.toUpperCase()}`, MAX_REF_LENGTH);
   }
   return refs as AppEventRef;
 }
@@ -141,9 +152,12 @@ function validateAttributes(value: unknown): Record<string, string | number | bo
 
 export function validateAppEvent(input: AppEventEnvelope): AppEventEnvelope {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('APP_EVENT_ENVELOPE_INVALID');
+  for (const key of Object.keys(input as unknown as Record<string, unknown>)) {
+    if (!VALID_ENVELOPE_KEYS.has(key)) throw new Error(`APP_EVENT_FIELD_NOT_ALLOWED:${key}`);
+  }
   if ((input as { schema?: unknown }).schema !== 'astera.app.event.v1') throw new Error('APP_EVENT_SCHEMA_INVALID');
 
-  requiredText(input.eventId, 'EVENT_ID');
+  requiredOpaque(input.eventId, 'EVENT_ID');
   const occurredAt = requiredText(input.occurredAt, 'OCCURRED_AT', 64);
   if (!Number.isFinite(Date.parse(occurredAt))) throw new Error('APP_EVENT_OCCURRED_AT_INVALID');
   if (!VALID_SCOPES.has(input.scope)) throw new Error('APP_EVENT_SCOPE_INVALID');
@@ -151,7 +165,7 @@ export function validateAppEvent(input: AppEventEnvelope): AppEventEnvelope {
   const eventName = requiredText(input.event, 'NAME', 128);
   if (!SAFE_TOKEN.test(eventName)) throw new Error('APP_EVENT_NAME_INVALID');
   if (!VALID_SEVERITIES.has(input.severity)) throw new Error('APP_EVENT_SEVERITY_INVALID');
-  requiredText(input.correlationId, 'CORRELATION_ID');
+  requiredOpaque(input.correlationId, 'CORRELATION_ID');
   const source = requiredText(input.source, 'SOURCE', 128);
   if (!SAFE_TOKEN.test(source)) throw new Error('APP_EVENT_SOURCE_INVALID');
   optionalToken(input.state, 'STATE');
