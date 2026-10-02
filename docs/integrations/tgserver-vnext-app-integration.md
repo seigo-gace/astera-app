@@ -1,6 +1,6 @@
 # Astera App × TGserver vNext Integration Design
 
-Status: DESIGN BASELINE / IMPLEMENTATION PENDING / CUTOVER NOT APPROVED  
+Status: DESIGN BASELINE / SOURCE SCAFFOLD STARTED / CUTOVER NOT APPROVED  
 Date: 2026-10-02 JST  
 App branch: `docs/tgserver-vnext-app-integration-20261002`  
 App base: `fix/private-file-broker-20260929` @ `cda786660f89bf47ec12c473722571e67198d14b`  
@@ -10,7 +10,7 @@ TGserver source design branch: `feat/tgserver-vnext-capability-20261002`
 
 TGserver vNextの追加強化設計を前提に、Astera App側がどの責務を持ち、どの情報を保持し、どのAPI契約でTGserverへ接続し、現行v1.5互換経路からどう移行するかを固定する。
 
-この文書はApp側のTarget Designであり、TGserver vNext実装済み、App実装済み、Staging接続済み、Production切替済みを意味しない。
+この文書はApp側のTarget Designであり、TGserver vNext実装済み、App Runtime接続済み、Staging接続済み、Production切替済みを意味しない。
 
 ## 2. TGserver vNextから受ける固定前提
 
@@ -420,34 +420,38 @@ Design rule:
 
 ## 17. TGserver adapter architecture
 
-App code should isolate TGserver protocol behind one adapter.
+App code isolates provider protocol behind `PersistentObjectStore`.
 
-```ts
-interface PersistentObjectStore {
-  put(input): Promise<ObjectOperation>;
-  get(input): Promise<Response>;
-  head(input): Promise<ObjectState>;
-  delete(input): Promise<ObjectOperation>;
-  getOperation(input): Promise<ObjectOperation>;
-  capabilities(): Promise<StoreCapabilities>;
-}
-```
-
-Implementations:
+Source scaffold now exists:
 
 ```text
-TgserverLegacyV15Adapter
-TgserverNativeV1Adapter
+contabo/app-api/src/persistent-object-store.ts
+contabo/app-api/src/tgserver-legacy-v15-object-store.ts
+contabo/app-api/src/tgserver-legacy-v15-object-store.test.ts
 ```
 
-App business code calls `PersistentObjectStore`, not raw TGserver endpoints.
+The initial interface intentionally implements only the behavior that can be fixed before TGserver Native v1 schema freezes: put/read/delete plus a typed locator boundary. Native capability/head/operation polling will be added only after TGserver fixes the exact Native API contract.
 
-This allows:
+Current compatibility rule:
 
-- old object read/delete compatibility
-- vNext shadow verification
-- gradual object-by-object migration
-- rollback without changing App UI/business code
+```text
+legacy v1.5
+ -> physical topic/message/file locator allowed only inside legacy compatibility types/adapter
+
+native v1
+ -> logical object identity; physical Telegram placement forbidden in caller contract
+```
+
+The Legacy adapter fails closed when a Native logical locator is accidentally supplied.
+
+Target implementations:
+
+```text
+TgserverLegacyV15ObjectStore   -- SOURCE SCAFFOLD ADDED
+TgserverNativeV1ObjectStore    -- WAITING_FOR_TGS_NATIVE_CONTRACT
+```
+
+App Runtime still uses the existing v1.5 client path; no cutover has occurred.
 
 ## 18. Capability negotiation
 
@@ -477,6 +481,8 @@ search
 ```
 
 Cutover must fail closed if required capabilities are missing.
+
+Capability source/API field names remain pending until TGserver Native contract is fixed.
 
 ## 19. Authentication / credentials
 
@@ -538,13 +544,39 @@ Candidate migration steps:
 6. stop new writes to legacy locator columns;
 7. remove legacy columns only after retention/migration proof and explicit approval.
 
+Do not assign a D1 migration number on this isolated branch until it is rebased against the target integration branch; PR #67/#68 maintain independent migration sequences and collision must be avoided.
+
 Do not rewrite old Telegram objects solely to normalize schema unless a verified migration benefit requires it.
 
-## 23. Rollout design
+## 23. App-wide Event / Log integration
+
+Full System/User event design is maintained in:
+
+`docs/integrations/tgserver-vnext-app-event-log-design.md`
+
+App source scaffold:
 
 ```text
-Phase 0  Documentation only
-Phase 1  Native adapter unit/contract tests
+contabo/app-api/src/app-event-contract.ts
+contabo/app-api/src/app-event-contract.test.ts
+```
+
+Master routing policy is represented as logical route intent, not physical Telegram IDs:
+
+```text
+System -> namespace=astera-app / stream=system -> TGserver Registry -> System Group 1
+User   -> namespace=astera-app / stream=user + opaque owner -> TGserver Registry -> User Group 2+
+```
+
+The App event contract rejects user identity on System events, requires an opaque user reference on User events, and rejects credential/private-content-like attribute keys before external persistence.
+
+Durable outbox and Native Event adapter remain pending until migration sequencing and the TGserver Event API schema are fixed.
+
+## 24. Rollout design
+
+```text
+Phase 0  Documentation and source boundary scaffolds
+Phase 1  Native adapter unit/contract tests after Native API freeze
 Phase 2  TGserver test topology integration
 Phase 3  shadow capability/readiness checks
 Phase 4  test-user native writes
@@ -558,7 +590,7 @@ Phase 10 controlled production cutover
 
 No phase implies automatic merge/deploy.
 
-## 24. Required tests before implementation completion
+## 25. Required tests before implementation completion
 
 ### Contract
 
@@ -601,34 +633,43 @@ No phase implies automatic merge/deploy.
 - no TGserver credential in browser/log/error
 - Private Mode never calls TGserver
 - App-managed DEK material never appears in TGserver log/search
+- System events cannot carry userRef
+- User events require opaque userRef
+- secret/private-content event attribute keys fail closed
 
-## 25. Current known incompatibilities / implementation backlog
+## 26. Current known incompatibilities / implementation backlog
 
-1. `TgserverStorageClient` is v1.5 physical-locator coupled.
-2. `storage-binary-api.ts` stores topic/message/file locator values in App metadata.
-3. `astera_storage_objects` schema is physical-locator aware.
-4. deletion receipts are physical-locator aware.
-5. current fixed-capacity Astera Storage commercial schema conflicts with TGserver vNext Unlimited commercial direction.
-6. App does not yet have a `PersistentObjectStore` compatibility adapter.
+1. Runtime `storage-binary-api.ts` still directly uses the old `TgserverStorageClient` and physical locator values.
+2. `astera_storage_objects` schema is physical-locator aware.
+3. deletion receipts are physical-locator aware.
+4. current fixed-capacity Astera Storage commercial schema conflicts with TGserver vNext Unlimited commercial direction.
+5. `PersistentObjectStore` source boundary exists, but Runtime callers have not been switched to it.
+6. Legacy v1.5 compatibility adapter source/tests exist; Native v1 adapter cannot be finalized before TGserver Native API freezes.
 7. App does not yet persist TGserver durable operation IDs/states.
 8. App-side reconciliation between D1 logical state and TGserver ledger is not implemented.
-9. TGserver vNext Native/Control API exact schema is still design-stage and cannot be hardcoded before its contract is fixed.
-10. Private Mode Scanner/Extractor/OCR architecture remains separate and incomplete; vNext Normal Storage work must not silently change that boundary.
+9. TGserver vNext Native/Control/Event API exact schema is still design-stage and must not be guessed into Runtime code.
+10. Durable App Event outbox is not implemented.
+11. Full App domain instrumentation is not implemented.
+12. Private Mode Scanner/Extractor/OCR architecture remains separate and incomplete; vNext Normal Storage work must not silently change that boundary.
 
-## 26. Implementation order
+## 27. Implementation order
 
-1. Freeze TGserver Native Object/Operation/Capability contract.
-2. Add App `PersistentObjectStore` interface.
-3. Wrap current v1.5 client as Legacy adapter without behavior change.
-4. Add Native v1 adapter behind feature flag/config.
-5. Add D1 logical TGserver reference migration.
-6. Add App reconciliation worker/path.
-7. Add contract/E2E tests against isolated TGserver vNext test topology.
-8. Add mixed legacy/native read/delete tests.
-9. Resolve TGserver commercial product catalog migration separately from storage transport implementation.
-10. Only after measured PASS, authorize staging cutover.
+1. TGserver freezes Native Object/Operation/Capability/Event contracts.
+2. App `PersistentObjectStore` interface. **SOURCE SCAFFOLD ADDED**
+3. Current v1.5 Legacy adapter without Runtime behavior change. **SOURCE + TEST SCAFFOLD ADDED**
+4. AppEvent contract/System-User route intent/redaction boundary. **SOURCE + TEST SCAFFOLD ADDED**
+5. Reconcile D1 migration numbering against integration target branch.
+6. Add Native v1 adapter behind config only after contract freeze.
+7. Add D1 logical TGserver reference migration.
+8. Add durable App Event outbox and sender abstraction.
+9. Add App reconciliation worker/path.
+10. Instrument current repair scope first: Conversation / Job / Result / File.
+11. Add contract/E2E tests against isolated TGserver vNext test topology.
+12. Add mixed legacy/native read/delete tests.
+13. Resolve TGserver commercial product catalog migration separately from storage transport implementation.
+14. Only after measured PASS, authorize staging cutover.
 
-## 27. Completion definition
+## 28. Completion definition
 
 This integration is complete only when all are true:
 
@@ -636,11 +677,15 @@ This integration is complete only when all are true:
 TGSERVER_NATIVE_CONTRACT=FIXED
 APP_ADAPTER_BOUNDARY=IMPLEMENTED
 LEGACY_COMPATIBILITY=PASS
+APP_EVENT_CONTRACT=PASS
+APP_EVENT_OUTBOX=PASS
 D1_LOGICAL_REFERENCE_MIGRATION=PASS
 APP_RECONCILIATION=PASS
 PRIVATE_MODE_ISOLATION=PASS
 VAULT_ENCRYPTION_BOUNDARY=PASS
 NO_RAW_TELEGRAM_LOCATOR_USER_EXPOSURE=PASS
+SYSTEM_ROUTE_GROUP1_E2E=PASS
+USER_ROUTE_GROUP2PLUS_E2E=PASS
 RESPONSE_LOSS_IDEMPOTENCY=PASS
 RESTART_RECOVERY=PASS
 MULTI_GROUP_TOPIC_ROTATION_TRANSPARENT=PASS
@@ -650,4 +695,16 @@ MAIN_MERGE=APPROVED
 PRODUCTION_CUTOVER=APPROVED
 ```
 
-Until then, status remains `IMPLEMENTATION_PENDING` or `VERIFICATION_INCOMPLETE`.
+Current source state:
+
+```text
+APP_ADAPTER_BOUNDARY=PARTIAL_SOURCE_SCAFFOLD
+LEGACY_COMPATIBILITY=SOURCE_TEST_ADDED_NOT_YET_CI_PROVEN
+APP_EVENT_CONTRACT=SOURCE_TEST_ADDED_NOT_YET_CI_PROVEN
+TGS_NATIVE_ADAPTER=WAITING_FOR_CONTRACT
+D1_MIGRATION=NOT_CREATED
+OUTBOX=NOT_IMPLEMENTED
+RUNTIME_CUTOVER=NONE
+```
+
+Until the remaining gates pass, status is `VERIFICATION_INCOMPLETE`.
