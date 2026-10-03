@@ -8,9 +8,14 @@ services:
       - contabo/app-api/.env
     environment:
       ASTERA_STORAGE_UPLOAD_TMP_DIR: /var/lib/astera-storage-upload
+      ASTERA_PRIVATE_DATA_TMP_DIR: /run/astera-private-data
+      ASTERA_PRIVATE_UPLOAD_MAX_BYTES: "20971520"
+      AI_CORE_BASE_URL: http://127.0.0.1:18080
     volumes:
       - astera-storage-upload-tmp:/var/lib/astera-storage-upload
-    # Vault and TGserver are intentionally bound to host loopback only.
+    tmpfs:
+      - /run/astera-private-data:size=268435456,mode=0700,uid=10001,gid=10001
+    # Vault, AI Core Router, and TGserver are intentionally bound to host loopback only.
     # Run the API on the host network so those internal services stay private
     # while remaining reachable from the API runtime.
     network_mode: host

@@ -3,136 +3,187 @@ import test from 'node:test';
 import { translateAsteraResult } from './translation-runtime.js';
 import type { VaultClient } from './vault-client.js';
 
-type ProviderInput = {
-  secretId: string;
-  consumer: string;
-  url: string;
-  secretHeader: string;
-  headers?: Record<string, string>;
-  body?: unknown;
+const MODEL_ID = 'qwen3//models/Qwen3-8B-Q4_K_M.gguf';
+const fakeVault = {} as VaultClient;
+
+type ChatRequestBody = {
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  temperature: number;
+  max_tokens: number;
+  chat_template_kwargs: { enable_thinking: boolean };
 };
 
-test('translation runtime translates section bodies only and preserves protected values', async () => {
-  const providerInputs: ProviderInput[] = [];
-  const fakeVault = {
-    providerJson: async (input: ProviderInput) => {
-      providerInputs.push(input);
-      const body = input.body as {
-        systemInstruction?: { parts?: Array<{ text?: string }> };
-        contents: Array<{ parts: Array<{ text: string }> }>;
-        generationConfig?: { temperature?: number; responseMimeType?: string };
-      };
-      const requestText = body.contents[0]?.parts[0]?.text ?? '';
-      const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
-      const translated = source.replace('Hello', 'こんにちは').replace('World', '世界');
-      return {
-        response: { status: 200, ok: true, body: '{}' },
-        payload: {
-          candidates: [{ content: { parts: [{ text: translated }] } }],
-          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
-        },
-      };
-    },
-  } as unknown as VaultClient;
-  const input = {
-    result: {
-      sections: [
-        { key: 'true_purpose', title: '固定タイトル', body: '# Hello\nWorld https://example.com `const x = 1`' },
-      ],
-    },
+function aiCoreResponse(content: string, extras: Record<string, unknown> = {}): Response {
+  return new Response(JSON.stringify({
+    model: MODEL_ID,
+    choices: [{ message: { role: 'assistant', content } }],
+    usage: { prompt_tokens: 12, completion_tokens: 8 },
+    ...extras,
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
+async function withRuntimeEnv<T>(run: () => Promise<T>): Promise<T> {
+  const previousOrigin = process.env.AI_CORE_BASE_URL;
+  const previousKey = process.env.AI_CORE_API_KEY;
+  process.env.AI_CORE_BASE_URL = 'http://127.0.0.1:18080';
+  process.env.AI_CORE_API_KEY = 'unit-test-ai-core-key';
+  try {
+    return await run();
+  } finally {
+    if (previousOrigin === undefined) delete process.env.AI_CORE_BASE_URL;
+    else process.env.AI_CORE_BASE_URL = previousOrigin;
+    if (previousKey === undefined) delete process.env.AI_CORE_API_KEY;
+    else process.env.AI_CORE_API_KEY = previousKey;
+  }
+}
+
+function requestBody(init: RequestInit | undefined): ChatRequestBody {
+  return JSON.parse(String(init?.body)) as ChatRequestBody;
+}
+
+function protectedBody(body: ChatRequestBody): string {
+  const user = body.messages.find((item) => item.role === 'user');
+  return user?.content ?? '';
+}
+
+test('translation runtime uses only local AI Core Qwen3 and preserves protected values', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: ChatRequestBody[] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), 'http://127.0.0.1:18080/v1/chat/completions');
+    assert.equal(init?.method, 'POST');
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get('authorization'), 'Bearer unit-test-ai-core-key');
+    assert.equal(headers.get('content-type'), 'application/json');
+    const body = requestBody(init);
+    requests.push(body);
+    assert.equal(body.model, MODEL_ID);
+    assert.equal(body.temperature, 0);
+    assert.equal(body.chat_template_kwargs.enable_thinking, false);
+    assert.match(protectedBody(body), /STRATEGY=document/);
+    assert.doesNotMatch(protectedBody(body), /https:\/\/example\.com/);
+    assert.doesNotMatch(protectedBody(body), /`const x = 1`/);
+    assert.doesNotMatch(protectedBody(body), /2026-10-03/);
+    const source = protectedBody(body).match(/BEGIN_BODY\n([\s\S]*)\nEND_BODY$/)?.[1] ?? '';
+    return aiCoreResponse(source.replace('Hello', 'こんにちは').replace('World', '世界'));
   };
-  const output = await translateAsteraResult(input, 'ja-JP', fakeVault, { modelId: 'configured-model', apiKeyRef: 'vault-ref', timeoutMs: 30_000 });
-  const result = output.result as typeof input;
-  assert.equal(result.result.sections[0]?.title, '固定タイトル');
-  assert.equal(result.result.sections[0]?.body, '# こんにちは\n世界 https://example.com `const x = 1`');
-  assert.equal(output.usage.calls, 1);
-  assert.equal(output.usage.totalTokens, 15);
+  try {
+    const input = {
+      result: {
+        sections: [
+          { key: 'true_purpose', title: '固定タイトル', body: '# Hello\nWorld https://example.com `const x = 1` 2026-10-03' },
+        ],
+      },
+    };
+    const output = await translateAsteraResult(input, 'ja-JP', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 });
+    const result = output.result as typeof input;
+    assert.equal(result.result.sections[0]?.title, '固定タイトル');
+    assert.equal(result.result.sections[0]?.body, '# こんにちは\n世界 https://example.com `const x = 1` 2026-10-03');
+    assert.equal(requests.length, 1);
+    assert.equal(output.usage.provider, 'ai_core_qwen3');
+    assert.equal(output.usage.model, MODEL_ID);
+    assert.equal(output.usage.externalApiCalls, 0);
+    assert.equal(output.usage.validationFallbacks, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
 
-  const providerInput = providerInputs[0];
-  assert.ok(providerInput);
-  assert.equal(providerInput.secretId, 'vault-ref');
-  assert.equal(providerInput.consumer, 'translation-flash-lite');
-  assert.equal(providerInput.secretHeader, 'x-goog-api-key');
-  assert.equal(providerInput.url, 'https://generativelanguage.googleapis.com/v1beta/models/configured-model:generateContent');
-  assert.equal(providerInput.headers?.['content-type'], 'application/json');
-  const providerBody = providerInput.body as {
-    systemInstruction?: { parts?: Array<{ text?: string }> };
-    generationConfig?: { temperature?: number; responseMimeType?: string };
+test('translation runtime falls back to same Qwen3 model with line-preserving strategy', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  const strategies: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = requestBody(init);
+    assert.equal(body.model, MODEL_ID);
+    const user = protectedBody(body);
+    const strategy = user.includes('STRATEGY=lines') ? 'lines' : 'document';
+    strategies.push(strategy);
+    const source = user.match(/BEGIN_BODY\n([\s\S]*)\nEND_BODY$/)?.[1] ?? '';
+    if (strategy === 'document') return aiCoreResponse(`${source}\nBROKEN-LINE`);
+    return aiCoreResponse(source.replace('Hello', 'こんにちは'), { usage: { prompt_tokens: 9, completion_tokens: 6 } });
   };
-  const policy = providerBody.systemInstruction?.parts?.[0]?.text ?? '';
-  assert.match(policy, /translation-only runtime/i);
-  assert.match(policy, /Never summarize/);
-  assert.match(policy, /Preserve headings, paragraphs, lists, tables, code, URLs, numbers, placeholders, line breaks, order, and information quantity/);
-  assert.equal(providerBody.generationConfig?.temperature, 0);
-  assert.equal(providerBody.generationConfig?.responseMimeType, 'text/plain');
-});
-
-test('translation runtime retries only the failing body and reports the real Gemini call count', async () => {
-  let providerCalls = 0;
-  const fakeVault = {
-    providerJson: async (input: ProviderInput) => {
-      providerCalls += 1;
-      const body = input.body as { contents: Array<{ parts: Array<{ text: string }> }> };
-      const requestText = body.contents[0]?.parts[0]?.text ?? '';
-      const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
-      const translated = source.replace('Hello', 'こんにちは');
-      return {
-        response: { status: 200, ok: true, body: '{}' },
-        payload: {
-          candidates: [{ content: { parts: [{ text: providerCalls === 1 ? `${translated}\n破壊行` : translated }] } }],
-          usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
-        },
-      };
-    },
-  } as unknown as VaultClient;
-
-  const output = await translateAsteraResult(
-    { result: { sections: [{ key: 'true_purpose', body: '# Hello' }] } },
-    'ja-JP',
-    fakeVault,
-    { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 30_000 },
-  );
-  assert.equal(providerCalls, 2);
-  assert.equal(output.usage.calls, 2);
-  assert.equal(output.usage.totalTokens, 6);
-  const result = output.result as { result: { sections: Array<{ body: string }> } };
-  assert.equal(result.result.sections[0]?.body, '# こんにちは');
-});
-
-test('translation runtime applies its provider timeout without modifying the Vault implementation', async () => {
-  let providerCalls = 0;
-  const fakeVault = {
-    providerJson: async () => {
-      providerCalls += 1;
-      return await new Promise<never>(() => undefined);
-    },
-  } as unknown as VaultClient;
-
-  await assert.rejects(
-    () => translateAsteraResult(
-      { result: { sections: [{ key: 'true_purpose', body: 'Hello' }] } },
+  try {
+    const output = await translateAsteraResult(
+      { result: { sections: [{ key: 'true_purpose', body: '# Hello' }] } },
       'ja-JP',
       fakeVault,
-      { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 5 },
-    ),
-    (error: unknown) => {
-      const source = error as Error & { code?: string; retryable?: boolean };
-      assert.equal(source.code, 'TRANSLATION_PROVIDER_TIMEOUT');
-      assert.equal(source.retryable, true);
-      return true;
-    },
-  );
-  assert.equal(providerCalls, 2);
+      { modelId: '', apiKeyRef: '', timeoutMs: 30_000 },
+    );
+    assert.deepEqual(strategies, ['document', 'lines']);
+    assert.equal(output.usage.calls, 2);
+    assert.equal(output.usage.validationFallbacks, 1);
+    assert.equal(output.usage.inputTokens, 21);
+    assert.equal(output.usage.outputTokens, 14);
+    const result = output.result as { result: { sections: Array<{ body: string }> } };
+    assert.equal(result.result.sections[0]?.body, '# こんにちは');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
+
+test('translation runtime rejects non-loopback AI Core origin before network access', async () => {
+  const originalFetch = globalThis.fetch;
+  const previousOrigin = process.env.AI_CORE_BASE_URL;
+  const previousKey = process.env.AI_CORE_API_KEY;
+  process.env.AI_CORE_BASE_URL = 'https://ai.example.com';
+  process.env.AI_CORE_API_KEY = 'unit-test-ai-core-key';
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('must not be reached');
+  };
+  try {
+    await assert.rejects(
+      () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, 'TRANSLATION_AI_CORE_LOCAL_ONLY');
+        return true;
+      },
+    );
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousOrigin === undefined) delete process.env.AI_CORE_BASE_URL;
+    else process.env.AI_CORE_BASE_URL = previousOrigin;
+    if (previousKey === undefined) delete process.env.AI_CORE_API_KEY;
+    else process.env.AI_CORE_API_KEY = previousKey;
+  }
 });
 
-test('translation runtime fails closed when Gemini provider profile is not configured', async () => {
-  const fakeVault = { providerJson: async () => { throw new Error('provider must not be called'); } } as unknown as VaultClient;
-  await assert.rejects(
-    () => translateAsteraResult({ result: { sections: [] } }, 'ja-JP', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
-    (error: unknown) => {
-      const source = error as Error & { code?: string };
-      assert.equal(source.code, 'TRANSLATION_PROVIDER_NOT_CONFIGURED');
-      return true;
-    },
-  );
+test('translation runtime fails closed when AI Core reports a different model', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => aiCoreResponse('こんにちは', { model: 'granite//models/granite-4.2-8b-Q4_K_M.gguf' });
+  try {
+    await assert.rejects(
+      () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, 'TRANSLATION_MODEL_IDENTITY_MISMATCH');
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
+
+test('translation runtime requires AI Core API key', async () => {
+  const previousOrigin = process.env.AI_CORE_BASE_URL;
+  const previousKey = process.env.AI_CORE_API_KEY;
+  process.env.AI_CORE_BASE_URL = 'http://127.0.0.1:18080';
+  delete process.env.AI_CORE_API_KEY;
+  try {
+    await assert.rejects(
+      () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, 'TRANSLATION_AI_CORE_KEY_NOT_CONFIGURED');
+        return true;
+      },
+    );
+  } finally {
+    if (previousOrigin === undefined) delete process.env.AI_CORE_BASE_URL;
+    else process.env.AI_CORE_BASE_URL = previousOrigin;
+    if (previousKey === undefined) delete process.env.AI_CORE_API_KEY;
+    else process.env.AI_CORE_API_KEY = previousKey;
+  }
 });
