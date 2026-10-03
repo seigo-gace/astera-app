@@ -28,7 +28,7 @@ export type TgserverProvisionedRoute = {
   tenantId: string;
   namespaceId: string;
   routeKey: string;
-  state: string;
+  state: 'READ_ONLY';
 };
 
 export type TgserverIssuedObjectCredential = {
@@ -87,6 +87,11 @@ function match(actual: string, expected: string, code: string): string {
   return actual;
 }
 
+function expectState(actual: string, allowed: readonly string[], code: string): string {
+  if (!allowed.includes(actual)) throw new TgserverNativeV1ProvisioningError(code, 502);
+  return actual;
+}
+
 export class TgserverNativeV1ProvisioningClient {
   private readonly origin: string;
   private readonly controlToken: string;
@@ -109,7 +114,7 @@ export class TgserverNativeV1ProvisioningClient {
     return new URL(path.replace(/^\/+/, ''), `${this.origin}/`).toString();
   }
 
-  private async post(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async post(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort('tgs_control_timeout'), this.timeoutMs);
     try {
@@ -117,9 +122,9 @@ export class TgserverNativeV1ProvisioningClient {
         method: 'POST',
         headers: {
           authorization: `Bearer ${this.controlToken}`,
-          'content-type': 'application/json',
+          ...(body ? { 'content-type': 'application/json' } : {}),
         },
-        body: JSON.stringify(body),
+        ...(body ? { body: JSON.stringify(body) } : {}),
         signal: controller.signal,
       });
       const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
@@ -147,7 +152,15 @@ export class TgserverNativeV1ProvisioningClient {
     const returnedTenantId = text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING');
     return {
       tenantId: match(returnedTenantId, tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
-      state: text(payload.state, 'TGS_CONTROL_TENANT_STATE_MISSING'),
+      state: expectState(text(payload.state, 'TGS_CONTROL_TENANT_STATE_MISSING'), ['PROVISIONING', 'ACTIVE'], 'TGS_CONTROL_TENANT_STATE_UNEXPECTED'),
+    };
+  }
+
+  async activateTenant(tenantId: string): Promise<TgserverProvisionedTenant> {
+    const payload = await this.post(`v1/control/tenants/${encodeURIComponent(tenantId)}/activate`);
+    return {
+      tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
+      state: expectState(text(payload.state, 'TGS_CONTROL_TENANT_STATE_MISSING'), ['ACTIVE'], 'TGS_CONTROL_TENANT_NOT_ACTIVE'),
     };
   }
 
@@ -159,7 +172,19 @@ export class TgserverNativeV1ProvisioningClient {
     return {
       tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
       namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
-      state: text(payload.state, 'TGS_CONTROL_NAMESPACE_STATE_MISSING'),
+      state: expectState(text(payload.state, 'TGS_CONTROL_NAMESPACE_STATE_MISSING'), ['PROVISIONING', 'ACTIVE'], 'TGS_CONTROL_NAMESPACE_STATE_UNEXPECTED'),
+    };
+  }
+
+  async activateNamespace(input: { tenantId: string; namespaceId: string }): Promise<TgserverProvisionedNamespace> {
+    const payload = await this.post('v1/control/namespaces/activate', {
+      tenant_id: input.tenantId,
+      namespace_id: input.namespaceId,
+    });
+    return {
+      tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
+      namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
+      state: expectState(text(payload.state, 'TGS_CONTROL_NAMESPACE_STATE_MISSING'), ['ACTIVE'], 'TGS_CONTROL_NAMESPACE_NOT_ACTIVE'),
     };
   }
 
@@ -182,7 +207,18 @@ export class TgserverNativeV1ProvisioningClient {
       tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
       namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
       capability: match(text(payload.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISSING'), input.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISMATCH'),
-      state: text(payload.state, 'TGS_CONTROL_ENTITLEMENT_STATE_MISSING'),
+      state: expectState(text(payload.state, 'TGS_CONTROL_ENTITLEMENT_STATE_MISSING'), ['PROVISIONING', 'ACTIVE'], 'TGS_CONTROL_ENTITLEMENT_STATE_UNEXPECTED'),
+    };
+  }
+
+  async activateEntitlement(entitlementId: string): Promise<TgserverProvisionedEntitlement> {
+    const payload = await this.post(`v1/control/entitlements/${encodeURIComponent(entitlementId)}/activate`);
+    return {
+      entitlementId: match(text(payload.entitlement_id, 'TGS_CONTROL_ENTITLEMENT_ID_MISSING'), entitlementId, 'TGS_CONTROL_ENTITLEMENT_ID_MISMATCH'),
+      tenantId: text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'),
+      namespaceId: text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'),
+      capability: text(payload.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISSING'),
+      state: expectState(text(payload.state, 'TGS_CONTROL_ENTITLEMENT_STATE_MISSING'), ['ACTIVE'], 'TGS_CONTROL_ENTITLEMENT_NOT_ACTIVE'),
     };
   }
 
@@ -202,12 +238,14 @@ export class TgserverNativeV1ProvisioningClient {
     });
     const routeId = text(payload.route_id, 'TGS_CONTROL_ROUTE_ID_MISSING');
     if (input.routeId) match(routeId, input.routeId, 'TGS_CONTROL_ROUTE_ID_MISMATCH');
+    const state = text(payload.state, 'TGS_CONTROL_ROUTE_STATE_MISSING');
+    expectState(state, ['READ_ONLY'], 'TGS_CONTROL_ROUTE_NOT_READ_ONLY');
     return {
       routeId,
       tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
       namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
       routeKey: match(text(payload.route_key, 'TGS_CONTROL_ROUTE_KEY_MISSING'), input.routeKey, 'TGS_CONTROL_ROUTE_KEY_MISMATCH'),
-      state: text(payload.state, 'TGS_CONTROL_ROUTE_STATE_MISSING'),
+      state: 'READ_ONLY',
     };
   }
 
@@ -237,7 +275,7 @@ export class TgserverNativeV1ProvisioningClient {
       tenantId,
       namespaceId,
       scopes,
-      state: text(record.state, 'TGS_CONTROL_CREDENTIAL_STATE_MISSING'),
+      state: expectState(text(record.state, 'TGS_CONTROL_CREDENTIAL_STATE_MISSING'), ['ACTIVE'], 'TGS_CONTROL_CREDENTIAL_NOT_ACTIVE'),
     };
   }
 }

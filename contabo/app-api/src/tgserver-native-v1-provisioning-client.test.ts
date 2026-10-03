@@ -14,16 +14,19 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-test('provisioning client exposes registration-only control calls with exact current TGserver v1 payloads', async () => {
+test('provisioning client follows current TGserver staged control lifecycle but never activates a route', async () => {
   const seen: SeenRequest[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = String(input);
     seen.push({ url, init });
     const path = new URL(url).pathname;
-    if (path === '/v1/control/tenants') return json({ tenant_id: 'app-service', state: 'REGISTERED' }, 201);
-    if (path === '/v1/control/namespaces') return json({ tenant_id: 'app-service', namespace_id: 'ns-user-opaque', state: 'REGISTERED' }, 201);
-    if (path === '/v1/control/entitlements') return json({ entitlement_id: 'ent-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', capability: 'object-storage', state: 'REGISTERED' }, 201);
-    if (path === '/v1/control/routes') return json({ route_id: 'route-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', route_key: 'route-opaque', state: 'REGISTERED', active_generation: null }, 201);
+    if (path === '/v1/control/tenants') return json({ tenant_id: 'app-service', state: 'PROVISIONING' }, 201);
+    if (path === '/v1/control/tenants/app-service/activate') return json({ tenant_id: 'app-service', state: 'ACTIVE' });
+    if (path === '/v1/control/namespaces') return json({ tenant_id: 'app-service', namespace_id: 'ns-user-opaque', state: 'PROVISIONING' }, 201);
+    if (path === '/v1/control/namespaces/activate') return json({ tenant_id: 'app-service', namespace_id: 'ns-user-opaque', state: 'ACTIVE' });
+    if (path === '/v1/control/entitlements') return json({ entitlement_id: 'ent-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', capability: 'object-storage', state: 'PROVISIONING' }, 201);
+    if (path === '/v1/control/entitlements/ent-1/activate') return json({ entitlement_id: 'ent-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', capability: 'object-storage', state: 'ACTIVE' });
+    if (path === '/v1/control/routes') return json({ route_id: 'route-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', route_key: 'route-opaque', state: 'READ_ONLY', active_generation: 0 }, 201);
     if (path === '/v1/control/credentials') return json({
       token: 'one-time-object-token',
       credential: {
@@ -44,16 +47,23 @@ test('provisioning client exposes registration-only control calls with exact cur
   }, fetchImpl);
 
   await client.registerTenant('app-service');
+  await client.activateTenant('app-service');
   await client.registerNamespace({ tenantId: 'app-service', namespaceId: 'ns-user-opaque' });
+  await client.activateNamespace({ tenantId: 'app-service', namespaceId: 'ns-user-opaque' });
   await client.registerEntitlement({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', capability: 'object-storage', entitlementId: 'ent-1' });
-  await client.registerRoute({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', routeKey: 'route-opaque', poolKey: 'app-pool', routeId: 'route-1' });
+  await client.activateEntitlement('ent-1');
+  const route = await client.registerRoute({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', routeKey: 'route-opaque', poolKey: 'app-pool', routeId: 'route-1' });
   const issued = await client.issueObjectCredential({ tenantId: 'app-service', namespaceId: 'ns-user-opaque' });
 
+  assert.equal(route.state, 'READ_ONLY');
   assert.equal(issued.token, 'one-time-object-token');
   assert.deepEqual(seen.map((request) => new URL(request.url).pathname), [
     '/v1/control/tenants',
+    '/v1/control/tenants/app-service/activate',
     '/v1/control/namespaces',
+    '/v1/control/namespaces/activate',
     '/v1/control/entitlements',
+    '/v1/control/entitlements/ent-1/activate',
     '/v1/control/routes',
     '/v1/control/credentials',
   ]);
@@ -61,53 +71,53 @@ test('provisioning client exposes registration-only control calls with exact cur
     assert.equal(new Headers(request.init?.headers).get('authorization'), 'Bearer control-token');
     assert.equal(request.init?.method, 'POST');
   }
-  assert.deepEqual(JSON.parse(String(seen[0]?.init?.body)), { tenant_id: 'app-service' });
-  assert.deepEqual(JSON.parse(String(seen[1]?.init?.body)), { tenant_id: 'app-service', namespace_id: 'ns-user-opaque' });
-  assert.deepEqual(JSON.parse(String(seen[2]?.init?.body)), {
-    tenant_id: 'app-service',
-    namespace_id: 'ns-user-opaque',
-    capability: 'object-storage',
-    entitlement_id: 'ent-1',
-  });
-  assert.deepEqual(JSON.parse(String(seen[3]?.init?.body)), {
+  assert.equal(seen.some((request) => new URL(request.url).pathname.includes('/routes/route-1/activate')), false);
+  assert.deepEqual(JSON.parse(String(seen[6]?.init?.body)), {
     tenant_id: 'app-service',
     namespace_id: 'ns-user-opaque',
     route_key: 'route-opaque',
     pool_key: 'app-pool',
     route_id: 'route-1',
   });
-  assert.deepEqual(JSON.parse(String(seen[4]?.init?.body)), {
+  assert.deepEqual(JSON.parse(String(seen[7]?.init?.body)), {
     tenant_id: 'app-service',
     namespace_id: 'ns-user-opaque',
     scopes: ['object:read', 'object:write'],
   });
 });
 
-test('provisioning client intentionally has no activation or credential-revoke surface', () => {
+test('provisioning replay accepts already-active prerequisites but keeps route activation unavailable', async () => {
   const client = new TgserverNativeV1ProvisioningClient({
     origin: 'http://tgserver-vnext:8080',
     controlToken: 'control-token',
     timeoutMs: 5000,
+  }, async (input) => {
+    const path = new URL(String(input)).pathname;
+    if (path === '/v1/control/tenants') return json({ tenant_id: 'app-service', state: 'ACTIVE' }, 201);
+    if (path === '/v1/control/namespaces') return json({ tenant_id: 'app-service', namespace_id: 'ns-user-opaque', state: 'ACTIVE' }, 201);
+    if (path === '/v1/control/entitlements') return json({ entitlement_id: 'ent-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', capability: 'object-storage', state: 'ACTIVE' }, 201);
+    return json({ route_id: 'route-1', tenant_id: 'app-service', namespace_id: 'ns-user-opaque', route_key: 'route-opaque', state: 'READ_ONLY', active_generation: 0 }, 201);
   });
-  assert.equal('activateTenant' in client, false);
-  assert.equal('activateNamespace' in client, false);
-  assert.equal('activateEntitlement' in client, false);
+  assert.equal((await client.registerTenant('app-service')).state, 'ACTIVE');
+  assert.equal((await client.registerNamespace({ tenantId: 'app-service', namespaceId: 'ns-user-opaque' })).state, 'ACTIVE');
+  assert.equal((await client.registerEntitlement({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', capability: 'object-storage', entitlementId: 'ent-1' })).state, 'ACTIVE');
+  assert.equal((await client.registerRoute({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', routeKey: 'route-opaque', poolKey: 'app-pool', routeId: 'route-1' })).state, 'READ_ONLY');
   assert.equal('activateRoute' in client, false);
   assert.equal('revokeCredential' in client, false);
 });
 
-test('registration responses fail closed when TGserver returns identity or route drift', async () => {
+test('registration responses fail closed on identity drift or an already-active route', async () => {
   const tenantMismatch = new TgserverNativeV1ProvisioningClient({
     origin: 'http://tgserver-vnext:8080',
     controlToken: 'control-token',
     timeoutMs: 5000,
-  }, async () => json({ tenant_id: 'wrong-service', state: 'REGISTERED' }, 201));
+  }, async () => json({ tenant_id: 'wrong-service', state: 'PROVISIONING' }, 201));
   await assert.rejects(
     () => tenantMismatch.registerTenant('app-service'),
     (error: unknown) => error instanceof TgserverNativeV1ProvisioningError && error.code === 'TGS_CONTROL_TENANT_ID_MISMATCH',
   );
 
-  const routeMismatch = new TgserverNativeV1ProvisioningClient({
+  const activeRoute = new TgserverNativeV1ProvisioningClient({
     origin: 'http://tgserver-vnext:8080',
     controlToken: 'control-token',
     timeoutMs: 5000,
@@ -115,18 +125,18 @@ test('registration responses fail closed when TGserver returns identity or route
     route_id: 'route-1',
     tenant_id: 'app-service',
     namespace_id: 'ns-user-opaque',
-    route_key: 'wrong-route',
-    state: 'REGISTERED',
+    route_key: 'route-opaque',
+    state: 'ACTIVE',
   }, 201));
   await assert.rejects(
-    () => routeMismatch.registerRoute({
+    () => activeRoute.registerRoute({
       tenantId: 'app-service',
       namespaceId: 'ns-user-opaque',
       routeKey: 'route-opaque',
       poolKey: 'app-pool',
       routeId: 'route-1',
     }),
-    (error: unknown) => error instanceof TgserverNativeV1ProvisioningError && error.code === 'TGS_CONTROL_ROUTE_KEY_MISMATCH',
+    (error: unknown) => error instanceof TgserverNativeV1ProvisioningError && error.code === 'TGS_CONTROL_ROUTE_NOT_READ_ONLY',
   );
 });
 
