@@ -77,6 +77,14 @@ function text(value: unknown, code: string): string {
   return value.trim();
 }
 
+function capability(value: string): string {
+  const normalized = value.trim();
+  if (!/^[a-z][a-z0-9_.:-]{1,127}$/.test(normalized)) {
+    throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_ENTITLEMENT_CAPABILITY_INVALID', 422);
+  }
+  return normalized;
+}
+
 function stringList(value: unknown, code: string): string[] {
   if (!Array.isArray(value) || value.length === 0) throw new TgserverNativeV1ProvisioningError(code, 502);
   return value.map((item) => text(item, code));
@@ -194,10 +202,11 @@ export class TgserverNativeV1ProvisioningClient {
     capability: string;
     entitlementId?: string;
   }): Promise<TgserverProvisionedEntitlement> {
+    const capabilityKey = capability(input.capability);
     const payload = await this.post('v1/control/entitlements', {
       tenant_id: input.tenantId,
       namespace_id: input.namespaceId,
-      capability: input.capability,
+      capability: capabilityKey,
       ...(input.entitlementId ? { entitlement_id: input.entitlementId } : {}),
     });
     const entitlementId = text(payload.entitlement_id, 'TGS_CONTROL_ENTITLEMENT_ID_MISSING');
@@ -206,7 +215,7 @@ export class TgserverNativeV1ProvisioningClient {
       entitlementId,
       tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
       namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
-      capability: match(text(payload.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISSING'), input.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISMATCH'),
+      capability: match(text(payload.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISSING'), capabilityKey, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISMATCH'),
       state: expectState(text(payload.state, 'TGS_CONTROL_ENTITLEMENT_STATE_MISSING'), ['PROVISIONING', 'ACTIVE'], 'TGS_CONTROL_ENTITLEMENT_STATE_UNEXPECTED'),
     };
   }
