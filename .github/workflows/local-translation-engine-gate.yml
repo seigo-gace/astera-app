@@ -1,0 +1,62 @@
+name: Local Translation Engine Gate
+
+on:
+  pull_request:
+    paths:
+      - 'contabo/translation-engine/**'
+      - 'contabo/app-api/src/translation-runtime.ts'
+      - 'contabo/app-api/src/translation-runtime.test.ts'
+      - 'contabo/app-api/.env.example'
+      - 'docker-compose.yml'
+      - 'docs/translation-engine.md'
+      - '.github/workflows/local-translation-engine-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contabo/translation-engine/**'
+      - 'contabo/app-api/src/translation-runtime.ts'
+      - 'contabo/app-api/src/translation-runtime.test.ts'
+      - 'contabo/app-api/.env.example'
+      - 'docker-compose.yml'
+      - 'docs/translation-engine.md'
+      - '.github/workflows/local-translation-engine-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  translation-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile deterministic translation shell
+        run: python -m compileall -q contabo/translation-engine
+      - name: Test deterministic translation shell
+        env:
+          PYTHONPATH: contabo/translation-engine
+        run: python -m unittest discover -s contabo/translation-engine/tests -p 'test_*.py' -v
+      - name: Assert remote translation providers are absent
+        run: |
+          if grep -R -n -E 'generativelanguage\.googleapis\.com|api\.openai\.com|api\.deepl\.com' contabo/translation-engine contabo/app-api/src/translation-runtime.ts; then
+            echo 'Remote translation provider reference detected' >&2
+            exit 1
+          fi
+      - name: Assert pinned model identity and revision
+        run: |
+          grep -R -q 'google/madlad400-3b-mt' contabo/translation-engine contabo/app-api/src/translation-runtime.ts
+          grep -R -q 'fa184c675da0b5c9e1c8694fccd4e12e2d422094' contabo/translation-engine contabo/app-api/src/translation-runtime.ts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install App dependencies
+        run: npm install --no-fund --no-audit
+      - name: Typecheck App and Functions
+        run: |
+          npm run check
+          npm run contract:check
+      - name: Run App Runtime translation contract tests
+        run: npm run contabo:test

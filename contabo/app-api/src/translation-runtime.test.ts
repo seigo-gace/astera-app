@@ -3,136 +3,153 @@ import test from 'node:test';
 import { translateAsteraResult } from './translation-runtime.js';
 import type { VaultClient } from './vault-client.js';
 
-type ProviderInput = {
-  secretId: string;
-  consumer: string;
-  url: string;
-  secretHeader: string;
-  headers?: Record<string, string>;
-  body?: unknown;
-};
+const MODEL_ID = 'google/madlad400-3b-mt';
+const MODEL_REVISION = 'fa184c675da0b5c9e1c8694fccd4e12e2d422094';
+const fakeVault = {} as VaultClient;
 
-test('translation runtime translates section bodies only and preserves protected values', async () => {
-  const providerInputs: ProviderInput[] = [];
-  const fakeVault = {
-    providerJson: async (input: ProviderInput) => {
-      providerInputs.push(input);
-      const body = input.body as {
-        systemInstruction?: { parts?: Array<{ text?: string }> };
-        contents: Array<{ parts: Array<{ text: string }> }>;
-        generationConfig?: { temperature?: number; responseMimeType?: string };
-      };
-      const requestText = body.contents[0]?.parts[0]?.text ?? '';
-      const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
-      const translated = source.replace('Hello', 'こんにちは').replace('World', '世界');
-      return {
-        response: { status: 200, ok: true, body: '{}' },
-        payload: {
-          candidates: [{ content: { parts: [{ text: translated }] } }],
-          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 },
-        },
-      };
-    },
-  } as unknown as VaultClient;
-  const input = {
-    result: {
-      sections: [
-        { key: 'true_purpose', title: '固定タイトル', body: '# Hello\nWorld https://example.com `const x = 1`' },
-      ],
-    },
+type RequestBody = { texts: string[]; target_language: string; strategy: 'document' | 'lines' };
+
+function engineResponse(translations: string[], extras: Record<string, unknown> = {}): Response {
+  return new Response(JSON.stringify({
+    translations,
+    model: MODEL_ID,
+    model_revision: MODEL_REVISION,
+    target_language: 'ja',
+    strategy_used: 'document',
+    external_api_calls: 0,
+    input_tokens: 12,
+    output_tokens: 8,
+    ...extras,
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
+}
+
+async function withRuntimeEnv<T>(run: () => Promise<T>): Promise<T> {
+  const previousOrigin = process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN;
+  const previousToken = process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN;
+  process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN = 'http://127.0.0.1:8792';
+  process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN = 'unit-test-local-translation-token';
+  try {
+    return await run();
+  } finally {
+    if (previousOrigin === undefined) delete process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN;
+    else process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN = previousOrigin;
+    if (previousToken === undefined) delete process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN;
+    else process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN = previousToken;
+  }
+}
+
+test('translation runtime uses only the local MADLAD engine and preserves protected values', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: RequestBody[] = [];
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), 'http://127.0.0.1:8792/v1/translate');
+    assert.equal(init?.method, 'POST');
+    const headers = new Headers(init?.headers);
+    assert.equal(headers.get('authorization'), 'Bearer unit-test-local-translation-token');
+    assert.equal(headers.get('content-type'), 'application/json');
+    const body = JSON.parse(String(init?.body)) as RequestBody;
+    requests.push(body);
+    assert.equal(body.strategy, 'document');
+    assert.equal(body.target_language, 'ja-JP');
+    const source = body.texts[0] ?? '';
+    assert.doesNotMatch(source, /https:\/\/example\.com/);
+    assert.doesNotMatch(source, /`const x = 1`/);
+    assert.doesNotMatch(source, /2026-10-03/);
+    return engineResponse([source.replace('Hello', 'こんにちは').replace('World', '世界')]);
   };
-  const output = await translateAsteraResult(input, 'ja-JP', fakeVault, { modelId: 'configured-model', apiKeyRef: 'vault-ref', timeoutMs: 30_000 });
-  const result = output.result as typeof input;
-  assert.equal(result.result.sections[0]?.title, '固定タイトル');
-  assert.equal(result.result.sections[0]?.body, '# こんにちは\n世界 https://example.com `const x = 1`');
-  assert.equal(output.usage.calls, 1);
-  assert.equal(output.usage.totalTokens, 15);
+  try {
+    const input = {
+      result: {
+        sections: [
+          { key: 'true_purpose', title: '固定タイトル', body: '# Hello\nWorld https://example.com `const x = 1` 2026-10-03' },
+        ],
+      },
+    };
+    const output = await translateAsteraResult(input, 'ja-JP', fakeVault, { modelId: 'legacy-value-is-ignored', apiKeyRef: '', timeoutMs: 30_000 });
+    const result = output.result as typeof input;
+    assert.equal(result.result.sections[0]?.title, '固定タイトル');
+    assert.equal(result.result.sections[0]?.body, '# こんにちは\n世界 https://example.com `const x = 1` 2026-10-03');
+    assert.equal(requests.length, 1);
+    assert.equal(output.usage.provider, 'local_madlad400');
+    assert.equal(output.usage.model, MODEL_ID);
+    assert.equal(output.usage.modelRevision, MODEL_REVISION);
+    assert.equal(output.usage.externalApiCalls, 0);
+    assert.equal(output.usage.validationFallbacks, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
 
-  const providerInput = providerInputs[0];
-  assert.ok(providerInput);
-  assert.equal(providerInput.secretId, 'vault-ref');
-  assert.equal(providerInput.consumer, 'translation-flash-lite');
-  assert.equal(providerInput.secretHeader, 'x-goog-api-key');
-  assert.equal(providerInput.url, 'https://generativelanguage.googleapis.com/v1beta/models/configured-model:generateContent');
-  assert.equal(providerInput.headers?.['content-type'], 'application/json');
-  const providerBody = providerInput.body as {
-    systemInstruction?: { parts?: Array<{ text?: string }> };
-    generationConfig?: { temperature?: number; responseMimeType?: string };
+test('translation runtime falls back to same-model line strategy when document structure changes', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  const strategies: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as RequestBody;
+    strategies.push(body.strategy);
+    const source = body.texts[0] ?? '';
+    if (body.strategy === 'document') return engineResponse([`${source}\nBROKEN-LINE`]);
+    return engineResponse([source.replace('Hello', 'こんにちは')], { strategy_used: 'lines', input_tokens: 9, output_tokens: 6 });
   };
-  const policy = providerBody.systemInstruction?.parts?.[0]?.text ?? '';
-  assert.match(policy, /translation-only runtime/i);
-  assert.match(policy, /Never summarize/);
-  assert.match(policy, /Preserve headings, paragraphs, lists, tables, code, URLs, numbers, placeholders, line breaks, order, and information quantity/);
-  assert.equal(providerBody.generationConfig?.temperature, 0);
-  assert.equal(providerBody.generationConfig?.responseMimeType, 'text/plain');
-});
-
-test('translation runtime retries only the failing body and reports the real Gemini call count', async () => {
-  let providerCalls = 0;
-  const fakeVault = {
-    providerJson: async (input: ProviderInput) => {
-      providerCalls += 1;
-      const body = input.body as { contents: Array<{ parts: Array<{ text: string }> }> };
-      const requestText = body.contents[0]?.parts[0]?.text ?? '';
-      const source = requestText.replace(/^TARGET_LANGUAGE=.*?\nBEGIN_BODY\n/s, '').replace(/\nEND_BODY$/s, '');
-      const translated = source.replace('Hello', 'こんにちは');
-      return {
-        response: { status: 200, ok: true, body: '{}' },
-        payload: {
-          candidates: [{ content: { parts: [{ text: providerCalls === 1 ? `${translated}\n破壊行` : translated }] } }],
-          usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
-        },
-      };
-    },
-  } as unknown as VaultClient;
-
-  const output = await translateAsteraResult(
-    { result: { sections: [{ key: 'true_purpose', body: '# Hello' }] } },
-    'ja-JP',
-    fakeVault,
-    { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 30_000 },
-  );
-  assert.equal(providerCalls, 2);
-  assert.equal(output.usage.calls, 2);
-  assert.equal(output.usage.totalTokens, 6);
-  const result = output.result as { result: { sections: Array<{ body: string }> } };
-  assert.equal(result.result.sections[0]?.body, '# こんにちは');
-});
-
-test('translation runtime applies its provider timeout without modifying the Vault implementation', async () => {
-  let providerCalls = 0;
-  const fakeVault = {
-    providerJson: async () => {
-      providerCalls += 1;
-      return await new Promise<never>(() => undefined);
-    },
-  } as unknown as VaultClient;
-
-  await assert.rejects(
-    () => translateAsteraResult(
-      { result: { sections: [{ key: 'true_purpose', body: 'Hello' }] } },
+  try {
+    const output = await translateAsteraResult(
+      { result: { sections: [{ key: 'true_purpose', body: '# Hello' }] } },
       'ja-JP',
       fakeVault,
-      { modelId: 'gemini-3.5-flash-lite', apiKeyRef: 'vault-ref', timeoutMs: 5 },
-    ),
-    (error: unknown) => {
-      const source = error as Error & { code?: string; retryable?: boolean };
-      assert.equal(source.code, 'TRANSLATION_PROVIDER_TIMEOUT');
-      assert.equal(source.retryable, true);
-      return true;
-    },
-  );
-  assert.equal(providerCalls, 2);
+      { modelId: '', apiKeyRef: '', timeoutMs: 30_000 },
+    );
+    assert.deepEqual(strategies, ['document', 'lines']);
+    assert.equal(output.usage.calls, 2);
+    assert.equal(output.usage.validationFallbacks, 1);
+    assert.equal(output.usage.inputTokens, 21);
+    assert.equal(output.usage.outputTokens, 14);
+    const result = output.result as { result: { sections: Array<{ body: string }> } };
+    assert.equal(result.result.sections[0]?.body, '# こんにちは');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
+
+test('translation runtime rejects any non-loopback translation origin before network access', async () => {
+  const originalFetch = globalThis.fetch;
+  const previousOrigin = process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN;
+  const previousToken = process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN;
+  process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN = 'https://translation.example.com';
+  process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN = 'unit-test-local-translation-token';
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('must not be reached');
+  };
+  try {
+    await assert.rejects(
+      () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, 'TRANSLATION_ENGINE_LOCAL_ONLY');
+        return true;
+      },
+    );
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousOrigin === undefined) delete process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN;
+    else process.env.ASTERA_TRANSLATION_ENGINE_ORIGIN = previousOrigin;
+    if (previousToken === undefined) delete process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN;
+    else process.env.ASTERA_TRANSLATION_INTERNAL_TOKEN = previousToken;
+  }
 });
 
-test('translation runtime fails closed when Gemini provider profile is not configured', async () => {
-  const fakeVault = { providerJson: async () => { throw new Error('provider must not be called'); } } as unknown as VaultClient;
-  await assert.rejects(
-    () => translateAsteraResult({ result: { sections: [] } }, 'ja-JP', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
-    (error: unknown) => {
-      const source = error as Error & { code?: string };
-      assert.equal(source.code, 'TRANSLATION_PROVIDER_NOT_CONFIGURED');
-      return true;
-    },
-  );
-});
+test('translation runtime fails closed when engine identity differs from the pinned model revision', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => engineResponse(['こんにちは'], { model_revision: 'unexpected-revision' });
+  try {
+    await assert.rejects(
+      () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, 'TRANSLATION_MODEL_IDENTITY_MISMATCH');
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
