@@ -157,7 +157,7 @@ test('entitlement capability is validated against the current TGserver grammar b
     return json({}, 500);
   });
   await assert.rejects(
-    () => client.registerEntitlement({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', capability: 'object-storage' }),
+    () => client.registerEntitlement({ tenantId: 'app-service', namespaceId: 'ns-user-opaque', capability: 'Object Storage' }),
     (error: unknown) => error instanceof TgserverNativeV1ProvisioningError && error.code === 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_INVALID' && error.status === 422,
   );
   assert.equal(called, false);
