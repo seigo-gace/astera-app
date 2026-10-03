@@ -1,3 +1,5 @@
+export type TgserverStorageProfile = 'legacy_v15' | 'native_v1';
+
 export type RuntimeConfig = {
   port: number;
   internalServiceToken: string;
@@ -12,9 +14,13 @@ export type RuntimeConfig = {
   translationModelId: string;
   translationGeminiKeyRef: string;
   translationTimeoutMs: number;
+  tgserverStorageProfile?: TgserverStorageProfile;
   tgserverStorageOrigin: string;
   tgserverStorageToken: string;
   tgserverStorageTimeoutMs: number;
+  tgserverNativeV1Origin?: string;
+  tgserverNativeV1Token?: string;
+  tgserverNativeV1TimeoutMs?: number;
   storageUploadTmpDir?: string;
   privateDataTmpDir?: string;
   privateUploadMaxBytes?: number;
@@ -35,6 +41,12 @@ function integer(value: string | undefined, fallback: number, min: number, max: 
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function storageProfile(value: string | undefined): TgserverStorageProfile {
+  const normalized = value?.trim() || 'legacy_v15';
+  if (normalized === 'legacy_v15' || normalized === 'native_v1') return normalized;
+  throw new Error('TGS_STORAGE_PROFILE_INVALID');
 }
 
 function isInternalHttpHost(hostname: string): boolean {
@@ -60,7 +72,11 @@ function optionalSecureOrigin(value: string | undefined): string {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
+  const tgserverStorageProfile = storageProfile(env.TGS_STORAGE_PROFILE);
   const tgserverStorageOrigin = optionalSecureOrigin(env.TGS_STORAGE_INTERNAL_ORIGIN);
+  const tgserverNativeV1Origin = tgserverStorageProfile === 'native_v1'
+    ? secureOrigin(required(env.TGS_NATIVE_V1_INTERNAL_ORIGIN, 'TGS_NATIVE_V1_INTERNAL_ORIGIN'))
+    : '';
   return {
     port: integer(env.PORT, 8788, 1, 65_535),
     internalServiceToken: required(env.INTERNAL_SERVICE_TOKEN, 'INTERNAL_SERVICE_TOKEN'),
@@ -75,9 +91,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     translationModelId: env.ASTERA_TRANSLATION_MODEL_ID?.trim() || '',
     translationGeminiKeyRef: env.LIBRAL_VAULT_GEMINI_KEY_REF?.trim() || '',
     translationTimeoutMs: integer(env.ASTERA_TRANSLATION_TIMEOUT_MS, 90_000, 3_000, 180_000),
+    tgserverStorageProfile,
     tgserverStorageOrigin,
     tgserverStorageToken: tgserverStorageOrigin ? required(env.TGS_STORAGE_INTERNAL_TOKEN, 'TGS_STORAGE_INTERNAL_TOKEN') : '',
     tgserverStorageTimeoutMs: integer(env.TGS_STORAGE_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
+    tgserverNativeV1Origin,
+    tgserverNativeV1Token: tgserverStorageProfile === 'native_v1'
+      ? required(env.TGS_NATIVE_V1_SCOPED_TOKEN, 'TGS_NATIVE_V1_SCOPED_TOKEN')
+      : '',
+    tgserverNativeV1TimeoutMs: integer(env.TGS_NATIVE_V1_TIMEOUT_MS, 600_000, 10_000, 3_600_000),
     storageUploadTmpDir: env.ASTERA_STORAGE_UPLOAD_TMP_DIR?.trim() || '/var/lib/astera-storage-upload',
     privateDataTmpDir: env.ASTERA_PRIVATE_DATA_TMP_DIR?.trim() || '/run/astera-private-data',
     privateUploadMaxBytes: integer(env.ASTERA_PRIVATE_UPLOAD_MAX_BYTES, 20 * 1024 * 1024, 1, 100 * 1024 * 1024),

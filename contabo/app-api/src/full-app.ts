@@ -6,6 +6,7 @@ import { PrivateFileMaterializer, PrivateFileMaterializerError } from './private
 import { PrivateMaterializingRuntimeService } from './private-materializing-runtime-service.js';
 import { registerPrivateDataMetadataApi } from './private-data-metadata-api.js';
 import { registerStorageBinaryApi } from './storage-binary-api.js';
+import { createPersistentStorageStore } from './storage-runtime-store.js';
 import { VaultClient } from './vault-client.js';
 
 function bearerToken(value: string | undefined): string {
@@ -62,7 +63,7 @@ export function createFullApp(
   // Account/Workspace persistent routes terminate in Cloudflare D1.
   // Contabo exposes runtime execution, normal Storage Binary, and the isolated
   // Private temporary-object broker. Private objects never use the normal lane.
-  registerStorageBinaryApi(app, config);
+  registerStorageBinaryApi(app, config, createPersistentStorageStore(config));
   registerPrivateDataBrokerApi(app, privateDataBroker);
   registerPrivateDataMetadataApi(app, config);
 
