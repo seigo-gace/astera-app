@@ -96,6 +96,40 @@ test('provisioning client intentionally has no activation or credential-revoke s
   assert.equal('revokeCredential' in client, false);
 });
 
+test('registration responses fail closed when TGserver returns identity or route drift', async () => {
+  const tenantMismatch = new TgserverNativeV1ProvisioningClient({
+    origin: 'http://tgserver-vnext:8080',
+    controlToken: 'control-token',
+    timeoutMs: 5000,
+  }, async () => json({ tenant_id: 'wrong-service', state: 'REGISTERED' }, 201));
+  await assert.rejects(
+    () => tenantMismatch.registerTenant('app-service'),
+    (error: unknown) => error instanceof TgserverNativeV1ProvisioningError && error.code === 'TGS_CONTROL_TENANT_ID_MISMATCH',
+  );
+
+  const routeMismatch = new TgserverNativeV1ProvisioningClient({
+    origin: 'http://tgserver-vnext:8080',
+    controlToken: 'control-token',
+    timeoutMs: 5000,
+  }, async () => json({
+    route_id: 'route-1',
+    tenant_id: 'app-service',
+    namespace_id: 'ns-user-opaque',
+    route_key: 'wrong-route',
+    state: 'REGISTERED',
+  }, 201));
+  await assert.rejects(
+    () => routeMismatch.registerRoute({
+      tenantId: 'app-service',
+      namespaceId: 'ns-user-opaque',
+      routeKey: 'route-opaque',
+      poolKey: 'app-pool',
+      routeId: 'route-1',
+    }),
+    (error: unknown) => error instanceof TgserverNativeV1ProvisioningError && error.code === 'TGS_CONTROL_ROUTE_KEY_MISMATCH',
+  );
+});
+
 test('object credential issuance fails closed if TGserver returns the wrong identity or scopes', async () => {
   const mismatchedIdentity = new TgserverNativeV1ProvisioningClient({
     origin: 'http://tgserver-vnext:8080',

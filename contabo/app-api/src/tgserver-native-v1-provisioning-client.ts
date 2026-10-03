@@ -82,6 +82,11 @@ function stringList(value: unknown, code: string): string[] {
   return value.map((item) => text(item, code));
 }
 
+function match(actual: string, expected: string, code: string): string {
+  if (actual !== expected) throw new TgserverNativeV1ProvisioningError(code, 502);
+  return actual;
+}
+
 export class TgserverNativeV1ProvisioningClient {
   private readonly origin: string;
   private readonly controlToken: string;
@@ -139,8 +144,9 @@ export class TgserverNativeV1ProvisioningClient {
 
   async registerTenant(tenantId: string): Promise<TgserverProvisionedTenant> {
     const payload = await this.post('v1/control/tenants', { tenant_id: tenantId });
+    const returnedTenantId = text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING');
     return {
-      tenantId: text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'),
+      tenantId: match(returnedTenantId, tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
       state: text(payload.state, 'TGS_CONTROL_TENANT_STATE_MISSING'),
     };
   }
@@ -151,8 +157,8 @@ export class TgserverNativeV1ProvisioningClient {
       namespace_id: input.namespaceId,
     });
     return {
-      tenantId: text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'),
-      namespaceId: text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'),
+      tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
+      namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
       state: text(payload.state, 'TGS_CONTROL_NAMESPACE_STATE_MISSING'),
     };
   }
@@ -169,11 +175,13 @@ export class TgserverNativeV1ProvisioningClient {
       capability: input.capability,
       ...(input.entitlementId ? { entitlement_id: input.entitlementId } : {}),
     });
+    const entitlementId = text(payload.entitlement_id, 'TGS_CONTROL_ENTITLEMENT_ID_MISSING');
+    if (input.entitlementId) match(entitlementId, input.entitlementId, 'TGS_CONTROL_ENTITLEMENT_ID_MISMATCH');
     return {
-      entitlementId: text(payload.entitlement_id, 'TGS_CONTROL_ENTITLEMENT_ID_MISSING'),
-      tenantId: text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'),
-      namespaceId: text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'),
-      capability: text(payload.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISSING'),
+      entitlementId,
+      tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
+      namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
+      capability: match(text(payload.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISSING'), input.capability, 'TGS_CONTROL_ENTITLEMENT_CAPABILITY_MISMATCH'),
       state: text(payload.state, 'TGS_CONTROL_ENTITLEMENT_STATE_MISSING'),
     };
   }
@@ -192,11 +200,13 @@ export class TgserverNativeV1ProvisioningClient {
       pool_key: input.poolKey,
       ...(input.routeId ? { route_id: input.routeId } : {}),
     });
+    const routeId = text(payload.route_id, 'TGS_CONTROL_ROUTE_ID_MISSING');
+    if (input.routeId) match(routeId, input.routeId, 'TGS_CONTROL_ROUTE_ID_MISMATCH');
     return {
-      routeId: text(payload.route_id, 'TGS_CONTROL_ROUTE_ID_MISSING'),
-      tenantId: text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'),
-      namespaceId: text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'),
-      routeKey: text(payload.route_key, 'TGS_CONTROL_ROUTE_KEY_MISSING'),
+      routeId,
+      tenantId: match(text(payload.tenant_id, 'TGS_CONTROL_TENANT_ID_MISSING'), input.tenantId, 'TGS_CONTROL_TENANT_ID_MISMATCH'),
+      namespaceId: match(text(payload.namespace_id, 'TGS_CONTROL_NAMESPACE_ID_MISSING'), input.namespaceId, 'TGS_CONTROL_NAMESPACE_ID_MISMATCH'),
+      routeKey: match(text(payload.route_key, 'TGS_CONTROL_ROUTE_KEY_MISSING'), input.routeKey, 'TGS_CONTROL_ROUTE_KEY_MISMATCH'),
       state: text(payload.state, 'TGS_CONTROL_ROUTE_STATE_MISSING'),
     };
   }
@@ -215,11 +225,8 @@ export class TgserverNativeV1ProvisioningClient {
       throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_MISSING', 502);
     }
     const record = credential as Record<string, unknown>;
-    const tenantId = text(record.tenant_id, 'TGS_CONTROL_CREDENTIAL_TENANT_MISSING');
-    const namespaceId = text(record.namespace_id, 'TGS_CONTROL_CREDENTIAL_NAMESPACE_MISSING');
-    if (tenantId !== input.tenantId || namespaceId !== input.namespaceId) {
-      throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH', 502);
-    }
+    const tenantId = match(text(record.tenant_id, 'TGS_CONTROL_CREDENTIAL_TENANT_MISSING'), input.tenantId, 'TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH');
+    const namespaceId = match(text(record.namespace_id, 'TGS_CONTROL_CREDENTIAL_NAMESPACE_MISSING'), input.namespaceId, 'TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH');
     const scopes = stringList(record.scopes, 'TGS_CONTROL_CREDENTIAL_SCOPES_INVALID');
     if (!scopes.includes('object:read') || !scopes.includes('object:write')) {
       throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_SCOPE_MISMATCH', 502);
