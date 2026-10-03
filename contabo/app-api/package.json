@@ -7,9 +7,13 @@
     "node": ">=22.12 <23"
   },
   "scripts": {
+    "sync:app-event-contracts": "node ../../scripts/sync-app-event-contracts.mjs",
+    "predev": "npm run sync:app-event-contracts",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "smoke": "node dist/smoke.js",
+    "prebuild": "npm run sync:app-event-contracts",
+    "precheck": "npm run sync:app-event-contracts",
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 dist/*.test.js",

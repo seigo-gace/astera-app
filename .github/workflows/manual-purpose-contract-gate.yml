@@ -5,18 +5,30 @@ on:
     paths:
       - 'src/features/composer/**'
       - 'functions/api/jobs/**'
+      - 'functions/api/storage/**'
       - 'functions/_job-policy.ts'
       - 'functions/_purpose-control.ts'
       - 'functions/_runtime.ts'
       - 'functions/_history-store.ts'
       - 'functions/_template-store.ts'
       - 'functions/_project-store.ts'
+      - 'functions/_storage-store.ts'
+      - 'functions/_app-event-outbox*.ts'
       - 'public/canonical-interaction-contract.js'
       - 'migrations/d1/0009_result_settlement_trigger.sql'
       - 'migrations/d1/0021_purpose_history_index.sql'
+      - 'migrations/d1/0025_tgserver_logical_object_refs.sql'
       - 'packages/contracts/src/jobs.ts'
+      - 'packages/contracts/src/app-events.ts'
+      - 'contabo/app-api/package.json'
       - 'contabo/app-api/src/**'
+      - 'scripts/sync-app-event-contracts.mjs'
       - 'scripts/purpose-control-plane-audit.mjs'
+      - 'docs/integrations/tgserver-vnext-app-event-log-design.md'
+      - 'docs/integrations/tgserver-vnext-app-event-emission-map.md'
+      - 'docs/integrations/tgserver-vnext-app-event-outbox-schema.sql'
+      - 'tests/app-event-outbox-repository-regression.test.mjs'
+      - 'tests/storage-logical-reference-regression.test.mjs'
       - 'tests/manual-purpose-contract.spec.ts'
       - 'tests/manual-purpose-long-regression.spec.ts'
       - 'tests/purpose-control-plane-regression.test.mjs'
@@ -26,22 +38,38 @@ on:
     paths:
       - 'src/features/composer/**'
       - 'functions/api/jobs/**'
+      - 'functions/api/storage/**'
       - 'functions/_job-policy.ts'
       - 'functions/_purpose-control.ts'
       - 'functions/_runtime.ts'
       - 'functions/_history-store.ts'
       - 'functions/_template-store.ts'
       - 'functions/_project-store.ts'
+      - 'functions/_storage-store.ts'
+      - 'functions/_app-event-outbox*.ts'
       - 'public/canonical-interaction-contract.js'
       - 'migrations/d1/0009_result_settlement_trigger.sql'
       - 'migrations/d1/0021_purpose_history_index.sql'
+      - 'migrations/d1/0025_tgserver_logical_object_refs.sql'
       - 'packages/contracts/src/jobs.ts'
+      - 'packages/contracts/src/app-events.ts'
+      - 'contabo/app-api/package.json'
       - 'contabo/app-api/src/**'
+      - 'scripts/sync-app-event-contracts.mjs'
       - 'scripts/purpose-control-plane-audit.mjs'
+      - 'docs/integrations/tgserver-vnext-app-event-log-design.md'
+      - 'docs/integrations/tgserver-vnext-app-event-emission-map.md'
+      - 'docs/integrations/tgserver-vnext-app-event-outbox-schema.sql'
+      - 'tests/app-event-outbox-repository-regression.test.mjs'
+      - 'tests/storage-logical-reference-regression.test.mjs'
       - 'tests/manual-purpose-contract.spec.ts'
       - 'tests/manual-purpose-long-regression.spec.ts'
       - 'tests/purpose-control-plane-regression.test.mjs'
       - '.github/workflows/manual-purpose-contract-gate.yml'
+
+concurrency:
+  group: manual-purpose-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -63,8 +91,8 @@ jobs:
           npm run contract:check
       - name: Audit Purpose control/data-plane separation
         run: node scripts/purpose-control-plane-audit.mjs
-      - name: Run Purpose revision/provenance regressions
-        run: node --experimental-strip-types --test tests/purpose-control-plane-regression.test.mjs
+      - name: Run Source contract regressions
+        run: node --experimental-strip-types --test tests/purpose-control-plane-regression.test.mjs tests/app-event-outbox-repository-regression.test.mjs tests/storage-logical-reference-regression.test.mjs
       - name: Run App Runtime purpose contract tests
         run: npm run contabo:test
       - name: Install browser representatives
