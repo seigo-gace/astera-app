@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { loadConfig } from './config.js';
 import { createFullApp } from './full-app.js';
+import { StorageLifecycleScheduler } from './storage-lifecycle-scheduler.js';
 
 const config = loadConfig();
 const { app, service } = createFullApp(config);
@@ -14,17 +15,23 @@ const server = serve({
   hostname: '0.0.0.0',
 });
 
+const storageLifecycle = new StorageLifecycleScheduler(config);
+storageLifecycle.start();
+
 console.log(JSON.stringify({
   level: 'info',
   event: 'astera_app_api_started',
   port: config.port,
   process_origin: new URL(config.processOrigin).origin,
+  storage_lifecycle_origin: config.storageLifecycleOrigin,
+  storage_lifecycle_interval_ms: config.storageLifecycleIntervalMs,
 }));
 
 let shuttingDown = false;
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
+  storageLifecycle.stop();
   console.log(JSON.stringify({ level: 'info', event: 'shutdown_started', signal }));
   const force = setTimeout(() => {
     console.error(JSON.stringify({ level: 'error', event: 'shutdown_timeout', signal }));
