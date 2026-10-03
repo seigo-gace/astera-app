@@ -16,6 +16,20 @@ test('0025 adds logical TGserver reference authority without deleting legacy ref
   assert.doesNotMatch(sql, /DROP COLUMN|RENAME COLUMN/i);
 });
 
+test('staging applies 0025 once, skips complete state, and rejects partial state before deploy', () => {
+  const workflow = read('../.github/workflows/pages-staging.yml');
+  assert.match(workflow, /tgs_ref_column_count=/);
+  assert.match(workflow, /if \[ "\$tgs_ref_column_count" = "0" \]/);
+  assert.match(workflow, /--file=migrations\/d1\/0025_tgserver_logical_object_refs\.sql/);
+  assert.match(workflow, /elif \[ "\$tgs_ref_column_count" = "6" \]/);
+  assert.match(workflow, /Unexpected TGserver logical reference column count/);
+  assert.match(workflow, /astera_storage_objects_native_ref_unique/);
+  assert.match(workflow, /invalid_profile_rows/);
+  assert.match(workflow, /expected 6/);
+  assert.match(workflow, /expected 1/);
+  assert.match(workflow, /expected 0/);
+});
+
 test('storage store keeps legacy and native references mutually exclusive at commit', () => {
   const source = read('../functions/_storage-store.ts');
   assert.match(source, /StorageCommitReference=\{profile:'legacy_v15'/);
