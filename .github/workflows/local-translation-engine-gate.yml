@@ -1,24 +1,26 @@
-name: Local Translation Engine Gate
+name: AI Core Translation Gate
 
 on:
   pull_request:
     paths:
-      - 'contabo/translation-engine/**'
       - 'contabo/app-api/src/translation-runtime.ts'
       - 'contabo/app-api/src/translation-runtime.test.ts'
       - 'contabo/app-api/.env.example'
       - 'docker-compose.yml'
       - 'docs/translation-engine.md'
+      - 'scripts/translation-benchmark.py'
+      - 'scripts/translation-benchmark-requirements.txt'
       - '.github/workflows/local-translation-engine-gate.yml'
   push:
     branches: [main]
     paths:
-      - 'contabo/translation-engine/**'
       - 'contabo/app-api/src/translation-runtime.ts'
       - 'contabo/app-api/src/translation-runtime.test.ts'
       - 'contabo/app-api/.env.example'
       - 'docker-compose.yml'
       - 'docs/translation-engine.md'
+      - 'scripts/translation-benchmark.py'
+      - 'scripts/translation-benchmark-requirements.txt'
       - '.github/workflows/local-translation-engine-gate.yml'
 
 permissions:
@@ -30,25 +32,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Compile deterministic translation shell
-        run: python -m compileall -q contabo/translation-engine
-      - name: Test deterministic translation shell
-        env:
-          PYTHONPATH: contabo/translation-engine
-        run: python -m unittest discover -s contabo/translation-engine/tests -p 'test_*.py' -v
-      - name: Assert remote translation providers are absent
+      - name: Assert local AI Core Qwen3 contract
         run: |
-          if grep -R -n -E 'generativelanguage\.googleapis\.com|api\.openai\.com|api\.deepl\.com' contabo/translation-engine contabo/app-api/src/translation-runtime.ts; then
-            echo 'Remote translation provider reference detected' >&2
+          grep -q 'qwen3//models/Qwen3-8B-Q4_K_M.gguf' contabo/app-api/src/translation-runtime.ts
+          grep -q '127.0.0.1:18080' contabo/app-api/src/translation-runtime.ts
+          grep -q 'enable_thinking: false' contabo/app-api/src/translation-runtime.ts
+          if grep -R -n -E 'google/madlad400|generativelanguage\.googleapis\.com|api\.deepl\.com|api\.openai\.com' \
+            contabo/app-api/src/translation-runtime.ts docs/translation-engine.md scripts/translation-benchmark.py; then
+            echo 'Forbidden translation provider/model reference detected' >&2
             exit 1
           fi
-      - name: Assert pinned model identity and revision
-        run: |
-          grep -R -q 'google/madlad400-3b-mt' contabo/translation-engine contabo/app-api/src/translation-runtime.ts
-          grep -R -q 'fa184c675da0b5c9e1c8694fccd4e12e2d422094' contabo/translation-engine contabo/app-api/src/translation-runtime.ts
+          test ! -d contabo/translation-engine
       - uses: actions/setup-node@v4
         with:
           node-version: '22.12'

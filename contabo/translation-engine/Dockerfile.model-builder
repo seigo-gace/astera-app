@@ -1,9 +1,0 @@
-FROM python:3.12.12-slim-bookworm
-
-WORKDIR /builder
-RUN pip install --no-cache-dir --disable-pip-version-check \
-    ctranslate2==4.8.2 \
-    "transformers[torch]==4.57.6" \
-    sentencepiece==0.2.2
-COPY contabo/translation-engine/prepare_model.py ./prepare_model.py
-ENTRYPOINT ["python", "/builder/prepare_model.py"]

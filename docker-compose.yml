@@ -10,12 +10,12 @@ services:
       ASTERA_STORAGE_UPLOAD_TMP_DIR: /var/lib/astera-storage-upload
       ASTERA_PRIVATE_DATA_TMP_DIR: /run/astera-private-data
       ASTERA_PRIVATE_UPLOAD_MAX_BYTES: "20971520"
-      ASTERA_TRANSLATION_ENGINE_ORIGIN: http://127.0.0.1:8792
+      AI_CORE_BASE_URL: http://127.0.0.1:18080
     volumes:
       - astera-storage-upload-tmp:/var/lib/astera-storage-upload
     tmpfs:
       - /run/astera-private-data:size=268435456,mode=0700,uid=10001,gid=10001
-    # Vault, local Translation Engine, and TGserver are intentionally bound to host loopback only.
+    # Vault, AI Core Router, and TGserver are intentionally bound to host loopback only.
     # Run the API on the host network so those internal services stay private
     # while remaining reachable from the API runtime.
     network_mode: host
@@ -32,37 +32,6 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
-
-  astera-translation-engine:
-    profiles: ["translation"]
-    build:
-      context: .
-      dockerfile: contabo/translation-engine/Dockerfile
-    container_name: astera-translation-engine
-    env_file:
-      - contabo/translation-engine/.env
-    environment:
-      ASTERA_TRANSLATION_MODEL_PATH: /models/madlad400-3b-mt-ct2
-      ASTERA_TRANSLATION_BIND: 127.0.0.1
-      PORT: "8792"
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
-    volumes:
-      - ${ASTERA_TRANSLATION_MODEL_DIR:-./.models/madlad400-3b-mt-ct2}:/models/madlad400-3b-mt-ct2:ro
-    network_mode: host
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8792/health', timeout=4).read()",
-        ]
-      interval: 30s
-      timeout: 5s
-      start_period: 120s
-      retries: 5
 
   astera-app:
     build:

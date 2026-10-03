@@ -1,51 +1,60 @@
-# Astera Local Multilingual Translation Engine v1
+# Astera Translation Option — AI Core Qwen3 Runtime
 
 ## 1. Purpose
 
-Asteraの「高精度翻訳」Optionを、外部の有料翻訳API・Gemini・OpenAI等へ依存せず、1つの翻訳AIモデルだけで実行する。
+Asteraの「高精度翻訳」Optionを、外部翻訳APIや追加の翻訳専用Modelへ依存させず、Serverですでに正式運用しているAI Coreの4モデルから1モデルを固定して実行する。
 
-Runtime AIは **`google/madlad400-3b-mt` 1モデルだけ**。周辺の品質向上はAIを追加せず、決定論的なSoftware Gateで行う。
+採用Modelは **Qwen3-8B-Q4_K_M**。
 
-- Model: `google/madlad400-3b-mt`
-- Pinned upstream revision: `fa184c675da0b5c9e1c8694fccd4e12e2d422094`
-- License: Apache-2.0
-- Architecture: T5 / encoder-decoder
-- Model parameters: 約2.94B
-- Model card language metadata: 419 languages
-- Runtime: CTranslate2 INT8 CPU
+- AI Core Runtime: `/home/admin1/projects/ai-core`
+- Router: `http://127.0.0.1:18080`
+- Router model ID: `qwen3//models/Qwen3-8B-Q4_K_M.gguf`
+- Runtime: llama.cpp + llama-swap
+- Quantization: Q4_K_M
+- Translation thinking: OFF
+- Temperature: 0
 - External translation API calls: **0**
-- Runtime network: **loopback only + offline model files**
+- Additional translation model download: **0**
 
-「世界中のすべての言語」を保証する表現はしない。保証範囲はPinned Modelが持つTarget tokenでRuntime実検証できる言語。Source言語はMADLADの多言語入力能力へ委ね、Targetは`<2xx>` tokenの存在確認を必須にする。
+通常AppはBackend portへ直接接続せず、AI Core Routerを利用する。
 
-## 2. Why MADLAD-400
+## 2. Why Qwen3 from the existing four models
 
-### 採用
+AI Coreの正式4モデルは以下。
 
-Google MADLAD-400は、論文で419言語の監査済みCorpusを示し、450超言語を対象にしたMachine Translation Modelを報告している。3B MT checkpointはHugging Face上でApache-2.0として公開されている。
+- Qwen3: 汎用、日本語、通常文章処理
+- Granite: 分析、指示処理、構造化寄り
+- Ministral: reasoningを使う深い検討
+- Qwen2.5 Coder: Code生成・修正・Debug補助
 
-- Paper: https://arxiv.org/abs/2309.04662
-- Model: https://huggingface.co/google/madlad400-3b-mt
+翻訳は「深い推論」や「Code生成」ではなく、入力情報を欠落・追加せず別言語へ写像する通常文章処理であるため、Qwen3を固定採用する。
 
-### 不採用
+Granite / Ministral / Coderへの自動Fallbackは行わない。翻訳品質の修復が必要な場合も、同じQwen3を再実行し、Software側の検証条件だけを強化する。
 
-- NLLB-200: 言語範囲は広いがModel LicenseがCC-BY-NC-4.0。商用Appの標準Runtimeには採用しない。
-- OPUS-MT/Marian pair models: 軽量だが多数の言語Pair Modelを必要とし、「1 AI Model」という今回のContractに合わない。
-- M2M-100 418M: MITかつ軽量で優秀だが100言語。今回の広域言語Coverage要件ではMADLADを優先する。
+## 3. Runtime boundary
 
-M2M-100論文が示す「English pivotへ固定しないMany-to-Many direct translation」は設計思想として採用するが、Runtime ModelはMADLADだけに固定する。
+```text
+Astera App API
+  -> 127.0.0.1:18080/v1/chat/completions
+  -> AI Core Router (llama-swap)
+  -> qwen3//models/Qwen3-8B-Q4_K_M.gguf
+```
 
-- M2M-100 paper: https://arxiv.org/abs/2010.11125
+Rules:
 
-## 3. Accuracy strategy: one AI model + deterministic Quality Shell
+1. `AI_CORE_BASE_URL`はloopback HTTPだけを許可する。
+2. `AI_CORE_API_KEY`を必須にする。
+3. Translation Runtime自身がmodel IDを固定する。
+4. `enable_thinking=false`を固定する。
+5. Remote providerへのFallbackを持たない。
+6. AI Coreが別model IDを返した場合はFail-closedにする。
+7. Qwen3 Backend `18082`へ直接接続せずRouter `18080`を使う。
 
-AIを複数段にしない。精度向上は以下の順序で行う。
+## 4. Deterministic Quality Shell
 
-### A. Target languageを明示
+Qwen3へ本文を渡す前後で、AIではなくSoftware Gateを使って構造を守る。
 
-MADLADのTarget token `<2xx>`を入力先頭へ付ける。`ja-JP`等のBCP-47 localeはRuntimeで`ja-jp -> ja`の順に解決し、TokenizerにTarget tokenが存在しない言語はFail-closedにする。
-
-### B. Protected Token Fence
+### Protected Token Fence
 
 翻訳前に以下をimmutable tokenへ置換する。
 
@@ -54,17 +63,17 @@ MADLADのTarget token `<2xx>`を入力先頭へ付ける。`ja-JP`等のBCP-47 l
 - email
 - template placeholder (`{{...}}`, `${...}`, `<%...%>`)
 - UUID
-- 数字・日付・Versionに該当するtoken
+- 数字・日付・Version相当token
 
-翻訳後、各tokenが**exactly once**存在しなければ結果を採用しない。URL、ID、数値、Code等を「自然な翻訳」の名目で壊すことを防ぐ。
+翻訳後、各tokenがexactly once存在しなければ結果を採用しない。
 
-### C. Document-first translation
+### Document-first
 
-最初はSection body全体を1単位としてMADLADへ渡す。MADLAD-400がDocument-level Dataを含む設計である利点を利用し、文脈を保持する。
+最初はSection body全体を1単位でQwen3へ渡す。文脈を分断しない。
 
-### D. Structural validation
+### Structural validation
 
-翻訳後に以下をSourceと比較する。
+翻訳後にSourceと以下を比較する。
 
 - line count
 - blank line
@@ -75,107 +84,84 @@ MADLADのTarget token `<2xx>`を入力先頭へ付ける。`ja-JP`等のBCP-47 l
 - protected token exact restoration
 - 極端な情報量増減
 
-1つでも壊れた結果はUserへ返さない。
+### Same-model fallback
 
-### E. Same-model structured fallback
+Document-first結果が構造Gateを通らない場合だけ、同じQwen3を再実行する。
 
-Document-first resultが構造Gateを通らない場合だけ、**同じMADLADモデル**を再使用する。Markdown prefix・table delimiterをSoftware側で固定し、人間可読部分だけをBatch翻訳する。
+Fallbackでは、
 
-これにより「別AIによる修正」を入れず、1モデルContractを保ったままFormatting破壊を抑える。
+- exact line count
+- line merge禁止
+- line split禁止
+- structural prefix位置固定
 
-### F. Terminology / constraint design
+を追加指示する。
 
-Lexically constrained decoding研究は、Model Parameterを変えずに必須語彙をOutputへ強制する考え方が有効であることを示している。
+別AIへの切替はしない。
 
-- Post & Vilar 2018: https://arxiv.org/abs/1804.06609
-- Hokamp & Liu 2017: https://arxiv.org/abs/1704.07138
+## 5. Existing AI Core reuse
 
-v1では、誤ったGlossaryを強制して意味を壊さないよう、まずURL/ID/Code/Number等の「絶対保存対象」をhard constraint相当として保護する。User Glossaryは別途、GlossaryのAuthority・誤登録Recovery・Quality Testが揃った後に追加する。
+今回のTranslation Optionのために新しいModel Containerは追加しない。
 
-## 4. Free local runtime
+従来案にあった独立Translation Engine、Model Builder、Model Weight mount、追加Model常駐は不要。
 
-RuntimeはCTranslate2を使用する。
+その結果、
 
-CTranslate2はT5を正式サポートし、CPU INT8 quantizationを正式サポートしている。これにより3B ModelをGPU APIへ送らず、自前CPUで実行できる。
+- 既存AI Coreを再利用
+- 追加常駐RAMを原則発生させない
+- 追加Model download不要
+- Router認証・Model管理方式を共通化
+- App独自のAI Runtimeを増殖させない
 
-- Transformers/T5 support: https://opennmt.net/CTranslate2/guides/transformers.html
-- INT8 quantization: https://opennmt.net/CTranslate2/quantization.html
-- CPU performance guidance: https://opennmt.net/CTranslate2/performance.html
+という構造になる。
 
-Runtime dependencies are pinned:
+## 6. Configuration
 
-- CTranslate2 `4.8.2`
-- Transformers `4.57.6`
-- SentencePiece `0.2.2`
+App API側:
 
-## 5. Supply-chain rules
+```text
+AI_CORE_BASE_URL=http://127.0.0.1:18080
+AI_CORE_API_KEY=<server secret>
+ASTERA_TRANSLATION_TIMEOUT_MS=90000
+```
 
-Model RuntimeはHugging Face `main`を追従しない。
+API KeyはGit・README・Terminal出力・Chatへ記録しない。
 
-1. Upstream `google/madlad400-3b-mt` revisionを`fa184c...`へ固定。
-2. Source snapshotからCTranslate2 INT8へ変換。
-3. Source `model.safetensors` SHA-256を記録。
-4. Converted `model.bin` SHA-256を記録。
-5. `ASTERA_MODEL_MANIFEST.json`を生成。
-6. Runtime起動時にModel ID / revision / quantization / model.bin SHA-256を再照合。
-7. 不一致ならEngineを起動しない。
-8. Runtimeでは`HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`。
+## 7. Quality / benchmark gates before activation
 
-したがってProduction request中にModel Downloadや外部InferenceへFallbackしない。
-
-## 6. Service boundary
-
-`astera-app-api` -> `http://127.0.0.1:8792/v1/translate` -> local MADLAD Engine
-
-Rules:
-
-- bindはloopbackのみ。
-- App API側もnon-loopback Translation Originを拒否。
-- Bearer internal token必須。
-- Model ID / revisionをApp API側でもresponse検証。
-- Engineが`external_api_calls != 0`を返したらFail-closed。
-- Gemini/Vault Provider callは翻訳経路から削除。
-
-Translation Engineは`docker compose`の`translation` Profileに隔離する。Modelを準備する前に既存App deploymentへ勝手に起動・混入しない。
-
-## 7. Model preparation
-
-Model変換はRuntime Containerでは行わない。別のModel Builderで一度だけ実施し、検証済みDirectoryをread-only mountする。
-
-Builder source:
-
-- `contabo/translation-engine/prepare_model.py`
-- `contabo/translation-engine/Dockerfile.model-builder`
-
-変換後に実翻訳Smokeを行い、空Output / `<unk>`破損ならManifestを完成扱いにしない。
-
-## 8. Quality / benchmark gates before activation
-
-Source実装がPASSしても、ModelをServerへ載せただけでProduction完了とはしない。
+Source GateがPASSしてもProduction完成とはしない。
 
 Activation前に最低限以下を実測する。
 
-1. **Language Contract**: App主要言語 + 低資源言語代表でTarget token解決。
-2. **Invariant Suite**: URL / UUID / 数字 / 日付 / code / Markdown / table 100% preservation。
-3. **Reference Translation Suite**: FLORES系等の公開Referenceがある言語でchrF++ / SacreBLEUを計測。
-4. **Astera Domain Suite**: Astera Result 8項目、Software、契約・料金、一般会話、崩れた文書を人手Reference付きで検証。
-5. **Negation/number critical set**: not/no/禁止/以上/以下、金額、割合、期限、Versionを重点検査。
-6. **Performance**: cold load、warm latency、tokens/sec、Peak RAM、同時実行時OOMなし。
-7. **Failure injection**: Engine停止、timeout、Model hash mismatch、unsupported language、protected token破損でFail-closed。
-8. **No external cost proof**: Translation request中のexternal provider call=0。
+1. App主要言語 + 低資源言語代表の翻訳成立
+2. URL / UUID / 数字 / 日付 / Code / Markdown / tableの100%保持
+3. 人手Referenceに対するchrF++ / SacreBLEU
+4. 言語Pair別Score
+5. 否定・禁止・以上/以下・金額・割合・期限・Versionの重点検査
+6. mean / p50 / p95 / max latency
+7. warm request時のCPU / RAM
+8. AI Core停止・timeout・401・別model応答時のFail-closed
+9. Translation request中の外部Provider call 0
 
-chrF/BLEUだけを「正確さ」とみなさない。重要な数値・否定・固有tokenの保持と、人手Reference差分を別Gateで持つ。
+Benchmark helper:
 
-## 9. Current activation boundary
+```text
+scripts/translation-benchmark.py
+scripts/translation-benchmark-requirements.txt
+```
 
-Source / CIまではこのBranchで進める。
+BenchmarkもAI Core Router `18080`だけへ接続する。
 
-以下は別途Server実測後まで禁止:
+## 8. Current activation boundary
+
+このBranchではSource / CI / Server benchmark準備まで進める。
+
+以下はServer実測とApp E2E完了まで禁止:
 
 - Production merge
 - Production deploy
-- 既存Gemini translation routeの無検証切替
-- Model未準備でTranslation Profileを常時起動
-- Benchmark未実施で「全419言語高精度」と宣言
+- Translation Optionの本番切替
+- Benchmark未実施で「高精度」を完成扱い
+- 4モデル間の自動Fallback追加
 
-完成判定は「Source PASS」ではなく、**Pinned model preparation + exact runtime health + multilingual quality benchmark + App実E2E**まで揃った時点とする。
+完成判定は、**Qwen3 exact runtime確認 + multilingual quality benchmark + structure invariant PASS + App実E2E**まで揃った時点とする。

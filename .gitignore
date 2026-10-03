@@ -6,9 +6,6 @@ dist/
 .DS_Store
 *.log
 
-# Local model weights are prepared outside Git and mounted read-only at runtime.
-.models/
-
 # Local verification/test artifacts
 playwright-report/
 test-results/
