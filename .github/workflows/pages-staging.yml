@@ -87,7 +87,7 @@ jobs:
         id: install
         run: npm install --no-audit
 
-      - name: Apply Account, Storage, Credit, Coupon, and Purpose D1 migrations
+      - name: Apply Account, Storage, Credit, Coupon, Purpose, and TGserver-ref D1 migrations
         id: d1_runtime_migrations
         shell: bash
         run: |
@@ -109,6 +109,29 @@ jobs:
           fi
 
           npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0021_purpose_history_index.sql
+
+          tgs_ref_column_count="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT COUNT(*) AS count FROM pragma_table_info('astera_storage_objects') WHERE name IN ('tgs_profile','tgs_namespace_ref','tgs_object_ref','tgs_operation_id','tgs_commit_state','tgs_last_reconciled_at');" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s);const r=p.flatMap(x=>x.results||[]);process.stdout.write(String(r[0]?.count ?? 0));})")"
+
+          if [ "$tgs_ref_column_count" = "0" ]; then
+            npx wrangler d1 execute astera-app-staging --remote --file=migrations/d1/0025_tgserver_logical_object_refs.sql
+          elif [ "$tgs_ref_column_count" = "6" ]; then
+            echo "TGserver logical reference columns already present; skipping 0025"
+          else
+            echo "Unexpected TGserver logical reference column count: $tgs_ref_column_count" >&2
+            exit 1
+          fi
+
+          tgs_ref_verify="$(npx wrangler d1 execute astera-app-staging --remote --json --command "SELECT (SELECT COUNT(*) FROM pragma_table_info('astera_storage_objects') WHERE name IN ('tgs_profile','tgs_namespace_ref','tgs_object_ref','tgs_operation_id','tgs_commit_state','tgs_last_reconciled_at')) AS column_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='astera_storage_objects_native_ref_unique' AND lower(sql) LIKE 'create unique index%') AS index_count, (SELECT COUNT(*) FROM astera_storage_objects WHERE tgs_profile IS NULL OR tgs_profile NOT IN ('legacy_v15','native_v1')) AS invalid_profile_rows;" )"
+          TGS_REF_VERIFY="$tgs_ref_verify" node <<'NODE'
+          const payload = JSON.parse(process.env.TGS_REF_VERIFY || '[]');
+          const rows = payload.flatMap((entry) => entry?.results || []);
+          if (rows.length !== 1) throw new Error(`Expected one TGserver logical-ref verification row, found ${rows.length}`);
+          const row = rows[0];
+          if (Number(row.column_count) !== 6) throw new Error(`TGserver logical-ref column_count=${String(row.column_count)}, expected 6`);
+          if (Number(row.index_count) !== 1) throw new Error(`TGserver logical-ref index_count=${String(row.index_count)}, expected 1`);
+          if (Number(row.invalid_profile_rows) !== 0) throw new Error(`TGserver logical-ref invalid_profile_rows=${String(row.invalid_profile_rows)}, expected 0`);
+          console.log('Verified TGserver logical-reference schema and legacy/native profile integrity');
+          NODE
 
       - name: Verify active Credit Policy
         id: credit_policy
