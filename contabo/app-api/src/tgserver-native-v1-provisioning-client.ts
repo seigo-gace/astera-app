@@ -44,6 +44,7 @@ export class TgserverNativeV1ProvisioningError extends Error {
   constructor(
     public readonly code: string,
     public readonly status: number,
+    public readonly mayHaveCommitted = false,
   ) {
     super(code);
     this.name = 'TgserverNativeV1ProvisioningError';
@@ -122,7 +123,11 @@ export class TgserverNativeV1ProvisioningClient {
     return new URL(path.replace(/^\/+/, ''), `${this.origin}/`).toString();
   }
 
-  private async post(path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async post(
+    path: string,
+    body?: Record<string, unknown>,
+    ambiguousOnTransport = false,
+  ): Promise<Record<string, unknown>> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort('tgs_control_timeout'), this.timeoutMs);
     try {
@@ -143,11 +148,21 @@ export class TgserverNativeV1ProvisioningClient {
         );
       }
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        if (ambiguousOnTransport) {
+          throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_ISSUE_AMBIGUOUS', 502, true);
+        }
         throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_RESPONSE_INVALID', 502);
       }
       return payload;
     } catch (error) {
       if (error instanceof TgserverNativeV1ProvisioningError) throw error;
+      if (ambiguousOnTransport) {
+        throw new TgserverNativeV1ProvisioningError(
+          'TGS_CONTROL_CREDENTIAL_ISSUE_AMBIGUOUS',
+          controller.signal.aborted ? 504 : 502,
+          true,
+        );
+      }
       if (controller.signal.aborted) throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_TIMEOUT', 504);
       throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_UNAVAILABLE', 502);
     } finally {
@@ -266,25 +281,32 @@ export class TgserverNativeV1ProvisioningClient {
       tenant_id: input.tenantId,
       namespace_id: input.namespaceId,
       scopes: ['object:read', 'object:write'],
-    });
-    const credential = payload.credential;
-    if (!credential || typeof credential !== 'object' || Array.isArray(credential)) {
-      throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_MISSING', 502);
+    }, true);
+    try {
+      const credential = payload.credential;
+      if (!credential || typeof credential !== 'object' || Array.isArray(credential)) {
+        throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_MISSING', 502);
+      }
+      const record = credential as Record<string, unknown>;
+      const tenantId = match(text(record.tenant_id, 'TGS_CONTROL_CREDENTIAL_TENANT_MISSING'), input.tenantId, 'TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH');
+      const namespaceId = match(text(record.namespace_id, 'TGS_CONTROL_CREDENTIAL_NAMESPACE_MISSING'), input.namespaceId, 'TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH');
+      const scopes = stringList(record.scopes, 'TGS_CONTROL_CREDENTIAL_SCOPES_INVALID');
+      if (!scopes.includes('object:read') || !scopes.includes('object:write')) {
+        throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_SCOPE_MISMATCH', 502);
+      }
+      return {
+        token: text(payload.token, 'TGS_CONTROL_CREDENTIAL_TOKEN_MISSING'),
+        credentialId: text(record.credential_id, 'TGS_CONTROL_CREDENTIAL_ID_MISSING'),
+        tenantId,
+        namespaceId,
+        scopes,
+        state: expectState(text(record.state, 'TGS_CONTROL_CREDENTIAL_STATE_MISSING'), ['ACTIVE'], 'TGS_CONTROL_CREDENTIAL_NOT_ACTIVE'),
+      };
+    } catch (error) {
+      if (error instanceof TgserverNativeV1ProvisioningError) {
+        throw new TgserverNativeV1ProvisioningError(error.code, error.status, true);
+      }
+      throw error;
     }
-    const record = credential as Record<string, unknown>;
-    const tenantId = match(text(record.tenant_id, 'TGS_CONTROL_CREDENTIAL_TENANT_MISSING'), input.tenantId, 'TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH');
-    const namespaceId = match(text(record.namespace_id, 'TGS_CONTROL_CREDENTIAL_NAMESPACE_MISSING'), input.namespaceId, 'TGS_CONTROL_CREDENTIAL_IDENTITY_MISMATCH');
-    const scopes = stringList(record.scopes, 'TGS_CONTROL_CREDENTIAL_SCOPES_INVALID');
-    if (!scopes.includes('object:read') || !scopes.includes('object:write')) {
-      throw new TgserverNativeV1ProvisioningError('TGS_CONTROL_CREDENTIAL_SCOPE_MISMATCH', 502);
-    }
-    return {
-      token: text(payload.token, 'TGS_CONTROL_CREDENTIAL_TOKEN_MISSING'),
-      credentialId: text(record.credential_id, 'TGS_CONTROL_CREDENTIAL_ID_MISSING'),
-      tenantId,
-      namespaceId,
-      scopes,
-      state: expectState(text(record.state, 'TGS_CONTROL_CREDENTIAL_STATE_MISSING'), ['ACTIVE'], 'TGS_CONTROL_CREDENTIAL_NOT_ACTIVE'),
-    };
   }
 }
