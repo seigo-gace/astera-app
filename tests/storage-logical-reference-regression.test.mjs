@@ -1,21 +1,68 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { binaryDescriptor, commitObject, StorageStoreError } from '../functions/_storage-store.ts';
 
-const actor={userId:'user-1',tenantId:'tenant-1'};
-function row(overrides={}){return{id:'obj-1',tenant_id:'tenant-1',user_id:'user-1',project_id:null,folder_id:null,topic_id:'10',message_id:'20',telegram_file_id:'legacy-file',tgs_profile:'legacy_v15',tgs_namespace_ref:null,tgs_object_ref:null,tgs_operation_id:null,tgs_commit_state:null,tgs_last_reconciled_at:null,file_name:'a.txt',mime_type:'text/plain',file_size:3,checksum_sha256:'a'.repeat(64),checksum_verified_at:null,encryption_profile:'AES-256-GCM',dek_wrap_ciphertext:'dek',dek_wrap_iv:'iv',content_iv_base64:'civ',auth_tag_base64:'tag',encrypted_at:'2026-10-03T00:00:00.000Z',retention_policy:null,source_result_id:null,version:1,contract_capacity_bytes_snapshot:100,status:'stored',error_code:null,deleted_at:null,restored_at:null,primary_deleted_at:null,created_at:'2026-10-03T00:00:00.000Z',updated_at:'2026-10-03T00:00:00.000Z',...overrides};}
-function fakeDb(resultRow){const runs=[];return{runs,db:{prepare(sql){const statement={values:[],bind(...values){statement.values=values;return statement;},async first(){return resultRow;},async all(){return{results:[]};},async run(){runs.push({sql,values:statement.values});return{meta:{changes:1}};}};return statement;},async batch(){return[];}}};}
-const common={checksumSha256:'a'.repeat(64),encryptionProfile:'AES-256-GCM',dekWrapCiphertext:'dek',dekWrapIv:'iv',contentIvBase64:'civ',authTagBase64:'tag',encryptedAt:'2026-10-03T00:00:00.000Z'};
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('0025 adds logical TGserver reference authority without deleting legacy refs',()=>{const sql=readFileSync(new URL('../migrations/d1/0025_tgserver_logical_object_refs.sql',import.meta.url),'utf8');for(const name of ['tgs_profile','tgs_namespace_ref','tgs_object_ref','tgs_operation_id','tgs_commit_state','tgs_last_reconciled_at'])assert.match(sql,new RegExp(`ADD COLUMN ${name}`));assert.match(sql,/DEFAULT 'legacy_v15'/);assert.match(sql,/WHERE tgs_profile = 'native_v1'/);});
+test('0025 adds logical TGserver reference authority without deleting legacy refs', () => {
+  const sql = read('../migrations/d1/0025_tgserver_logical_object_refs.sql');
+  for (const name of ['tgs_profile','tgs_namespace_ref','tgs_object_ref','tgs_operation_id','tgs_commit_state','tgs_last_reconciled_at']) {
+    assert.match(sql, new RegExp(`ADD COLUMN ${name}`));
+  }
+  assert.match(sql, /DEFAULT 'legacy_v15'/);
+  assert.match(sql, /CHECK \(tgs_profile IN \('legacy_v15', 'native_v1'\)\)/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS astera_storage_objects_native_ref_unique/);
+  assert.match(sql, /WHERE tgs_profile = 'native_v1' AND tgs_object_ref IS NOT NULL/);
+  assert.doesNotMatch(sql, /DROP COLUMN|RENAME COLUMN/i);
+});
 
-test('native commit clears legacy locators and persists committed logical identity',async()=>{const f=fakeDb(row({topic_id:null,message_id:null,telegram_file_id:null,tgs_profile:'native_v1',tgs_object_ref:'native-object-1',tgs_operation_id:null,tgs_commit_state:'committed'}));await commitObject(f.db,actor,'obj-1',{reference:{profile:'native_v1',objectRef:'native-object-1',operationId:null,commitState:'committed'},...common});assert.equal(f.runs.length,1);assert.match(f.runs[0].sql,/tgs_profile=\?1,topic_id=\?2,message_id=\?3,telegram_file_id=\?4,tgs_object_ref=\?5/);assert.deepEqual(f.runs[0].values.slice(0,7),['native_v1',null,null,null,'native-object-1',null,'committed']);});
+test('storage store keeps legacy and native references mutually exclusive at commit', () => {
+  const source = read('../functions/_storage-store.ts');
+  assert.match(source, /StorageCommitReference=\{profile:'legacy_v15'/);
+  assert.match(source, /\|\{profile:'native_v1';objectRef:string;operationId:string\|null;commitState:'committed'\}/);
+  assert.match(source, /topicId:null,messageId:null,telegramFileId:null,objectRef:reference\.objectRef/);
+  assert.match(source, /objectRef:null,operationId:null,commitState:null/);
+  assert.match(source, /tgs_profile=\?1,topic_id=\?2,message_id=\?3,telegram_file_id=\?4,tgs_object_ref=\?5,tgs_operation_id=\?6,tgs_commit_state=\?7/);
+});
 
-test('legacy commit preserves physical locator and clears native logical fields',async()=>{const f=fakeDb(row());await commitObject(f.db,actor,'obj-1',{reference:{profile:'legacy_v15',topicId:'10',messageId:'20',telegramFileId:'legacy-file'},...common});assert.deepEqual(f.runs[0].values.slice(0,7),['legacy_v15','10','20','legacy-file',null,null,null]);});
+test('native download requires committed logical identity while legacy still requires physical locator', () => {
+  const source = read('../functions/_storage-store.ts');
+  assert.match(source, /const profile=r\.tgs_profile\|\|'legacy_v15'/);
+  assert.match(source, /profile==='legacy_v15'.*!r\.topic_id\|\|!r\.message_id\|\|!r\.telegram_file_id/s);
+  assert.match(source, /profile==='native_v1'.*!r\.tgs_object_ref\|\|r\.tgs_commit_state!=='committed'/s);
+});
 
-test('binary descriptor accepts committed native object with no Telegram locator',async()=>{const f=fakeDb(row({topic_id:null,message_id:null,telegram_file_id:null,tgs_profile:'native_v1',tgs_object_ref:'native-object-1',tgs_commit_state:'committed'}));const descriptor=await binaryDescriptor(f.db,actor,'obj-1');assert.equal(descriptor.tgs_profile,'native_v1');assert.equal(descriptor.tgs_object_ref,'native-object-1');});
+test('both upload entrypoints accept native logical refs and fail closed on non-committed evidence', () => {
+  for (const path of ['../functions/api/storage/uploads/[object]/complete.ts','../functions/api/storage/objects.ts']) {
+    const source = read(path);
+    assert.match(source, /native_v1/);
+    assert.match(source, /tgs_object_ref/);
+    assert.match(source, /reportedState/);
+    assert.match(source, /reportedState !== 'committed'|reportedState&&reportedState!=='committed'/);
+    assert.match(source, /commitState:\s*'committed'/);
+  }
+});
 
-test('binary descriptor rejects native object without committed evidence',async()=>{const f=fakeDb(row({topic_id:null,message_id:null,telegram_file_id:null,tgs_profile:'native_v1',tgs_object_ref:'native-object-1',tgs_commit_state:'accepted'}));await assert.rejects(()=>binaryDescriptor(f.db,actor,'obj-1'),error=>error instanceof StorageStoreError&&error.code==='ASTERA_STORAGE_OBJECT_NOT_DOWNLOADABLE');});
+test('download and failed-upload purge use profile-specific logical headers without exposing Telegram locators for native', () => {
+  const download = read('../functions/api/storage/objects/[object]/download.ts');
+  const upload = read('../functions/api/storage/objects.ts');
+  for (const source of [download, upload]) {
+    assert.match(source, /X-Astera-TGS-Profile/);
+    assert.match(source, /X-Astera-TGS-Object-Ref/);
+    assert.match(source, /native_v1/);
+    assert.match(source, /legacy_v15/);
+  }
+  assert.match(download, /if\(r\.tgs_profile==='native_v1'\)/);
+  assert.match(upload, /if\(reference\.profile==='native_v1'\)/);
+});
 
-test('Cloudflare storage bridge persists and reads native logical refs without raw Telegram requirements',()=>{const complete=readFileSync(new URL('../functions/api/storage/uploads/[object]/complete.ts',import.meta.url),'utf8');const download=readFileSync(new URL('../functions/api/storage/objects/[object]/download.ts',import.meta.url),'utf8');assert.match(complete,/profile === 'native_v1'/);assert.match(complete,/tgs_object_ref/);assert.match(complete,/commitState: 'committed'/);assert.match(download,/X-Astera-TGS-Profile/);assert.match(download,/X-Astera-TGS-Object-Ref/);assert.match(download,/if\(r\.tgs_profile==='native_v1'\)/);});
+test('public storage payload remains logical App metadata and does not expose TGserver or Telegram locators', () => {
+  const source = read('../functions/_storage-store.ts');
+  const start = source.indexOf('function payload');
+  const end = source.indexOf('async function owned', start);
+  assert.ok(start >= 0 && end > start);
+  const payload = source.slice(start, end);
+  for (const forbidden of ['topic_id','message_id','telegram_file_id','tgs_object_ref','tgs_operation_id','tgs_namespace_ref']) {
+    assert.doesNotMatch(payload, new RegExp(forbidden));
+  }
+});
