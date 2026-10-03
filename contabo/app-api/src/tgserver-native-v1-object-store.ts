@@ -14,6 +14,7 @@ import {
 
 export interface TgserverNativeV1ClientLike {
   readonly configured: boolean;
+  assertObjectReady(input?: { signal?: AbortSignal }): Promise<void>;
   register(input: {
     objectKey: string;
     idempotencyKey: string;
@@ -63,19 +64,36 @@ function nativeObjectId(input: PersistentObjectReadInput | PersistentObjectDelet
  * intentionally never translated into route/topic/group data here. TGserver owns
  * logical route resolution and every physical Telegram placement decision.
  *
- * This class is intentionally not wired into the current runtime yet. It becomes
- * selectable only after the isolated TGserver vNext runtime and App cutover gate
- * are approved.
+ * Native selection is explicit. Before the first data-plane operation, this
+ * adapter verifies the current TGserver /v1 readiness and Object API capability.
+ * Failed preflight is not cached, so a later request can recover after TGserver
+ * becomes ready without restarting the App process.
  */
 export class TgserverNativeV1ObjectStore implements PersistentObjectStore {
+  private readiness: Promise<void> | null = null;
+
   constructor(private readonly client: TgserverNativeV1ClientLike) {}
 
   get configured(): boolean {
     return this.client.configured;
   }
 
+  private async ensureReady(signal?: AbortSignal): Promise<void> {
+    if (!this.readiness) {
+      this.readiness = this.client.assertObjectReady(signal ? { signal } : {});
+    }
+    const current = this.readiness;
+    try {
+      await current;
+    } catch (error) {
+      if (this.readiness === current) this.readiness = null;
+      throw error;
+    }
+  }
+
   async put(input: PersistentObjectPutInput): Promise<PersistentObjectPutResult> {
     const logicalId = appObjectId(input.objectId);
+    await this.ensureReady(input.signal);
     const registerInput: Parameters<TgserverNativeV1ClientLike['register']>[0] = {
       objectKey: logicalId,
       idempotencyKey: key('register', logicalId),
@@ -122,12 +140,22 @@ export class TgserverNativeV1ObjectStore implements PersistentObjectStore {
       objectId: nativeObjectId(input),
     };
     if (input.signal) request.signal = input.signal;
+    return this.readReady(request, input.signal);
+  }
+
+  private async readReady(
+    request: Parameters<TgserverNativeV1ClientLike['read']>[0],
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    await this.ensureReady(signal);
     return this.client.read(request);
   }
 
   async delete(input: PersistentObjectDeleteInput): Promise<void> {
+    const objectId = nativeObjectId(input);
+    await this.ensureReady(input.signal);
     const result = await this.client.remove({
-      objectId: nativeObjectId(input),
+      objectId,
       idempotencyKey: key('delete', input.objectId),
       ...(input.signal ? { signal: input.signal } : {}),
     });

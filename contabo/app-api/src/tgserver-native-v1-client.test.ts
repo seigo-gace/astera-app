@@ -11,6 +11,55 @@ function json(body: Record<string, unknown>, status = 200, headers: Record<strin
   });
 }
 
+test('native readiness fence uses current TGserver operational contract before Object traffic', async () => {
+  const seen: SeenRequest[] = [];
+  const client = new TgserverNativeV1Client(
+    { origin: 'http://tgserver:8080', token: 'scoped-token', timeoutMs: 5000 },
+    async (input, init) => {
+      const url = String(input);
+      seen.push({ url, init });
+      if (url.endsWith('/v1/ready')) return json({ status: 'ready' });
+      if (url.endsWith('/v1/capabilities')) {
+        return json({
+          schema_version: 1,
+          native_api: { events: true, objects: true, search: true, control: true },
+          providers: { hostedBotApi: true, localBotApi: false },
+          storage: { replica: true, l1Cache: false, l2Cache: false, s3: false, webdav: false },
+        });
+      }
+      return json({ code: 'UNEXPECTED_REQUEST' }, 500);
+    },
+  );
+
+  await client.assertObjectReady();
+  assert.deepEqual(seen.map((request) => new URL(request.url).pathname), ['/v1/ready', '/v1/capabilities']);
+  for (const request of seen) assert.equal(new Headers(request.init?.headers).get('authorization'), 'Bearer scoped-token');
+});
+
+test('native readiness fence fails closed when Object API capability is unavailable', async () => {
+  const client = new TgserverNativeV1Client(
+    { origin: 'http://tgserver:8080', token: 'scoped-token', timeoutMs: 5000 },
+    async (input) => String(input).endsWith('/v1/ready')
+      ? json({ status: 'ready' })
+      : json({ schema_version: 1, native_api: { events: true, objects: false, search: true, control: true }, providers: {}, storage: {} }),
+  );
+  await assert.rejects(
+    () => client.assertObjectReady(),
+    (error: unknown) => error instanceof TgserverNativeV1Error && error.code === 'TGS_NATIVE_OBJECT_API_UNAVAILABLE' && error.status === 503,
+  );
+});
+
+test('native readiness fence preserves TGserver not-ready evidence', async () => {
+  const client = new TgserverNativeV1Client(
+    { origin: 'http://tgserver:8080', token: 'scoped-token', timeoutMs: 5000 },
+    async () => json({ status: 'not_ready', code: 'VNEXT_RUNTIME_DISABLED' }, 503),
+  );
+  await assert.rejects(
+    () => client.assertObjectReady(),
+    (error: unknown) => error instanceof TgserverNativeV1Error && error.code === 'VNEXT_RUNTIME_DISABLED' && error.status === 503,
+  );
+});
+
 test('native client uses canonical v1 object endpoints and scoped bearer credential', async () => {
   const seen: SeenRequest[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {

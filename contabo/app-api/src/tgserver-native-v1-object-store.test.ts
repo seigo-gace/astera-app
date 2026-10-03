@@ -12,9 +12,15 @@ class FakeClient implements TgserverNativeV1ClientLike {
   readonly writeCalls: Parameters<TgserverNativeV1ClientLike['write']>[0][] = [];
   readonly readCalls: Parameters<TgserverNativeV1ClientLike['read']>[0][] = [];
   readonly removeCalls: Parameters<TgserverNativeV1ClientLike['remove']>[0][] = [];
+  readinessCalls = 0;
+  readinessError: Error | null = null;
   writeStatus: 'committed' | 'reconciliation_required' | 'retryable_failure' = 'committed';
   deleteStatus: 'deleted' | 'accepted' = 'deleted';
 
+  async assertObjectReady() {
+    this.readinessCalls += 1;
+    if (this.readinessError) throw this.readinessError;
+  }
   async register(input: Parameters<TgserverNativeV1ClientLike['register']>[0]) {
     this.registerCalls.push(input);
     return { objectId: nativeId, state: 'STAGING', currentVersion: 0, duplicate: false };
@@ -59,6 +65,28 @@ function deleteInput(): PersistentObjectDeleteInput {
     locator: { kind: 'tgs-native-v1', objectId: nativeId },
   };
 }
+
+test('native store checks readiness before first mutation and caches only successful preflight', async () => {
+  const client = new FakeClient();
+  const store = new TgserverNativeV1ObjectStore(client);
+  await store.put(putInput());
+  await store.read(readInput());
+  await store.delete(deleteInput());
+  assert.equal(client.readinessCalls, 1);
+});
+
+test('failed readiness blocks Object traffic and can recover on a later request', async () => {
+  const client = new FakeClient();
+  client.readinessError = new TgserverNativeV1Error('VNEXT_RUNTIME_DISABLED', 503);
+  const store = new TgserverNativeV1ObjectStore(client);
+  await assert.rejects(() => store.put(putInput()), /VNEXT_RUNTIME_DISABLED/);
+  assert.equal(client.registerCalls.length, 0);
+  assert.equal(client.writeCalls.length, 0);
+  client.readinessError = null;
+  await store.put(putInput());
+  assert.equal(client.readinessCalls, 2);
+  assert.equal(client.registerCalls.length, 1);
+});
 
 test('native store keeps App object identity while exposing only TGserver logical object locator', async () => {
   const client = new FakeClient();

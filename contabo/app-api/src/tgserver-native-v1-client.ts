@@ -156,6 +156,27 @@ export class TgserverNativeV1Client {
     return payload as Record<string, unknown>;
   }
 
+  async assertObjectReady(input: { signal?: AbortSignal } = {}): Promise<void> {
+    const readyResponse = await this.request('v1/ready', { method: 'GET' }, input.signal);
+    const ready = await this.json(readyResponse);
+    if (ready.status !== 'ready') {
+      throw new TgserverNativeV1Error('TGS_NATIVE_OBJECT_RUNTIME_NOT_READY', 503);
+    }
+
+    const capabilityResponse = await this.request('v1/capabilities', { method: 'GET' }, input.signal);
+    const capabilities = await this.json(capabilityResponse);
+    if (capabilities.schema_version !== 1) {
+      throw new TgserverNativeV1Error('TGS_NATIVE_OBJECT_CAPABILITY_SCHEMA_UNSUPPORTED', 502);
+    }
+    const nativeApi = capabilities.native_api;
+    if (!nativeApi || typeof nativeApi !== 'object' || Array.isArray(nativeApi)) {
+      throw new TgserverNativeV1Error('TGS_NATIVE_OBJECT_CAPABILITIES_INVALID', 502);
+    }
+    if ((nativeApi as Record<string, unknown>).objects !== true) {
+      throw new TgserverNativeV1Error('TGS_NATIVE_OBJECT_API_UNAVAILABLE', 503);
+    }
+  }
+
   async register(input: {
     objectKey: string;
     idempotencyKey: string;
