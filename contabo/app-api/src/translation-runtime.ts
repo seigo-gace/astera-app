@@ -27,19 +27,24 @@ function collect(result: Record<string, unknown>): Array<{ set: (value: unknown)
   const found: Array<{ set: (value: unknown) => void; slot: Slot }> = [];
   const sections = result.sections;
   if (Array.isArray(sections)) {
-    sections.forEach((item, index) => { const current = slot(item); if (current?.body.trim()) found.push({ set: (value) => { sections[index] = value; }, slot: current }); });
+    sections.forEach((item, index) => {
+      const current = slot(item);
+      if (current?.body.trim()) found.push({ set: (value) => { sections[index] = value; }, slot: current });
+    });
     return found;
   }
   const objectSections = record(sections);
   if (Object.keys(objectSections).length) {
     for (const [key, value] of Object.entries(objectSections)) {
-      const current = slot(value); if (current?.body.trim()) found.push({ set: (next) => { objectSections[key] = next; }, slot: current });
+      const current = slot(value);
+      if (current?.body.trim()) found.push({ set: (next) => { objectSections[key] = next; }, slot: current });
     }
     result.sections = objectSections;
     return found;
   }
   for (const key of ['true_purpose', 'missing_assumptions', 'fact_check', 'risk_detection', 'counter_view', 'alternatives', 'recommendation', 'next_prompt']) {
-    const current = slot(result[key]); if (current?.body.trim()) found.push({ set: (value) => { result[key] = value; }, slot: current });
+    const current = slot(result[key]);
+    if (current?.body.trim()) found.push({ set: (value) => { result[key] = value; }, slot: current });
   }
   return found;
 }
@@ -88,18 +93,19 @@ export async function translateAsteraResult(payload: unknown, targetLanguage: st
 
     const sourceMeaning = await meaningRecord(serializeMeaningBatch(originals), config.timeoutMs); add(sourceMeaning);
     const candidateMeaning = await meaningRecord(serializeMeaningBatch(candidate.bodies), config.timeoutMs); add(candidateMeaning);
-    const first = await semanticVerdict(sourceMeaning.text, candidateMeaning.text, config.timeoutMs); add(first.result); totals.semanticValidations += 1;
+    const first = await semanticVerdict(sourceMeaning.text, candidateMeaning.text, targetLanguage, config.timeoutMs); add(first.result); totals.semanticValidations += 1;
 
     if (!semanticPass(first.verdict)) {
       totals.semanticRetries += 1;
-      const guidance = first.verdict.criticalDifferences.length
-        ? first.verdict.criticalDifferences.join('\n')
-        : `Semantic score ${first.verdict.score.toFixed(3)} was below ${SEMANTIC_PASS_SCORE}. Preserve every material meaning exactly.`;
-      const retry = await translateBatch(originals, targetLanguage, 'semantic_retry', config.timeoutMs, guidance); add(retry);
+      const guidanceParts = [...first.verdict.criticalDifferences];
+      if (!first.verdict.targetLanguageMatch) guidanceParts.push(`Candidate prose must be translated into requested target language ${targetLanguage}; do not leave source prose untranslated.`);
+      if (!guidanceParts.length) guidanceParts.push(`Semantic score ${first.verdict.score.toFixed(3)} was below ${SEMANTIC_PASS_SCORE}. Preserve every material meaning exactly.`);
+      const retry = await translateBatch(originals, targetLanguage, 'semantic_retry', config.timeoutMs, guidanceParts.join('\n')); add(retry);
       const retryMeaning = await meaningRecord(serializeMeaningBatch(retry.bodies), config.timeoutMs); add(retryMeaning);
-      const second = await semanticVerdict(sourceMeaning.text, retryMeaning.text, config.timeoutMs); add(second.result); totals.semanticValidations += 1;
+      const second = await semanticVerdict(sourceMeaning.text, retryMeaning.text, targetLanguage, config.timeoutMs); add(second.result); totals.semanticValidations += 1;
       if (!semanticPass(second.verdict)) {
-        throw Object.assign(new Error(`Translation failed semantic equivalence after retry: score=${second.verdict.score.toFixed(3)}; differences=${second.verdict.criticalDifferences.join(' | ') || 'unspecified'}`), { code: 'TRANSLATION_SEMANTIC_EQUIVALENCE_FAILED' });
+        const languageStatus = second.verdict.targetLanguageMatch ? 'match' : 'mismatch';
+        throw Object.assign(new Error(`Translation failed semantic equivalence after retry: score=${second.verdict.score.toFixed(3)}; target_language=${languageStatus}; differences=${second.verdict.criticalDifferences.join(' | ') || 'unspecified'}`), { code: 'TRANSLATION_SEMANTIC_EQUIVALENCE_FAILED' });
       }
       candidate = retry;
     }

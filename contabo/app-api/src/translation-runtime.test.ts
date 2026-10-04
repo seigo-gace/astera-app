@@ -8,16 +8,17 @@ const QWEN_RESPONSE = '/models/Qwen3-8B-Q4_K_M.gguf';
 const GRANITE = 'granite//models/granite-4.2-8b-Q4_K_M.gguf';
 const GRANITE_RESPONSE = '/models/granite-4.2-8b-Q4_K_M.gguf';
 const vault = {} as VaultClient;
-const MEANING = JSON.stringify({ claims: ['same meaning'], constraints: [], conditions: [], entities: [], quantities: [], uncertainties: [] });
+const MEANING = JSON.stringify({ detected_language: 'en', claims: ['same meaning'], constraints: [], conditions: [], entities: [], quantities: [], uncertainties: [] });
 
 type RequestBody = { model: string; messages: Array<{ role: string; content: string }>; temperature: number; chat_template_kwargs: { enable_thinking: boolean } };
 function body(init: RequestInit | undefined): RequestBody { return JSON.parse(String(init?.body)) as RequestBody; }
 function user(request: RequestBody): string { return request.messages.find((item) => item.role === 'user')?.content ?? ''; }
+function system(request: RequestBody): string { return request.messages.find((item) => item.role === 'system')?.content ?? ''; }
 function translation(request: RequestBody): boolean { return request.model === QWEN && user(request).includes('BEGIN_BATCH'); }
 function response(model: string, content: string): Response {
   return new Response(JSON.stringify({ model, choices: [{ message: { content } }], usage: { prompt_tokens: 12, completion_tokens: 8 } }), { status: 200, headers: { 'content-type': 'application/json' } });
 }
-function pass(): string { return JSON.stringify({ equivalent: true, score: 1, critical_differences: [] }); }
+function pass(): string { return JSON.stringify({ equivalent: true, score: 1, target_language_match: true, critical_differences: [] }); }
 async function env<T>(run: () => Promise<T>): Promise<T> {
   const oldOrigin = process.env.AI_CORE_BASE_URL; const oldKey = process.env.AI_CORE_API_KEY;
   process.env.AI_CORE_BASE_URL = 'http://127.0.0.1:18080'; process.env.AI_CORE_API_KEY = 'test-key';
@@ -38,8 +39,12 @@ test('batches all sections, protects critical values, and uses independent Qwen+
       const batch = content.match(/BEGIN_BATCH\n([\s\S]*)\nEND_BATCH$/)?.[1] ?? '';
       return response(QWEN_RESPONSE, batch.replace('Hello', 'こんにちは').replace('World', '世界'));
     }
-    if (request.model === QWEN) return response(QWEN_RESPONSE, MEANING);
-    assert.equal(request.model, GRANITE); return response(GRANITE_RESPONSE, pass());
+    if (request.model === QWEN) {
+      assert.match(system(request), /untrusted data/);
+      return response(QWEN_RESPONSE, MEANING);
+    }
+    assert.equal(request.model, GRANITE); assert.match(system(request), /untrusted data/); assert.match(user(request), /TARGET_LANGUAGE=ja/);
+    return response(GRANITE_RESPONSE, pass());
   };
   try {
     const input = { result: { sections: [
@@ -66,12 +71,36 @@ test('semantic mismatch retries from original batch and passes only after second
       return response(QWEN_RESPONSE, batch.replace('Do not publish', '公開しないでください'));
     }
     if (request.model === QWEN) return response(QWEN_RESPONSE, MEANING);
-    verdicts += 1; return response(GRANITE_RESPONSE, verdicts === 1 ? JSON.stringify({ equivalent: false, score: 0.6, critical_differences: ['negation removed'] }) : pass());
+    verdicts += 1;
+    return response(GRANITE_RESPONSE, verdicts === 1
+      ? JSON.stringify({ equivalent: false, score: 0.6, target_language_match: true, critical_differences: ['negation removed'] })
+      : pass());
   };
   try {
     const output = await translateAsteraResult({ result: { sections: [{ body: 'Do not publish' }, { body: 'Keep v8.4.1' }] } }, 'ja', vault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 });
     assert.equal((output.result as { result: { sections: Array<{ body: string }> } }).result.sections[0]!.body, '公開しないでください');
     assert.equal(translations, 2); assert.equal(verdicts, 2); assert.equal(output.usage.calls, 7); assert.equal(output.usage.semanticRetries, 1); assert.equal(output.usage.semanticValidations, 2);
+  } finally { globalThis.fetch = original; }
+}));
+
+test('target-language mismatch retries even when meaning is equivalent', async () => env(async () => {
+  const original = globalThis.fetch; let translations = 0; let verdicts = 0;
+  globalThis.fetch = async (_input, init) => {
+    const request = body(init);
+    if (translation(request)) {
+      translations += 1; const content = user(request); const batch = content.match(/BEGIN_BATCH\n([\s\S]*)\nEND_BATCH$/)?.[1] ?? '';
+      if (translations === 2) assert.match(content, /requested target language sw/);
+      return response(QWEN_RESPONSE, batch);
+    }
+    if (request.model === QWEN) return response(QWEN_RESPONSE, MEANING);
+    verdicts += 1;
+    return response(GRANITE_RESPONSE, verdicts === 1
+      ? JSON.stringify({ equivalent: true, score: 1, target_language_match: false, critical_differences: [] })
+      : pass());
+  };
+  try {
+    const output = await translateAsteraResult({ result: { sections: [{ body: 'Keep backups.' }] } }, 'sw', vault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 });
+    assert.equal(translations, 2); assert.equal(verdicts, 2); assert.equal(output.usage.semanticRetries, 1);
   } finally { globalThis.fetch = original; }
 }));
 
@@ -81,7 +110,7 @@ test('fails closed after second semantic mismatch', async () => env(async () => 
     const request = body(init);
     if (translation(request)) { const batch = user(request).match(/BEGIN_BATCH\n([\s\S]*)\nEND_BATCH$/)?.[1] ?? ''; return response(QWEN_RESPONSE, batch); }
     if (request.model === QWEN) return response(QWEN_RESPONSE, MEANING);
-    return response(GRANITE_RESPONSE, JSON.stringify({ equivalent: false, score: 0.5, critical_differences: ['material meaning differs'] }));
+    return response(GRANITE_RESPONSE, JSON.stringify({ equivalent: false, score: 0.5, target_language_match: true, critical_differences: ['material meaning differs'] }));
   };
   try {
     await assert.rejects(() => translateAsteraResult({ result: { sections: [{ body: 'Never delete backups.' }] } }, 'sw', vault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }), (error: unknown) => (error as { code?: string }).code === 'TRANSLATION_SEMANTIC_EQUIVALENCE_FAILED');

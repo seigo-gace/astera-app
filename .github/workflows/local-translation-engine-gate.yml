@@ -45,6 +45,9 @@ jobs:
           grep -q '127.0.0.1:18080' contabo/app-api/src/translation-ai-core.ts
           grep -q 'enable_thinking: false' contabo/app-api/src/translation-ai-core.ts
           grep -q 'SEMANTIC_PASS_SCORE = 0.98' contabo/app-api/src/translation-semantic.ts
+          grep -q 'targetLanguageMatch' contabo/app-api/src/translation-semantic.ts
+          grep -q 'target_language_match' contabo/app-api/src/translation-semantic.ts
+          grep -q 'untrusted data' contabo/app-api/src/translation-semantic.ts
           grep -q 'semantic_retry' contabo/app-api/src/translation-runtime.ts
           if grep -R -n -E 'google/madlad400|generativelanguage\.googleapis\.com|api\.deepl\.com|api\.openai\.com' \
             contabo/app-api/src/translation-*.ts docs/translation-engine.md scripts/translation-benchmark.py; then
