@@ -9,6 +9,7 @@ export type RuntimeConfig = {
   vaultServiceToken: string;
   vaultJobKeyRef: string;
   vaultTimeoutMs: number;
+  // Legacy ABI-only fields. Translation no longer reads model/provider credentials from RuntimeConfig.
   translationModelId: string;
   translationGeminiKeyRef: string;
   translationTimeoutMs: number;
@@ -65,8 +66,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     vaultServiceToken: required(env.LIBRAL_VAULT_INTERNAL_TOKEN, 'LIBRAL_VAULT_INTERNAL_TOKEN'),
     vaultJobKeyRef: required(env.LIBRAL_VAULT_JOB_KEY_REF, 'LIBRAL_VAULT_JOB_KEY_REF'),
     vaultTimeoutMs: integer(env.LIBRAL_VAULT_TIMEOUT_MS, 15_000, 1_000, 120_000),
-    translationModelId: env.ASTERA_TRANSLATION_MODEL_ID?.trim() || '',
-    translationGeminiKeyRef: env.LIBRAL_VAULT_GEMINI_KEY_REF?.trim() || '',
+    // Hard-disabled legacy compatibility slots: never read Gemini/model-selection env vars.
+    translationModelId: '',
+    translationGeminiKeyRef: '',
     translationTimeoutMs: integer(env.ASTERA_TRANSLATION_TIMEOUT_MS, 90_000, 3_000, 180_000),
     tgserverStorageOrigin,
     tgserverStorageToken: tgserverStorageOrigin ? required(env.TGS_STORAGE_INTERNAL_TOKEN, 'TGS_STORAGE_INTERNAL_TOKEN') : '',

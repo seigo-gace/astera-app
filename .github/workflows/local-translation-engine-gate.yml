@@ -1,0 +1,68 @@
+name: AI Core Translation Gate
+
+on:
+  pull_request:
+    paths:
+      - 'contabo/app-api/src/translation-ai-core.ts'
+      - 'contabo/app-api/src/translation-quality.ts'
+      - 'contabo/app-api/src/translation-semantic.ts'
+      - 'contabo/app-api/src/translation-runtime.ts'
+      - 'contabo/app-api/src/translation-runtime.test.ts'
+      - 'contabo/app-api/.env.example'
+      - 'docker-compose.yml'
+      - 'docs/translation-engine.md'
+      - 'scripts/translation-benchmark.py'
+      - 'scripts/translation-benchmark-requirements.txt'
+      - '.github/workflows/local-translation-engine-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contabo/app-api/src/translation-ai-core.ts'
+      - 'contabo/app-api/src/translation-quality.ts'
+      - 'contabo/app-api/src/translation-semantic.ts'
+      - 'contabo/app-api/src/translation-runtime.ts'
+      - 'contabo/app-api/src/translation-runtime.test.ts'
+      - 'contabo/app-api/.env.example'
+      - 'docker-compose.yml'
+      - 'docs/translation-engine.md'
+      - 'scripts/translation-benchmark.py'
+      - 'scripts/translation-benchmark-requirements.txt'
+      - '.github/workflows/local-translation-engine-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  translation-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert local AI Core translation contract
+        run: |
+          grep -q 'qwen3//models/Qwen3-8B-Q4_K_M.gguf' contabo/app-api/src/translation-ai-core.ts
+          grep -q 'granite//models/granite-4.2-8b-Q4_K_M.gguf' contabo/app-api/src/translation-ai-core.ts
+          grep -q '127.0.0.1:18080' contabo/app-api/src/translation-ai-core.ts
+          grep -q 'enable_thinking: false' contabo/app-api/src/translation-ai-core.ts
+          grep -q 'SEMANTIC_PASS_SCORE = 0.98' contabo/app-api/src/translation-semantic.ts
+          grep -q 'targetLanguageMatch' contabo/app-api/src/translation-semantic.ts
+          grep -q 'target_language_match' contabo/app-api/src/translation-semantic.ts
+          grep -q 'untrusted data' contabo/app-api/src/translation-semantic.ts
+          grep -q 'semantic_retry' contabo/app-api/src/translation-runtime.ts
+          if grep -R -n -E 'google/madlad400|generativelanguage\.googleapis\.com|api\.deepl\.com|api\.openai\.com' \
+            contabo/app-api/src/translation-*.ts docs/translation-engine.md scripts/translation-benchmark.py; then
+            echo 'Forbidden translation provider/model reference detected' >&2
+            exit 1
+          fi
+          test ! -d contabo/translation-engine
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+      - name: Install App dependencies
+        run: npm install --no-fund --no-audit
+      - name: Typecheck App and Functions
+        run: |
+          npm run check
+          npm run contract:check
+      - name: Run App Runtime translation contract tests
+        run: npm run contabo:test
