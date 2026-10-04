@@ -130,13 +130,24 @@ TGSERVER_LOG_TIMEOUT_MS=1500
 TGZERO_PROJECT_ID=P010
 TGZERO_REGISTRY_SOURCE=PASS_ON_TGSERVER_PR19_UNMERGED
 TGZERO_TOPIC_PROVISIONED=PASS
-TGZERO_PRODUCER_SOURCE=IMPLEMENTED_ON_PROJECT_BRANCH
-TGZERO_PRODUCER_CI=NOT_VERIFIED
+TGZERO_PRODUCER_SOURCE=PASS
+TGZERO_PRODUCER_CI=PASS
 TGZERO_PRODUCER_RUNTIME=NOT_VERIFIED
 TGZERO_TELEGRAM_RAW=NOT_VERIFIED
 TGZERO_INDEX_SEARCH=NOT_EXECUTED
 TGZERO_CENTRAL_READER=NOT_EXECUTED
 ```
+
+Producer Source/Test/CI evidence before this documentation-only synchronization:
+
+- producer code head: `aa818ce99adf166ee2e51d6367c7c12d1660169b`
+- Development Probe #3 / run `37203270002`: SUCCESS
+- canonical `npm run verify`: SUCCESS
+- Contabo App API tests: 43/43 PASS, including P010 Producer 4/4 PASS
+- Manual Purpose Contract Gate #236 / run `37203270036`: SUCCESS
+- Development Probe Artifact: `dev-probe-37203270002`, Artifact ID `11303741743`, SHA-256 `81cc63846288912657b504c7b853fd3131ac582c2147c7d3f5db93f522738ddb`
+
+This documentation-only synchronization creates a newer Project head. The new documentation commit itself must pass exact-head CI before that newer head is promoted as CI-verified.
 
 Source registration and Topic existence are not runtime Producer proof. Runtime verification requires approved Project deployment plus actual P010 event acceptance, Telegram raw persistence evidence, index visibility, and central Reader retrieval.
 
