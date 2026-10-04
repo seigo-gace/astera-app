@@ -4,16 +4,24 @@
 
 Astera Appの開発CHATが、Masterへ毎回Terminal Logのコピーを依頼せず、Source / Test / Build / Verify EvidenceをGitHub Actionsから直接取得できるようにする。
 
-Runtime / Server LogはAstera App RepositoryからTGserver APIへ直接アクセスせず、`seigo-gace/TGserver`のTGserver ZERO中央Readerを使用する。
+Runtime / Server LogはAstera App RepositoryからTGserver `/search`へ直接アクセスせず、Project側ProducerでTGserver ZEROへ送り、取得は`seigo-gace/TGserver`の中央Readerだけを使用する。
 
 ## Authority
 
-TGserver ZERO integration authority:
+TGserver ZERO base authority:
 
 - `seigo-gace/TGserver@9282f3540f9bf47cfad7e7814da8fd7145d44bba`
 - `README_ZERO.md`
 - `docs/TGSERVER_ZERO_PROJECT_INTEGRATION.md`
 - `docs/templates/dev-probe.yml`
+
+Current ZERO integration line:
+
+- TGserver Draft PR #19
+- current observed head: `610de9627bd065ff51ad1faf6f09cccb8e0498d1`
+- `seigo-gace/astera-app` -> stream `default` -> `P010`
+- P010 severity topics: live-provisioned 5/5 in the verified 65/65 topic result
+- PR #19: OPEN / DRAFT / UNMERGED
 
 Project authority remains Astera App README / Current Design / Source / Test. TGserver vNext is outside this integration.
 
@@ -46,7 +54,7 @@ The Issue body is informational only. No command, script path, URL, secret, proj
 
 Only a request where `github.event.issue.user.login == github.repository_owner` and the title begins with `[DEV-PROBE]` can run the Issue path.
 
-The workflow also has an owner-only `pull_request` path limited to changes of this integration workflow/document. Its purpose is to verify the new Development Probe before the approval boundary is crossed. It does not create a second verification framework; it executes the same canonical `npm run verify` command.
+The workflow also has an owner-only `pull_request` path limited to changes of this integration workflow/document. Its purpose is to verify the Development Probe before the approval boundary is crossed. It executes the same canonical `npm run verify` command.
 
 ## Evidence returned to CHAT
 
@@ -70,29 +78,84 @@ and, when produced by the canonical verify, existing project evidence such as:
 
 `dev-probe-context.txt` contains only repository/ref/SHA/runtime-version/canonical-command metadata. It must not contain secret values.
 
-A successful Issue-triggered run comments the Workflow Run and Artifact name on the Issue and closes it. A failed request remains open.
+## P010 TGserver ZERO runtime producer
 
-## TGserver ZERO runtime-log boundary
+Project-side implementation lives in the Contabo App API runtime:
 
-As of TGserver ZERO authority commit `9282f3540f9bf47cfad7e7814da8fd7145d44bba`, `seigo-gace/astera-app` is **UNREGISTERED** in the central project map.
+- `contabo/app-api/src/tgserver-zero-log.ts`
+- `contabo/app-api/src/tgserver-runtime-service.ts`
+- `contabo/app-api/src/server.ts`
 
-Therefore:
+Contract:
+
+- fixed `project_id=P010`;
+- canonical `POST /ingest/bulk` + `logs[]`;
+- bounded fail-open queue;
+- accepted/duplicate receipt validation;
+- no per-producer TGserver log secret/header;
+- default 1.5 second timeout, bounded by the sink implementation;
+- TGserver transport failure never changes App Job success/failure semantics;
+- System Log lane is separate from the existing TGserver User Storage lane.
+
+Eligible metadata is intentionally limited to fixed event names and bounded internal codes/signals:
 
 ```text
-TGZERO_PROJECT_REGISTERED=UNREGISTERED
-TGZERO_PRODUCER=NOT_VERIFIED
-TGZERO_SEARCH=NOT_VERIFIED
+astera_app_api_started
+runtime_job_completed
+runtime_job_partially_completed
+runtime_job_failed
+runtime_job_cancelled
+shutdown_started
+shutdown_timeout
+database_close_failed
+shutdown_completed
+unhandled_rejection
+uncaught_exception
 ```
 
-No existing `Pxxx` may be reused or guessed.
+The Producer does **not** forward Prompt, Result, File content, Private Data, user/tenant/job identifiers, correlation/request IDs, bearer tokens, Vault secrets, TGserver Storage tokens, Process tokens, arbitrary exception messages, or provider/model response bodies.
 
-Runtime-log enablement is a separate TGserver ZERO registration change unit and must complete the TGserver-side project identifier / topic / producer / map contract before CHAT performs central Reader search for Astera App.
+Configuration shape:
 
-The Astera App Repository must not receive copies of TGserver ZERO Cloudflare Access credentials. Runtime search must remain centralized in `seigo-gace/TGserver`.
+```text
+TGSERVER_LOG_URL=http://127.0.0.1:3000
+TGSERVER_LOG_TIMEOUT_MS=1500
+```
+
+`docker-compose.yml` already loads `contabo/app-api/.env` through `env_file`, so no separate Compose secret duplication is required.
+
+## Current state boundary
+
+```text
+TGZERO_PROJECT_ID=P010
+TGZERO_REGISTRY_SOURCE=PASS_ON_TGSERVER_PR19_UNMERGED
+TGZERO_TOPIC_PROVISIONED=PASS
+TGZERO_PRODUCER_SOURCE=PASS
+TGZERO_PRODUCER_CI=PASS
+TGZERO_PRODUCER_RUNTIME=NOT_VERIFIED
+TGZERO_TELEGRAM_RAW=NOT_VERIFIED
+TGZERO_INDEX_SEARCH=NOT_EXECUTED
+TGZERO_CENTRAL_READER=NOT_EXECUTED
+```
+
+Producer Source/Test/CI evidence before this documentation-only synchronization:
+
+- producer code head: `aa818ce99adf166ee2e51d6367c7c12d1660169b`
+- Development Probe #3 / run `37203270002`: SUCCESS
+- canonical `npm run verify`: SUCCESS
+- Contabo App API tests: 43/43 PASS, including P010 Producer 4/4 PASS
+- Manual Purpose Contract Gate #236 / run `37203270036`: SUCCESS
+- Development Probe Artifact: `dev-probe-37203270002`, Artifact ID `11303741743`, SHA-256 `81cc63846288912657b504c7b853fd3131ac582c2147c7d3f5db93f522738ddb`
+
+This documentation-only synchronization creates a newer Project head. The new documentation commit itself must pass exact-head CI before that newer head is promoted as CI-verified.
+
+Source registration and Topic existence are not runtime Producer proof. Runtime verification requires approved Project deployment plus actual P010 event acceptance, Telegram raw persistence evidence, index visibility, and central Reader retrieval.
+
+The Astera App Repository must not receive copies of TGserver ZERO Cloudflare Access credentials. Runtime search remains centralized in `seigo-gace/TGserver`.
 
 ## Security boundary
 
-The Development Probe must never provide:
+The Development Probe and Producer must never provide:
 
 - Issue-body supplied shell execution;
 - arbitrary server commands;
@@ -102,10 +165,9 @@ The Development Probe must never provide:
 - secret mutation;
 - provider mutation;
 - TGserver ZERO Cloudflare Access secrets;
-- direct TGserver API access;
-- TGserver vNext access.
-
-The only source command executed by the probe is the fixed repository-owned canonical verify path and its fixed setup/evidence steps.
+- direct Project-side `/search` access;
+- TGserver vNext access;
+- application/user/private payload forwarding into System Log.
 
 ## Source / Test / CI / Runtime separation
 
@@ -115,40 +177,25 @@ These states are independent:
 SOURCE
 TEST
 CI
-TGZERO_REGISTRATION
-TGZERO_PRODUCER
-TGZERO_SEARCH
+TGZERO_REGISTRATION_SOURCE
+TGZERO_TOPIC_PROVISIONING
+TGZERO_PRODUCER_SOURCE
+TGZERO_PRODUCER_RUNTIME
+TGZERO_TELEGRAM_RAW
+TGZERO_INDEX_SEARCH
+TGZERO_CENTRAL_READER
 RUNTIME
 PRODUCTION
 ```
 
-A Development Probe PASS proves only the checked Source/Test/Build/Verify state for its exact GitHub SHA. It does not prove Runtime, TGserver producer, Deploy, or Production state.
+A Development Probe PASS proves only the checked Source/Test/Build/Verify state for its exact GitHub SHA. It does not prove Runtime, TGserver Producer, Deploy, or Production state.
 
 ## CHAT usage
 
 For future Astera App development:
 
-1. Source / Test / Build / Verify evidence -> Astera App `[DEV-PROBE]` + GitHub Actions Job Log / Artifact.
-2. Runtime / Server Log -> TGserver ZERO central Reader in `seigo-gace/TGserver`, **only after formal Astera App registration and producer verification**.
+1. Source / Test / Build / Verify evidence -> Astera App Development Probe + GitHub Actions Job Log / Artifact.
+2. Runtime / Server Log -> P010 Producer -> TGserver ZERO -> TGserver central Reader, only after approved Runtime deployment and real evidence.
 3. Server mutation -> never through Development Probe or TGserver ZERO Reader; follow server-core Approval Boundary.
 
-If the repository is still UNREGISTERED, CHAT must report Runtime Log retrieval as blocked/unverified rather than guessing a project ID.
-
-## Completion evidence fields
-
-```text
-PROJECT_AUTHORITY_READ
-CANONICAL_VERIFY_REUSED
-DEV_PROBE_SOURCE
-DEV_PROBE_CI
-CHAT_ACTIONS_LOG_READBACK
-CHAT_ARTIFACT_READBACK
-TGZERO_PROJECT_REGISTERED
-TGZERO_PRODUCER
-TGZERO_SEARCH
-SECRET_DUPLICATION
-ARBITRARY_SERVER_COMMAND
-PROJECT_DOCS
-```
-
-Unexecuted or unverified fields remain `NOT_VERIFIED`.
+Unexecuted or unverified fields remain `NOT_VERIFIED / NOT_EXECUTED`.
