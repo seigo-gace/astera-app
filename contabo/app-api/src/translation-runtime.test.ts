@@ -4,6 +4,7 @@ import { translateAsteraResult } from './translation-runtime.js';
 import type { VaultClient } from './vault-client.js';
 
 const MODEL_ID = 'qwen3//models/Qwen3-8B-Q4_K_M.gguf';
+const MODEL_RESPONSE_ID = '/models/Qwen3-8B-Q4_K_M.gguf';
 const fakeVault = {} as VaultClient;
 
 type ChatRequestBody = {
@@ -16,7 +17,7 @@ type ChatRequestBody = {
 
 function aiCoreResponse(content: string, extras: Record<string, unknown> = {}): Response {
   return new Response(JSON.stringify({
-    model: MODEL_ID,
+    model: MODEL_RESPONSE_ID,
     choices: [{ message: { role: 'assistant', content } }],
     usage: { prompt_tokens: 12, completion_tokens: 8 },
     ...extras,
@@ -153,7 +154,23 @@ test('translation runtime rejects non-loopback AI Core origin before network acc
 
 test('translation runtime fails closed when AI Core reports a different model', async () => withRuntimeEnv(async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => aiCoreResponse('こんにちは', { model: 'granite//models/granite-4.2-8b-Q4_K_M.gguf' });
+  globalThis.fetch = async () => aiCoreResponse('こんにちは', { model: '/models/granite-4.2-8b-Q4_K_M.gguf' });
+  try {
+    await assert.rejects(
+      () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),
+      (error: unknown) => {
+        assert.equal((error as { code?: string }).code, 'TRANSLATION_MODEL_IDENTITY_MISMATCH');
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
+
+test('translation runtime fails closed when AI Core omits model identity', async () => withRuntimeEnv(async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => aiCoreResponse('こんにちは', { model: undefined });
   try {
     await assert.rejects(
       () => translateAsteraResult({ result: { sections: [{ body: 'Hello' }] } }, 'ja', fakeVault, { modelId: '', apiKeyRef: '', timeoutMs: 30_000 }),

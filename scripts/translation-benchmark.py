@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import sacrebleu
 
 MODEL_ID = "qwen3//models/Qwen3-8B-Q4_K_M.gguf"
+MODEL_RESPONSE_ID = "/models/Qwen3-8B-Q4_K_M.gguf"
 DEFAULT_ORIGIN = "http://127.0.0.1:18080"
 
 
@@ -63,8 +64,8 @@ def call_ai_core(origin: str, token: str, source: str, target_language: str, tim
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     response_model = payload.get("model")
-    if response_model and response_model != MODEL_ID:
-        raise RuntimeError(f"AI Core returned unexpected model: {response_model}")
+    if response_model not in {MODEL_ID, MODEL_RESPONSE_ID}:
+        raise RuntimeError(f"AI Core did not confirm pinned Qwen3 model identity: {response_model}")
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
         raise RuntimeError("AI Core returned no choices")
@@ -134,6 +135,7 @@ def main() -> None:
                 "source": case["source"],
                 "reference": case["reference"],
                 "translation": translated,
+                "response_model": payload.get("model"),
                 "latency_ms": round(elapsed_ms, 2),
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
@@ -160,7 +162,8 @@ def main() -> None:
     report = {
         "schema_version": 1,
         "provider": "local_ai_core",
-        "model": MODEL_ID,
+        "requested_model": MODEL_ID,
+        "accepted_response_models": [MODEL_ID, MODEL_RESPONSE_ID],
         "external_api_calls": 0,
         "cases": len(rows),
         "quality": {

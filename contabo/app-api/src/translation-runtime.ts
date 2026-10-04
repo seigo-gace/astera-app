@@ -43,6 +43,7 @@ type EngineResult = {
 };
 
 const MODEL_ID = 'qwen3//models/Qwen3-8B-Q4_K_M.gguf';
+const MODEL_RESPONSE_ID = '/models/Qwen3-8B-Q4_K_M.gguf';
 const DEFAULT_AI_CORE_ORIGIN = 'http://127.0.0.1:18080';
 
 function record(value: unknown): Record<string, unknown> {
@@ -60,6 +61,10 @@ function finiteNumber(value: unknown): number {
 
 function codedError(code: string, message: string, retryable = false): Error {
   return Object.assign(new Error(message), { code, retryable });
+}
+
+function isPinnedQwen3ResponseModel(value: string): boolean {
+  return value === MODEL_ID || value === MODEL_RESPONSE_ID;
 }
 
 function aiCoreOrigin(): string {
@@ -156,8 +161,8 @@ async function requestAiCore(source: string, targetLanguage: string, strategy: T
       throw codedError(code, message, response.status === 429 || response.status >= 500);
     }
     const responseModel = text(payload.model);
-    if (responseModel && responseModel !== MODEL_ID) {
-      throw codedError('TRANSLATION_MODEL_IDENTITY_MISMATCH', 'AI Core returned a model different from the pinned Qwen3 translation model.');
+    if (!isPinnedQwen3ResponseModel(responseModel)) {
+      throw codedError('TRANSLATION_MODEL_IDENTITY_MISMATCH', 'AI Core did not confirm the pinned Qwen3 translation model identity.');
     }
     const raw = text(payload.choices?.[0]?.message?.content);
     if (!raw.trim() && source.trim()) {

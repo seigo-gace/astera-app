@@ -8,7 +8,8 @@ Asteraの「高精度翻訳」Optionを、外部翻訳APIや追加の翻訳専�
 
 - AI Core Runtime: `/home/admin1/projects/ai-core`
 - Router: `http://127.0.0.1:18080`
-- Router model ID: `qwen3//models/Qwen3-8B-Q4_K_M.gguf`
+- Router request model ID: `qwen3//models/Qwen3-8B-Q4_K_M.gguf`
+- Current AI Core response model ID: `/models/Qwen3-8B-Q4_K_M.gguf`
 - Runtime: llama.cpp + llama-swap
 - Quantization: Q4_K_M
 - Translation thinking: OFF
@@ -44,11 +45,24 @@ Rules:
 
 1. `AI_CORE_BASE_URL`はloopback HTTPだけを許可する。
 2. `AI_CORE_API_KEY`を必須にする。
-3. Translation Runtime自身がmodel IDを固定する。
+3. Translation Runtime自身がrequest model IDを固定する。
 4. `enable_thinking=false`を固定する。
 5. Remote providerへのFallbackを持たない。
-6. AI Coreが別model IDを返した場合はFail-closedにする。
+6. AI Core responseの`model`は、Router request IDまたは実VPSで確認したcanonical backend pathの**Qwen3 exact identityだけ**を許可し、欠落・別modelはFail-closedにする。
 7. Qwen3 Backend `18082`へ直接接続せずRouter `18080`を使う。
+
+### Model identity normalization boundary
+
+2026-10-04の実VPS Smokeで、Routerへ`qwen3//models/Qwen3-8B-Q4_K_M.gguf`を指定した正常Requestに対し、AI Core responseの`model`は`/models/Qwen3-8B-Q4_K_M.gguf`を返した。
+
+そのためApp側は「任意のbasename一致」や部分一致には緩めず、次の2値だけを同一Qwen3 identityとして許可する。
+
+```text
+qwen3//models/Qwen3-8B-Q4_K_M.gguf
+/models/Qwen3-8B-Q4_K_M.gguf
+```
+
+空値・Granite・Ministral・Coder・その他Pathは拒否する。
 
 ## 4. Deterministic Quality Shell
 
@@ -140,7 +154,7 @@ Activation前に最低限以下を実測する。
 5. 否定・禁止・以上/以下・金額・割合・期限・Versionの重点検査
 6. mean / p50 / p95 / max latency
 7. warm request時のCPU / RAM
-8. AI Core停止・timeout・401・別model応答時のFail-closed
+8. AI Core停止・timeout・401・model identity欠落/別model応答時のFail-closed
 9. Translation request中の外部Provider call 0
 
 Benchmark helper:
@@ -150,9 +164,29 @@ scripts/translation-benchmark.py
 scripts/translation-benchmark-requirements.txt
 ```
 
-BenchmarkもAI Core Router `18080`だけへ接続する。
+BenchmarkもAI Core Router `18080`だけへ接続し、Runtimeと同じQwen3 response identity ruleを使う。
 
-## 8. Current activation boundary
+## 8. Runtime evidence
+
+2026-10-04のContabo VPS実測Smoke:
+
+- request: Qwen3 / thinking OFF / temperature 0
+- response model: `/models/Qwen3-8B-Q4_K_M.gguf`
+- latency: 18,953.33 ms
+- prompt tokens: 145
+- output tokens: 90
+- 日本語→英語翻訳: 成立
+- Markdown heading: 保持
+- `2026-10-04`: 保持
+- `12,500`: 保持
+- `95%`: 保持
+- `https://asterav8.jp`: 保持
+- UUID: 保持
+- inline code: 保持
+
+これは**1回のSmoke Evidence**であり、多言語品質・warm p50/p95・同時実行性能・App E2EのPASSへは昇格させない。
+
+## 9. Current activation boundary
 
 このBranchではSource / CI / Server benchmark準備まで進める。
 
