@@ -1,94 +1,111 @@
-# Astera Translation Option — AI Core Qwen3 Runtime
+# Astera Translation Option — AI Core Qwen3 + Granite Validation Runtime
 
 ## 1. Purpose
 
-Asteraの「高精度翻訳」Optionを、外部翻訳APIや追加の翻訳専用Modelへ依存させず、Serverですでに正式運用しているAI Coreの4モデルから1モデルを固定して実行する。
+Asteraの「高精度翻訳」Optionを、外部翻訳APIや追加の翻訳専用Modelへ依存させず、Serverですでに正式配置されているAI Coreを再利用して実行する。
 
-採用Modelは **Qwen3-8B-Q4_K_M**。
+役割は固定する。
+
+- **Qwen3-8B-Q4_K_M**: 翻訳と独立Semantic Record生成
+- **Granite 4.2 8B Q4_K_M**: 翻訳結果の意味同等性判定だけ
+- Graniteは翻訳Fallbackではない
+- Ministral / CoderはTranslation Runtimeから使用しない
+
+共通条件:
 
 - AI Core Runtime: `/home/admin1/projects/ai-core`
 - Router: `http://127.0.0.1:18080`
-- Router request model ID: `qwen3//models/Qwen3-8B-Q4_K_M.gguf`
-- Current AI Core response model ID: `/models/Qwen3-8B-Q4_K_M.gguf`
+- Qwen request model: `qwen3//models/Qwen3-8B-Q4_K_M.gguf`
+- Qwen canonical response model: `/models/Qwen3-8B-Q4_K_M.gguf`
+- Granite request model: `granite//models/granite-4.2-8b-Q4_K_M.gguf`
+- Granite canonical response model: `/models/granite-4.2-8b-Q4_K_M.gguf`
 - Runtime: llama.cpp + llama-swap
-- Quantization: Q4_K_M
-- Translation thinking: OFF
-- Temperature: 0
+- `temperature=0`
+- `enable_thinking=false`
 - External translation API calls: **0**
 - Additional translation model download: **0**
 
-通常AppはBackend portへ直接接続せず、AI Core Routerを利用する。
+AppはBackend portへ直接接続せず、AI Core Routerだけを利用する。
 
-## 2. Why Qwen3 from the existing four models
+## 2. Why the design is no longer Qwen-only
 
-AI Coreの正式4モデルは以下。
+Qwen3単体Smokeでは主要言語の多くは翻訳できたが、次の2種類の失敗を確認した。
 
-- Qwen3: 汎用、日本語、通常文章処理
-- Granite: 分析、指示処理、構造化寄り
-- Ministral: reasoningを使う深い検討
-- Qwen2.5 Coder: Code生成・修正・Debug補助
+1. 日付・通貨などのCritical Tokenを自然な現地表記へ変換する
+2. 低資源言語で、表面上は翻訳文でも原文の意味そのものが崩れる
 
-翻訳は「深い推論」や「Code生成」ではなく、入力情報を欠落・追加せず別言語へ写像する通常文章処理であるため、Qwen3を固定採用する。
+1はSoftware側のimmutable token化で防げる。2は文字列比較や構造検査では検出できないため、翻訳担当とは別責務の意味検査が必要になる。
 
-Granite / Ministral / Coderへの自動Fallbackは行わない。翻訳品質の修復が必要な場合も、同じQwen3を再実行し、Software側の検証条件だけを強化する。
+そのため、Qwen3は翻訳担当のまま維持し、既存AI CoreのGraniteを**英語Semantic Record同士の独立比較器**として使う。Graniteが原言語を直接理解できることには依存しない。
 
 ## 3. Runtime boundary
 
 ```text
 Astera App API
   -> 127.0.0.1:18080/v1/chat/completions
-  -> AI Core Router (llama-swap)
-  -> qwen3//models/Qwen3-8B-Q4_K_M.gguf
+  -> AI Core Router
+
+Translation path:
+  Qwen3 -> translated batch
+
+Semantic validation path:
+  ORIGINAL batch -> Qwen3 -> English semantic record A
+  translated batch -> Qwen3 -> English semantic record B
+  A + B -> Granite -> equivalence verdict
 ```
 
 Rules:
 
 1. `AI_CORE_BASE_URL`はloopback HTTPだけを許可する。
 2. `AI_CORE_API_KEY`を必須にする。
-3. Translation Runtime自身がrequest model IDを固定する。
-4. `enable_thinking=false`を固定する。
+3. Translation Runtime自身がQwen/Graniteのrequest model IDを固定する。
+4. 全Requestで`temperature=0`、`enable_thinking=false`を固定する。
 5. Remote providerへのFallbackを持たない。
-6. AI Core responseの`model`は、Router request IDまたは実VPSで確認したcanonical backend pathの**Qwen3 exact identityだけ**を許可し、欠落・別modelはFail-closedにする。
-7. Qwen3 Backend `18082`へ直接接続せずRouter `18080`を使う。
+6. Qwen callはQwen exact identityだけ、Granite callはGranite exact identityだけを受理する。
+7. identity欠落・cross-model response・未知PathはFail-closedにする。
+8. Backendへ直接接続せずRouter `18080`を使う。
 
-### Model identity normalization boundary
+## 4. Whole-result batching
 
-2026-10-04の実VPS Smokeで、Routerへ`qwen3//models/Qwen3-8B-Q4_K_M.gguf`を指定した正常Requestに対し、AI Core responseの`model`は`/models/Qwen3-8B-Q4_K_M.gguf`を返した。
+旧構造はAsteraの各Sectionを個別にQwenへ直列送信していた。新構造では翻訳対象Sectionを1つのBatchへまとめる。
 
-そのためApp側は「任意のbasename一致」や部分一致には緩めず、次の2値だけを同一Qwen3 identityとして許可する。
+各Sectionを以下のimmutable markerで分離する。
 
 ```text
-qwen3//models/Qwen3-8B-Q4_K_M.gguf
-/models/Qwen3-8B-Q4_K_M.gguf
+__ASTERA_SECTION_000000_BEGIN__
+...
+__ASTERA_SECTION_000000_END__
 ```
 
-空値・Granite・Ministral・Coder・その他Pathは拒否する。
+全markerはexactly once・順序固定。余分なprefix/suffix、欠落、重複、入替を拒否する。
 
-## 4. Deterministic Quality Shell
+これにより、Asteraの複数Section間の文脈を保持しつつ、通常翻訳callを1回へ集約する。空Sectionは翻訳対象から除外して元値を維持する。
 
-Qwen3へ本文を渡す前後で、AIではなくSoftware Gateを使って構造を守る。
+## 5. Deterministic Quality Shell
 
 ### Protected Token Fence
 
-翻訳前に以下をimmutable tokenへ置換する。
+翻訳前に以下を`__ASTERA_PROTECTED_XXXXXX__`へ置換する。
 
 - fenced code / inline code
 - URL
 - email
 - template placeholder (`{{...}}`, `${...}`, `<%...%>`)
 - UUID
-- 数字・日付・Version相当token
+- semantic version (`v8.4.1`等)
+- ISO / slash / dot形式の日付
+- 通貨記号付き金額
+- `USD / EUR / GBP / JPY`付き金額
+- percentage
+- その他数値token
 
-翻訳後、各tokenがexactly once存在しなければ結果を採用しない。
-
-### Document-first
-
-最初はSection body全体を1単位でQwen3へ渡す。文脈を分断しない。
+翻訳後、各tokenがexactly once存在しなければ採用しない。復元時は原文のexact valueへ戻す。
 
 ### Structural validation
 
-翻訳後にSourceと以下を比較する。
+Sectionごとに以下を比較する。
 
+- section count / marker order
 - line count
 - blank line
 - heading level
@@ -98,40 +115,85 @@ Qwen3へ本文を渡す前後で、AIではなくSoftware Gateを使って構造
 - protected token exact restoration
 - 極端な情報量増減
 
-### Same-model fallback
+### Structural fallback
 
-Document-first結果が構造Gateを通らない場合だけ、同じQwen3を再実行する。
+Document strategyが構造Gateを通らない場合だけ、**同じQwen3・同じOriginal batch**を`lines` strategyで1回再実行する。
 
-Fallbackでは、
+別Modelへの翻訳切替は行わない。
 
-- exact line count
-- line merge禁止
-- line split禁止
-- structural prefix位置固定
+## 6. Independent Semantic Validation
 
-を追加指示する。
+構造が正しくても意味が壊れる可能性があるため、候補訳を採用する前にSemantic Gateを通す。
 
-別AIへの切替はしない。
+### Step A — Original semantic record
 
-## 5. Existing AI Core reuse
+Qwen3へOriginal batchだけを渡し、英語JSONのSemantic Recordを生成する。
 
-今回のTranslation Optionのために新しいModel Containerは追加しない。
+Record対象:
 
-従来案にあった独立Translation Engine、Model Builder、Model Weight mount、追加Model常駐は不要。
+- claims
+- constraints / commands / prohibitions
+- conditions / exceptions
+- entities
+- quantities / deadlines / comparisons
+- uncertainties
 
-その結果、
+### Step B — Candidate semantic record
 
-- 既存AI Coreを再利用
-- 追加常駐RAMを原則発生させない
-- 追加Model download不要
-- Router認証・Model管理方式を共通化
-- App独自のAI Runtimeを増殖させない
+別RequestでQwen3へ候補訳だけを渡し、同じSchemaの英語Semantic Recordを生成する。
 
-という構造になる。
+OriginalとCandidateを同一Requestへ同時に見せない。これにより、Record生成時に互いへ寄せるbiasを減らす。
 
-## 6. Configuration
+### Step C — Granite equivalence verdict
 
-App API側:
+Graniteには原文や翻訳文を直接渡さず、英語Semantic Record A/Bだけを渡す。
+
+Pass条件は全て必須。
+
+```text
+equivalent = true
+score >= 0.98
+critical_differences = []
+```
+
+重点差分:
+
+- 否定 / 禁止
+- must / should / may等の強度
+- only / unless / if等の条件
+- 以上 / 以下 / 比較
+- 金額 / 数量 / 割合 / 期限
+- Entity
+- Safety constraint
+- 情報の追加 / 欠落
+
+## 7. Semantic retry and fail-closed
+
+最初のSemantic GateがFAILした場合、候補訳そのものは修正材料として再利用しない。
+
+1. Graniteのcritical differencesをCorrection Guidanceへ変換
+2. **Original batchから**Qwen3で再翻訳
+3. 再翻訳candidateだけから新しいSemantic Recordを生成
+4. Original Recordと新Candidate RecordをGraniteで再比較
+5. 2回目もFAILなら`TRANSLATION_SEMANTIC_EQUIVALENCE_FAILED`でFail-closed
+
+意味が未確認の翻訳をUser結果として採用しない。
+
+## 8. Call model
+
+正常経路ではAstera result全体につきAI Core callは4回。
+
+1. Qwen translation batch
+2. Qwen Original semantic record
+3. Qwen Candidate semantic record
+4. Granite equivalence verdict
+
+構造Fallback時は+1 Qwen translation call。
+Semantic retry時は、再翻訳 + Candidate semantic record + Granite verdictの+3 call。
+
+これはSource上の構造であり、総latencyはServer実測前には確定しない。旧方式のように各Sectionごとに翻訳callを繰り返さないため、Section数に比例するtranslation call増加は除去している。
+
+## 9. Configuration
 
 ```text
 AI_CORE_BASE_URL=http://127.0.0.1:18080
@@ -141,21 +203,55 @@ ASTERA_TRANSLATION_TIMEOUT_MS=90000
 
 API KeyはGit・README・Terminal出力・Chatへ記録しない。
 
-## 7. Quality / benchmark gates before activation
+## 10. Runtime evidence
 
-Source GateがPASSしてもProduction完成とはしない。
+### 10.1 Initial single smoke
 
-Activation前に最低限以下を実測する。
+2026-10-04のContabo VPS実測:
 
-1. App主要言語 + 低資源言語代表の翻訳成立
-2. URL / UUID / 数字 / 日付 / Code / Markdown / tableの100%保持
-3. 人手Referenceに対するchrF++ / SacreBLEU
-4. 言語Pair別Score
-5. 否定・禁止・以上/以下・金額・割合・期限・Versionの重点検査
-6. mean / p50 / p95 / max latency
-7. warm request時のCPU / RAM
-8. AI Core停止・timeout・401・model identity欠落/別model応答時のFail-closed
-9. Translation request中の外部Provider call 0
+- Qwen response model: `/models/Qwen3-8B-Q4_K_M.gguf`
+- latency: `18,953.33 ms`
+- 日本語→英語成立
+- Markdown / date / number / percentage / URL / UUID / inline code保持
+
+これは1回のSmokeだけで、多言語品質や性能GateのPASSではない。
+
+### 10.2 Qwen3 raw multilingual smoke
+
+`AI_CORE_QWEN3_MULTILINGUAL_SMOKE`として7件を実測した。
+
+- ja / zh-CN / ko / ar / de / sw / ja
+- model identity: PASS
+- latency mean: `6,913.68 ms`
+- p50: `6,614.48 ms`
+- p95 / max: `9,912.12 ms`
+- Critical Token Retention: **FAIL**
+- Japanese case: date表記が変化
+- Arabic case: money/date表記が変化
+- Swahili case: literal tokenは保持したが意味品質が不十分
+
+このSmokeは**raw Qwen request**であり、Protected Token Fence / Whole-result batching / Semantic Gateを通した製品結果ではない。
+
+結論は「Qwen3単体で完成」ではなく、Deterministic Fenceと独立Semantic Gateが必要、である。
+
+## 11. Quality gates before activation
+
+Production activation前に最低限以下を実測する。
+
+1. 主要言語 + 低資源言語 + script差が大きい言語のmatrix
+2. URL / UUID / code / number / date / money / percentage / versionの100%保持
+3. 否定・禁止・条件・例外・比較・期限・数量のadversarial semantic cases
+4. Semantic Gateが意図的な誤訳をrejectできること
+5. Semantic retryがOriginalから実行されること
+6. 2回目Semantic FAILでFail-closedすること
+7. Qwen / Granite exact model identity
+8. chrF++ / SacreBLEU等のreference metric（Referenceを用意できる言語pair）
+9. 言語pair別の人手確認
+10. mean / p50 / p95 / max end-to-end latency
+11. warm request時CPU / RAM
+12. AI Core停止・timeout・401時のFail-closed
+13. Translation request中のexternal provider call = 0
+14. App E2EでTranslation Optionの実投稿→結果表示まで成立
 
 Benchmark helper:
 
@@ -164,38 +260,29 @@ scripts/translation-benchmark.py
 scripts/translation-benchmark-requirements.txt
 ```
 
-BenchmarkもAI Core Router `18080`だけへ接続し、Runtimeと同じQwen3 response identity ruleを使う。
+既存Benchmarkはraw Qwen性能測定として残す。新Semantic Pipelineの完成判定はApp Runtime統合Smoke/E2Eを別途必要とする。
 
-## 8. Runtime evidence
+## 12. Source responsibility
 
-2026-10-04のContabo VPS実測Smoke:
+- `translation-ai-core.ts`: Router接続、認証、model identity、AI Core transport
+- `translation-quality.ts`: immutable token、section batch、structure gate
+- `translation-semantic.ts`: Semantic Record / Granite verdict
+- `translation-runtime.ts`: Astera resultの収集、翻訳、検証、retry、usage集計
+- `translation-runtime.test.ts`: Runtime contract回帰
 
-- request: Qwen3 / thinking OFF / temperature 0
-- response model: `/models/Qwen3-8B-Q4_K_M.gguf`
-- latency: 18,953.33 ms
-- prompt tokens: 145
-- output tokens: 90
-- 日本語→英語翻訳: 成立
-- Markdown heading: 保持
-- `2026-10-04`: 保持
-- `12,500`: 保持
-- `95%`: 保持
-- `https://asterav8.jp`: 保持
-- UUID: 保持
-- inline code: 保持
+責務を分離し、AI transport・決定論Gate・意味判定・Orchestrationを1ファイルへ混在させない。
 
-これは**1回のSmoke Evidence**であり、多言語品質・warm p50/p95・同時実行性能・App E2EのPASSへは昇格させない。
+## 13. Current activation boundary
 
-## 9. Current activation boundary
+このBranchはDraftの検証中Sourceである。
 
-このBranchではSource / CI / Server benchmark準備まで進める。
-
-以下はServer実測とApp E2E完了まで禁止:
+禁止:
 
 - Production merge
 - Production deploy
 - Translation Optionの本番切替
-- Benchmark未実施で「高精度」を完成扱い
-- 4モデル間の自動Fallback追加
+- raw Qwen Smokeだけで「高精度」「全言語対応」を完成扱い
+- Semantic Gate未実測でGranite validatorを完成扱い
+- 未確認のModel fallback追加
 
-完成判定は、**Qwen3 exact runtime確認 + multilingual quality benchmark + structure invariant PASS + App実E2E**まで揃った時点とする。
+完成判定は、**Source/CI PASS + 実VPSでQwen/Granite統合Pipeline PASS + multilingual/adversarial quality matrix + performance measurement + App E2E**が揃った時点とする。
